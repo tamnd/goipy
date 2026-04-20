@@ -123,7 +123,19 @@ func (i *Interp) initBuiltins() {
 		if n, ok := toInt64(a[0]); ok {
 			return &object.Bytes{V: make([]byte, n)}, nil
 		}
-		return nil, object.Errorf(ii.(*Interp).typeErr, "bytes() only supports int size")
+		items, err := iterate(ii.(*Interp), a[0])
+		if err != nil {
+			return nil, err
+		}
+		out := make([]byte, len(items))
+		for k, x := range items {
+			n, ok := toInt64(x)
+			if !ok || n < 0 || n > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "bytes must be in range(0, 256)")
+			}
+			out[k] = byte(n)
+		}
+		return &object.Bytes{V: out}, nil
 	}})
 	b.SetStr("list", &object.BuiltinFunc{Name: "list", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
@@ -592,6 +604,30 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("hasattr", &object.BuiltinFunc{Name: "hasattr", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		_, err := ii.(*Interp).getAttr(a[0], a[1].(*object.Str).V)
 		return object.BoolOf(err == nil), nil
+	}})
+	// super is a stub — LOAD_SUPER_ATTR handles the real work by receiving
+	// (super, __class__, self) on the stack.
+	b.SetStr("super", &object.BuiltinFunc{Name: "super", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	b.SetStr("callable", &object.BuiltinFunc{Name: "callable", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		switch a[0].(type) {
+		case *object.BuiltinFunc, *object.Function, *object.BoundMethod, *object.Class:
+			return object.True, nil
+		}
+		return object.False, nil
+	}})
+	b.SetStr("divmod", &object.BuiltinFunc{Name: "divmod", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		q, err := in.floordiv(a[0], a[1])
+		if err != nil {
+			return nil, err
+		}
+		r, err := in.mod(a[0], a[1])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Tuple{V: []object.Object{q, r}}, nil
 	}})
 	b.SetStr("__build_class__", &object.BuiltinFunc{Name: "__build_class__", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		// args: func, name, *bases, **kwds

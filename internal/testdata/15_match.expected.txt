@@ -1,0 +1,7 @@
+zero
+neg -3
+pair 1,2
+list 1 rest=[2, 3, 4]
+map add=7
+str 'hi'
+other

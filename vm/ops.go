@@ -57,6 +57,17 @@ func (i *Interp) listSetSlice(l *object.List, sl *object.Slice, val object.Objec
 func (i *Interp) delitem(container, key object.Object) error {
 	switch c := container.(type) {
 	case *object.List:
+		if sl, ok := key.(*object.Slice); ok {
+			start, stop, step, err := i.resolveSlice(sl, len(c.V))
+			if err != nil {
+				return err
+			}
+			if step != 1 {
+				return object.Errorf(i.valueErr, "extended slice deletion not supported")
+			}
+			c.V = append(c.V[:start], c.V[stop:]...)
+			return nil
+		}
 		n, ok := toInt64(key)
 		if !ok {
 			return object.Errorf(i.typeErr, "list indices must be integers")
@@ -162,6 +173,16 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
 	}
 	if cls, ok := o.(*object.Class); ok {
+		switch name {
+		case "__name__":
+			return &object.Str{V: cls.Name}, nil
+		case "__bases__":
+			bs := make([]object.Object, len(cls.Bases))
+			for k, b := range cls.Bases {
+				bs[k] = b
+			}
+			return &object.Tuple{V: bs}, nil
+		}
 		if v, ok := classLookup(cls, name); ok {
 			return v, nil
 		}
@@ -206,6 +227,45 @@ func (i *Interp) delAttr(o object.Object, name string) error {
 		return nil
 	}
 	return object.Errorf(i.attrErr, "can't delete attribute")
+}
+
+// lookupAfter walks MRO(instCls) and returns the first attribute named `name`
+// found in a class that appears strictly after `startCls` in the order.
+func lookupAfter(instCls, startCls *object.Class, name string) (object.Object, bool) {
+	mro := computeMRO(instCls)
+	past := false
+	for _, c := range mro {
+		if past {
+			if v, ok := c.Dict.GetStr(name); ok {
+				return v, true
+			}
+		}
+		if c == startCls {
+			past = true
+		}
+	}
+	return nil, false
+}
+
+// computeMRO returns a simple depth-first linearization of the class
+// hierarchy. Not full C3, but correct for single inheritance and good
+// enough for straightforward diamonds.
+func computeMRO(c *object.Class) []*object.Class {
+	var out []*object.Class
+	seen := map[*object.Class]bool{}
+	var walk func(*object.Class)
+	walk = func(x *object.Class) {
+		if seen[x] {
+			return
+		}
+		seen[x] = true
+		out = append(out, x)
+		for _, b := range x.Bases {
+			walk(b)
+		}
+	}
+	walk(c)
+	return out
 }
 
 func classLookup(c *object.Class, name string) (object.Object, bool) {
@@ -367,7 +427,9 @@ func formatValue(v object.Object, spec string) (string, error) {
 		width = width*10 + int(s[0]-'0')
 		s = s[1:]
 	}
+	comma := false
 	if len(s) > 0 && s[0] == ',' {
+		comma = true
 		s = s[1:]
 	}
 	if len(s) > 0 && s[0] == '.' {
@@ -412,6 +474,9 @@ func formatValue(v object.Object, spec string) (string, error) {
 			body = strconv.FormatFloat(fv, byte(typ), p, 64)
 		default:
 			body = x.V.String()
+		}
+		if comma && (typ == 0 || typ == 'd') {
+			body = addThousands(body)
 		}
 		body = applySign(body, sign, x.V.Sign())
 	case *object.Float:
@@ -466,6 +531,35 @@ func formatValue(v object.Object, spec string) (string, error) {
 		}
 	}
 	return body, nil
+}
+
+func addThousands(s string) string {
+	neg := false
+	if len(s) > 0 && s[0] == '-' {
+		neg = true
+		s = s[1:]
+	}
+	n := len(s)
+	if n <= 3 {
+		if neg {
+			return "-" + s
+		}
+		return s
+	}
+	var b strings.Builder
+	first := n % 3
+	if first == 0 {
+		first = 3
+	}
+	b.WriteString(s[:first])
+	for j := first; j < n; j += 3 {
+		b.WriteByte(',')
+		b.WriteString(s[j : j+3])
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
 }
 
 func applySign(body string, sign byte, signV int) string {

@@ -1,0 +1,9 @@
+big 10
+[1, 2, 3]
+[4, 9, 16, 25]
+1 5
+skew 10 2.5
+w one
+w two
+w three
+w four
