@@ -777,6 +777,83 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			f.push(result)
 		case op.RETURN_VALUE:
 			return f.pop(), nil
+		case op.RETURN_GENERATOR:
+			// Called-as-generator path is intercepted in callFunction which
+			// builds the Generator object directly. When the generator is
+			// later resumed, RETURN_GENERATOR is re-executed at IP=0 — treat
+			// it as a no-op: the POP_TOP that follows pops the `sent` value
+			// the driver pushed before dispatching.
+		case op.YIELD_VALUE:
+			f.Yielded = f.pop()
+			return nil, errYielded
+		case op.SEND:
+			v := f.pop()
+			recv := f.top()
+			var yielded object.Object
+			var sendErr error
+			switch r := recv.(type) {
+			case *object.Generator:
+				yielded, sendErr = i.resumeGenerator(r, v)
+			case *object.Iter:
+				if _, ok := v.(*object.NoneType); !ok {
+					sendErr = object.Errorf(i.typeErr, "can't send non-None value to a non-generator iterator")
+					break
+				}
+				val, ok, ierr := r.Next()
+				if ierr != nil {
+					sendErr = ierr
+				} else if !ok {
+					sendErr = object.Errorf(i.stopIter, "")
+				} else {
+					yielded = val
+				}
+			default:
+				sendErr = object.Errorf(i.typeErr, "SEND: expected generator/iterator, got %s", object.TypeName(recv))
+			}
+			if sendErr != nil {
+				if exc, ok := sendErr.(*object.Exception); ok && object.IsSubclass(exc.Class, i.stopIter) {
+					// StopIteration: replace v slot (now top) with the value,
+					// leaving receiver in place below, then jump by oparg.
+					var stopVal object.Object = object.None
+					if exc.Args != nil && len(exc.Args.V) > 0 {
+						stopVal = exc.Args.V[0]
+					}
+					f.push(stopVal)
+					f.IP = startIP + 2*(2+int(oparg))
+					break
+				}
+				err = sendErr
+				goto handleErr
+			}
+			f.push(yielded)
+		case op.END_SEND:
+			// Stack: [..., receiver, value] -> [..., value]
+			val := f.pop()
+			f.pop() // receiver
+			f.push(val)
+		case op.GET_YIELD_FROM_ITER:
+			v := f.top()
+			if _, ok := v.(*object.Generator); ok {
+				break
+			}
+			if _, ok := v.(*object.Iter); ok {
+				break
+			}
+			it, gerr := i.getIter(v)
+			if gerr != nil {
+				err = gerr
+				goto handleErr
+			}
+			f.setTop(it)
+		case op.CLEANUP_THROW:
+			// TOS is the exception raised by generator.throw(); propagate.
+			exc := f.top()
+			if e, ok := exc.(*object.Exception); ok {
+				err = e
+			} else {
+				err = object.Errorf(i.typeErr, "CLEANUP_THROW on non-exception")
+			}
+			goto handleErr
 
 		// --- functions / classes ---
 		case op.MAKE_FUNCTION:

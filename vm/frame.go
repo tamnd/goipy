@@ -18,6 +18,9 @@ type Frame struct {
 	ExcInfo *object.Exception
 	// Pending exception used by exception handler dispatch.
 	curExc *object.Exception
+	// Yielded carries the value produced by the most recent YIELD_VALUE;
+	// consumed by the generator driver on resume.
+	Yielded object.Object
 }
 
 // NewFrame builds a fresh frame for code.

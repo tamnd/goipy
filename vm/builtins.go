@@ -271,6 +271,18 @@ func (i *Interp) initBuiltins() {
 	}})
 	b.SetStr("next", &object.BuiltinFunc{Name: "next", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
+		if gen, ok := a[0].(*object.Generator); ok {
+			v, err := in.resumeGenerator(gen, object.None)
+			if err != nil {
+				if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, in.stopIter) {
+					if len(a) > 1 {
+						return a[1], nil
+					}
+				}
+				return nil, err
+			}
+			return v, nil
+		}
 		it, ok := a[0].(*object.Iter)
 		if !ok {
 			return nil, object.Errorf(in.typeErr, "next() arg is not an iterator")
@@ -738,6 +750,9 @@ func isinstance(o, t object.Object) bool {
 	// check by type name for builtin types
 	if s, ok := t.(*object.Str); ok {
 		return object.TypeName(o) == s.V
+	}
+	if bf, ok := t.(*object.BuiltinFunc); ok {
+		return matchBuiltinType(o, bf.Name)
 	}
 	return false
 }
