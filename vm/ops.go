@@ -158,6 +158,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if s, ok := o.(*object.Frozenset); ok {
+		if m, ok := frozensetMethod(s, name); ok {
+			return m, nil
+		}
+	}
 	if t, ok := o.(*object.Tuple); ok {
 		if m, ok := tupleMethod(t, name); ok {
 			return m, nil

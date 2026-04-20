@@ -565,11 +565,137 @@ func setMethod(s *object.Set, name string) (object.Object, bool) {
 		}}, true
 	case "discard":
 		return &object.BuiltinFunc{Name: "discard", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			// not implementing, just ignore
 			return object.None, nil
+		}}, true
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := object.NewSet()
+			for _, x := range s.Items() {
+				_ = out.Add(x)
+			}
+			return out, nil
+		}}, true
+	}
+	if m, ok := setQueryMethod(s, name); ok {
+		return m, true
+	}
+	return nil, false
+}
+
+func frozensetMethod(s *object.Frozenset, name string) (object.Object, bool) {
+	switch name {
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return s, nil
+		}}, true
+	}
+	if m, ok := setQueryMethod(s, name); ok {
+		return m, true
+	}
+	return nil, false
+}
+
+// setQueryMethod returns methods common to set and frozenset: issubset,
+// issuperset, isdisjoint, union, intersection, difference, symmetric_difference.
+// Mutating variants (update, intersection_update, ...) are not included.
+func setQueryMethod(self object.Object, name string) (object.Object, bool) {
+	switch name {
+	case "issubset":
+		return &object.BuiltinFunc{Name: "issubset", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, err := materializeSet(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			for _, x := range setItems(self) {
+				if !setContains(other, x) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "issuperset":
+		return &object.BuiltinFunc{Name: "issuperset", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, err := materializeSet(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			for _, x := range setItems(other) {
+				if !setContains(self, x) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isdisjoint":
+		return &object.BuiltinFunc{Name: "isdisjoint", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, err := materializeSet(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			for _, x := range setItems(self) {
+				if setContains(other, x) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "union":
+		return &object.BuiltinFunc{Name: "union", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return setReduce(ii.(*Interp), self, a, "|")
+		}}, true
+	case "intersection":
+		return &object.BuiltinFunc{Name: "intersection", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return setReduce(ii.(*Interp), self, a, "&")
+		}}, true
+	case "difference":
+		return &object.BuiltinFunc{Name: "difference", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return setReduce(ii.(*Interp), self, a, "-")
+		}}, true
+	case "symmetric_difference":
+		return &object.BuiltinFunc{Name: "symmetric_difference", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, err := materializeSet(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			return setBitop(self, other, "^"), nil
 		}}, true
 	}
 	return nil, false
+}
+
+// materializeSet coerces any iterable into a Set for use by set operations.
+func materializeSet(i *Interp, o object.Object) (object.Object, error) {
+	if isSetLike(o) {
+		return o, nil
+	}
+	items, err := iterate(i, o)
+	if err != nil {
+		return nil, err
+	}
+	s := object.NewSet()
+	for _, x := range items {
+		if err := s.Add(x); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// setReduce folds op across self and each arg, preserving self's type.
+func setReduce(i *Interp, self object.Object, args []object.Object, op string) (object.Object, error) {
+	result := self
+	for _, a := range args {
+		other, err := materializeSet(i, a)
+		if err != nil {
+			return nil, err
+		}
+		result = setBitop(result, other, op)
+	}
+	if len(args) == 0 {
+		// Return a copy of self to avoid aliasing.
+		return setBitop(self, self, "|"), nil
+	}
+	return result, nil
 }
 
 func tupleMethod(t *object.Tuple, name string) (object.Object, bool) {
