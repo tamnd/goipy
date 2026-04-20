@@ -1027,11 +1027,25 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.CHECK_EXC_MATCH:
 			excType := f.pop()
 			tos := f.top().(*object.Exception)
-			cls, ok := excType.(*object.Class)
-			if !ok {
+			match := false
+			switch t := excType.(type) {
+			case *object.Class:
+				match = object.IsSubclass(tos.Class, t)
+			case *object.Tuple:
+				for _, x := range t.V {
+					cls, ok := x.(*object.Class)
+					if !ok {
+						return nil, object.Errorf(i.typeErr, "except type must be a class")
+					}
+					if object.IsSubclass(tos.Class, cls) {
+						match = true
+						break
+					}
+				}
+			default:
 				return nil, object.Errorf(i.typeErr, "except type must be a class")
 			}
-			f.push(object.BoolOf(object.IsSubclass(tos.Class, cls)))
+			f.push(object.BoolOf(match))
 		case op.LOAD_SUPER_ATTR, op.LOAD_SUPER_ATTR_ATTR, op.LOAD_SUPER_ATTR_METHOD:
 			// oparg bit 0 = method (push self after), bit 1 = two-arg super
 			methodBit := oparg&1 != 0

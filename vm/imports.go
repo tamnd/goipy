@@ -170,6 +170,7 @@ func (i *Interp) loadModule(qname string) (*object.Module, error) {
 			if xerr != nil {
 				return nil, xerr
 			}
+			m.Path = initPyc
 			if parent != nil {
 				parent.Dict.SetStr(leaf, m)
 			}
@@ -186,6 +187,7 @@ func (i *Interp) loadModule(qname string) (*object.Module, error) {
 			if xerr != nil {
 				return nil, xerr
 			}
+			m.Path = modPyc
 			if parent != nil {
 				parent.Dict.SetStr(leaf, m)
 			}
@@ -226,6 +228,85 @@ func isPackage(m *object.Module) bool {
 	}
 	_, ok := m.Dict.GetStr("__path__")
 	return ok
+}
+
+// buildImportlib exposes a minimal importlib surface: import_module(name,
+// package=None) and reload(module). Path hooks and the finder/loader
+// protocol classes are out of scope here.
+func (i *Interp) buildImportlib() *object.Module {
+	m := &object.Module{Name: "importlib", Dict: object.NewDict()}
+
+	importModule := &object.BuiltinFunc{Name: "import_module", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "import_module() missing 'name'")
+		}
+		nameStr, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "import_module() name must be str")
+		}
+		name := nameStr.V
+		var pkg string
+		if len(a) >= 2 {
+			if s, ok := a[1].(*object.Str); ok {
+				pkg = s.V
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("package"); ok {
+				if s, ok := v.(*object.Str); ok {
+					pkg = s.V
+				}
+			}
+		}
+		level := 0
+		for level < len(name) && name[level] == '.' {
+			level++
+		}
+		base := name[level:]
+		// Synthesize a globals dict so importName's relative resolver
+		// reads the caller-supplied package name.
+		gl := object.NewDict()
+		if pkg != "" {
+			gl.SetStr("__package__", &object.Str{V: pkg})
+			gl.SetStr("__name__", &object.Str{V: pkg})
+			gl.SetStr("__path__", &object.List{V: nil}) // mark as package
+		}
+		// import_module returns the innermost module, not the top-level
+		// package — request that by passing a non-empty fromlist.
+		fl := &object.Tuple{V: []object.Object{&object.Str{V: "__name__"}}}
+		if level == 0 {
+			return i.importName(base, gl, fl, 0)
+		}
+		return i.importName(base, gl, fl, level)
+	}}
+	m.Dict.SetStr("import_module", importModule)
+
+	reload := &object.BuiltinFunc{Name: "reload", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "reload() missing 'module'")
+		}
+		mod, ok := a[0].(*object.Module)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "reload() argument must be module")
+		}
+		if mod.Path == "" {
+			return nil, object.Errorf(i.importErr, "module %s has no .pyc path; cannot reload", mod.Name)
+		}
+		code, err := marshal.LoadPyc(mod.Path)
+		if err != nil {
+			return nil, object.Errorf(i.importErr, "cannot reload %s: %v", mod.Name, err)
+		}
+		// Re-run the body against the existing module dict so other
+		// importers holding a reference see the refreshed attributes.
+		frame := NewFrame(code, mod.Dict, i.Builtins, mod.Dict)
+		if _, err := i.runFrame(frame); err != nil {
+			return nil, err
+		}
+		return mod, nil
+	}}
+	m.Dict.SetStr("reload", reload)
+
+	return m
 }
 
 func packagePath(m *object.Module) []string {
