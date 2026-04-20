@@ -1,0 +1,19 @@
+R
+G
+B
+?
+4
+pair-ab
+pair-ab
+twin 7
+twin 9
+last 99
+k-small 2
+k=5 extras
+leaf node
+wide root
+other
+5
+-9
+f(3)
+None
