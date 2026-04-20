@@ -25,6 +25,8 @@ func Truthy(o Object) bool {
 		return v.Len() != 0
 	case *Set:
 		return v.Len() != 0
+	case *Frozenset:
+		return v.Len() != 0
 	case *Range:
 		if v.Step > 0 {
 			return v.Stop > v.Start

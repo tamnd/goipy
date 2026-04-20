@@ -31,6 +31,10 @@ func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
 		}
 		return object.BoolOf(!eq), nil
 	}
+	// Sets use a partial order (subset) rather than the total-order path.
+	if isSetLike(a) && isSetLike(b) {
+		return setOrder(a, b, kind, i)
+	}
 	lt, err := i.lt(a, b)
 	if err != nil {
 		return nil, err
@@ -55,6 +59,31 @@ func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
 		return object.BoolOf(!gt), nil
 	}
 	return nil, object.Errorf(i.typeErr, "bad compare op %d", kind)
+}
+
+// setOrder implements <, <=, >, >= for set/frozenset as subset relations.
+func setOrder(a, b object.Object, kind int, i *Interp) (object.Object, error) {
+	aLen := len(setItems(a))
+	bLen := len(setItems(b))
+	subset := func(x, y object.Object) bool {
+		for _, e := range setItems(x) {
+			if !setContains(y, e) {
+				return false
+			}
+		}
+		return true
+	}
+	switch kind {
+	case cmpLT:
+		return object.BoolOf(aLen < bLen && subset(a, b)), nil
+	case cmpLE:
+		return object.BoolOf(aLen <= bLen && subset(a, b)), nil
+	case cmpGT:
+		return object.BoolOf(aLen > bLen && subset(b, a)), nil
+	case cmpGE:
+		return object.BoolOf(aLen >= bLen && subset(b, a)), nil
+	}
+	return nil, object.Errorf(i.typeErr, "bad set compare op %d", kind)
 }
 
 func (i *Interp) lt(a, b object.Object) (bool, error) {
@@ -156,6 +185,8 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 		_, ok, err := c.Get(needle)
 		return ok, err
 	case *object.Set:
+		return c.Contains(needle)
+	case *object.Frozenset:
 		return c.Contains(needle)
 	case *object.Range:
 		n, ok := toBigInt(needle)

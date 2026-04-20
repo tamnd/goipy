@@ -1,0 +1,24 @@
+frozenset({1, 2, 3})
+frozenset
+3
+frozenset()
+frozenset({1, 2, 3})
+True False
+frozenset({1, 2, 3, 4})
+frozenset({2, 3})
+frozenset({1})
+frozenset({1, 4})
+True
+True
+True
+False
+2
+a
+2
+False
+True
+set unhashable
+60
+True
+False
+False

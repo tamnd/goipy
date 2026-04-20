@@ -126,6 +126,8 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(x.Len()), nil
 	case *object.Set:
 		return int64(x.Len()), nil
+	case *object.Frozenset:
+		return int64(x.Len()), nil
 	case *object.Range:
 		return rangeLen(x), nil
 	}
@@ -153,6 +155,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	}
 	if s, ok := o.(*object.Set); ok {
 		if m, ok := setMethod(s, name); ok {
+			return m, nil
+		}
+	}
+	if s, ok := o.(*object.Frozenset); ok {
+		if m, ok := frozensetMethod(s, name); ok {
 			return m, nil
 		}
 	}
@@ -368,8 +375,11 @@ func matchBuiltinType(o object.Object, name string) bool {
 	case "dict":
 		_, ok := o.(*object.Dict)
 		return ok
-	case "set", "frozenset":
+	case "set":
 		_, ok := o.(*object.Set)
+		return ok
+	case "frozenset":
+		_, ok := o.(*object.Frozenset)
 		return ok
 	case "bytes", "bytearray":
 		_, ok := o.(*object.Bytes)
@@ -512,6 +522,17 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			return r, true, nil
 		}}, nil
 	case *object.Set:
+		items := x.Items()
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(items) {
+				return nil, false, nil
+			}
+			r := items[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.Frozenset:
 		items := x.Items()
 		idx := 0
 		return &object.Iter{Next: func() (object.Object, bool, error) {
