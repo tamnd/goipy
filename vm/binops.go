@@ -108,6 +108,11 @@ func bytesBytesOrArray(o object.Object) ([]byte, bool) {
 }
 
 func (i *Interp) add(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__add__", "__radd__"); ok {
+			return r, err
+		}
+	}
 	// str + str
 	if sa, ok := a.(*object.Str); ok {
 		if sb, ok := b.(*object.Str); ok {
@@ -171,6 +176,11 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) sub(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__sub__", "__rsub__"); ok {
+			return r, err
+		}
+	}
 	if isSetLike(a) && isSetLike(b) {
 		return setBitop(a, b, "-"), nil
 	}
@@ -194,6 +204,11 @@ func (i *Interp) sub(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) mul(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__mul__", "__rmul__"); ok {
+			return r, err
+		}
+	}
 	// str * int
 	if sa, ok := a.(*object.Str); ok {
 		if n, ok := toInt64(b); ok {
@@ -248,6 +263,11 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__truediv__", "__rtruediv__"); ok {
+			return r, err
+		}
+	}
 	if isComplex(a) || isComplex(b) {
 		ar, ai2, ok1 := asComplex(a)
 		br, bi2, ok2 := asComplex(b)
@@ -276,6 +296,11 @@ func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__floordiv__", "__rfloordiv__"); ok {
+			return r, err
+		}
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -301,6 +326,11 @@ func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) mod(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__mod__", "__rmod__"); ok {
+			return r, err
+		}
+	}
 	// str % tuple-ish — skip; not implementing printf-style formatting.
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
@@ -325,6 +355,11 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) pow(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__pow__", "__rpow__"); ok {
+			return r, err
+		}
+	}
 	if isComplex(a) || isComplex(b) {
 		ar, ai2, ok1 := asComplex(a)
 		br, bi2, ok2 := asComplex(b)
@@ -381,6 +416,13 @@ func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
 		r.Rsh(n, nk)
 	}
 	return &object.Int{V: r}, nil
+}
+
+// hasInstance reports whether either operand is a user class instance.
+func hasInstance(a, b object.Object) bool {
+	_, aok := a.(*object.Instance)
+	_, bok := b.(*object.Instance)
+	return aok || bok
 }
 
 // isSetLike reports whether o is a set or frozenset.
@@ -490,6 +532,11 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 // --- subscript / slicing ---
 
 func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
+	if inst, ok := container.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, "__getitem__", key); ok {
+			return r, err
+		}
+	}
 	switch c := container.(type) {
 	case *object.List:
 		return i.seqGetitem(c.V, key, "list")

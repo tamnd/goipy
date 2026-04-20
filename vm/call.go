@@ -40,6 +40,10 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 			}
 		}
 		return inst, nil
+	case *object.Instance:
+		if r, ok, err := i.callInstanceDunder(fn, "__call__", args...); ok {
+			return r, err
+		}
 	}
 	return nil, object.Errorf(i.typeErr, "'%s' object is not callable", object.TypeName(callable))
 }

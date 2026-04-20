@@ -1,0 +1,20 @@
+Child(7)
+True
+True
+A(3)
+('B.radd', 1, 9)
+[0, 1, 2, 3, 4]
+45
+False True
+True
+2
+1 [2]
+R!
+R!
+R!
+Log(3) ['add']
+Log(15) ['radd']
+['x', 'y', 'z']
+True
+106
+100

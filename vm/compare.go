@@ -17,6 +17,15 @@ const (
 )
 
 func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
+	if _, ok := a.(*object.Instance); ok {
+		if r, ok, err := i.tryCompareDunder(a, b, kind); ok {
+			return object.BoolOf(object.Truthy(r)), err
+		}
+	} else if _, ok := b.(*object.Instance); ok {
+		if r, ok, err := i.tryCompareDunder(a, b, kind); ok {
+			return object.BoolOf(object.Truthy(r)), err
+		}
+	}
 	if kind == cmpEQ {
 		eq, err := object.Eq(a, b)
 		if err != nil {
@@ -194,6 +203,36 @@ func bytesHasSub(hay, needle []byte) bool {
 }
 
 func (i *Interp) contains(container, needle object.Object) (bool, error) {
+	if inst, ok := container.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, "__contains__", needle); ok {
+			if err != nil {
+				return false, err
+			}
+			return object.Truthy(r), nil
+		}
+		// Fall back to iterating via __iter__ / __getitem__.
+		if it, ok, err := i.instanceIter(inst); ok {
+			if err != nil {
+				return false, err
+			}
+			for {
+				x, ok, err := it.Next()
+				if err != nil {
+					return false, err
+				}
+				if !ok {
+					return false, nil
+				}
+				eq, err := object.Eq(x, needle)
+				if err != nil {
+					return false, err
+				}
+				if eq {
+					return true, nil
+				}
+			}
+		}
+	}
 	switch c := container.(type) {
 	case *object.List:
 		for _, x := range c.V {

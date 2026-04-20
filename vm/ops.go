@@ -10,6 +10,11 @@ import (
 )
 
 func (i *Interp) setitem(container, key, val object.Object) error {
+	if inst, ok := container.(*object.Instance); ok {
+		if _, ok, err := i.callInstanceDunder(inst, "__setitem__", key, val); ok {
+			return err
+		}
+	}
 	switch c := container.(type) {
 	case *object.List:
 		if sl, ok := key.(*object.Slice); ok {
@@ -160,6 +165,11 @@ func (i *Interp) listSetSlice(l *object.List, sl *object.Slice, val object.Objec
 }
 
 func (i *Interp) delitem(container, key object.Object) error {
+	if inst, ok := container.(*object.Instance); ok {
+		if _, ok, err := i.callInstanceDunder(inst, "__delitem__", key); ok {
+			return err
+		}
+	}
 	switch c := container.(type) {
 	case *object.List:
 		if sl, ok := key.(*object.Slice); ok {
@@ -225,6 +235,11 @@ func (i *Interp) delitem(container, key object.Object) error {
 }
 
 func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
+	if inst, ok := v.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, "__neg__"); ok {
+			return r, err
+		}
+	}
 	switch x := v.(type) {
 	case *object.Bool:
 		r := int64(0)
@@ -243,6 +258,18 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 }
 
 func (i *Interp) length(v object.Object) (int64, error) {
+	if inst, ok := v.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, "__len__"); ok {
+			if err != nil {
+				return 0, err
+			}
+			n, ok := toInt64(r)
+			if !ok {
+				return 0, object.Errorf(i.typeErr, "__len__ should return an integer")
+			}
+			return n, nil
+		}
+	}
 	switch x := v.(type) {
 	case *object.Str:
 		return int64(len(x.Runes())), nil
@@ -624,6 +651,11 @@ func classLookup(c *object.Class, name string) (object.Object, bool) {
 // --- iteration ---
 
 func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
+	if inst, ok := v.(*object.Instance); ok {
+		if it, ok, err := i.instanceIter(inst); ok {
+			return it, err
+		}
+	}
 	switch x := v.(type) {
 	case *object.Iter:
 		return x, nil
