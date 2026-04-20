@@ -1,0 +1,5 @@
+caught zero div
+caught index
+got bad value
+runtime: oops
+outer caught key

@@ -1,0 +1,14 @@
+hello world
+11
+HELLO WORLD
+hello python
+['hello', 'world']
+a-b-c
+h
+d
+hello
+True
+True
+abcdef
+ababab
+True

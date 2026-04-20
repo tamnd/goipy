@@ -1,0 +1,594 @@
+package vm
+
+import (
+	"math"
+	"math/big"
+	"strings"
+
+	"github.com/tamnd/goipy/object"
+	"github.com/tamnd/goipy/op"
+)
+
+// binaryOp executes a BINARY_OP with oparg = NB_*.
+func (i *Interp) binaryOp(a, b object.Object, nb uint32) (object.Object, error) {
+	switch nb {
+	case op.NB_ADD, op.NB_INPLACE_ADD:
+		return i.add(a, b)
+	case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
+		return i.sub(a, b)
+	case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
+		return i.mul(a, b)
+	case op.NB_TRUE_DIVIDE, op.NB_INPLACE_TRUE_DIVIDE:
+		return i.truediv(a, b)
+	case op.NB_FLOOR_DIVIDE, op.NB_INPLACE_FLOOR_DIVIDE:
+		return i.floordiv(a, b)
+	case op.NB_REMAINDER, op.NB_INPLACE_REMAINDER:
+		return i.mod(a, b)
+	case op.NB_POWER, op.NB_INPLACE_POWER:
+		return i.pow(a, b)
+	case op.NB_LSHIFT, op.NB_INPLACE_LSHIFT:
+		return i.shift(a, b, true)
+	case op.NB_RSHIFT, op.NB_INPLACE_RSHIFT:
+		return i.shift(a, b, false)
+	case op.NB_AND, op.NB_INPLACE_AND:
+		return i.bitop(a, b, "&")
+	case op.NB_OR, op.NB_INPLACE_OR:
+		return i.bitop(a, b, "|")
+	case op.NB_XOR, op.NB_INPLACE_XOR:
+		return i.bitop(a, b, "^")
+	case op.NB_SUBSCR:
+		return i.getitem(a, b)
+	}
+	return nil, object.Errorf(i.typeErr, "unsupported BINARY_OP %d", nb)
+}
+
+// --- arithmetic ---
+
+func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok bool) {
+	switch v := o.(type) {
+	case *object.Bool:
+		if v.V {
+			return big.NewInt(1), 0, false, true
+		}
+		return big.NewInt(0), 0, false, true
+	case *object.Int:
+		return v.V, 0, false, true
+	case *object.Float:
+		return nil, v.V, true, true
+	}
+	return nil, 0, false, false
+}
+
+func toFloat(ibig *big.Int, f float64, isFloat bool) float64 {
+	if isFloat {
+		return f
+	}
+	x, _ := new(big.Float).SetInt(ibig).Float64()
+	return x
+}
+
+func (i *Interp) add(a, b object.Object) (object.Object, error) {
+	// str + str
+	if sa, ok := a.(*object.Str); ok {
+		if sb, ok := b.(*object.Str); ok {
+			return &object.Str{V: sa.V + sb.V}, nil
+		}
+	}
+	// list + list
+	if la, ok := a.(*object.List); ok {
+		if lb, ok := b.(*object.List); ok {
+			out := make([]object.Object, 0, len(la.V)+len(lb.V))
+			out = append(out, la.V...)
+			out = append(out, lb.V...)
+			return &object.List{V: out}, nil
+		}
+	}
+	// tuple + tuple
+	if ta, ok := a.(*object.Tuple); ok {
+		if tb, ok := b.(*object.Tuple); ok {
+			out := make([]object.Object, 0, len(ta.V)+len(tb.V))
+			out = append(out, ta.V...)
+			out = append(out, tb.V...)
+			return &object.Tuple{V: out}, nil
+		}
+	}
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for +: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+	}
+	if aF || bF {
+		return &object.Float{V: toFloat(ai, af, aF) + toFloat(bi, bf, bF)}, nil
+	}
+	r := new(big.Int).Add(ai, bi)
+	return &object.Int{V: r}, nil
+}
+
+func (i *Interp) sub(a, b object.Object) (object.Object, error) {
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for -: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+	}
+	if aF || bF {
+		return &object.Float{V: toFloat(ai, af, aF) - toFloat(bi, bf, bF)}, nil
+	}
+	return &object.Int{V: new(big.Int).Sub(ai, bi)}, nil
+}
+
+func (i *Interp) mul(a, b object.Object) (object.Object, error) {
+	// str * int
+	if sa, ok := a.(*object.Str); ok {
+		if n, ok := toInt64(b); ok {
+			if n < 0 {
+				n = 0
+			}
+			return &object.Str{V: strings.Repeat(sa.V, int(n))}, nil
+		}
+	}
+	if sb, ok := b.(*object.Str); ok {
+		if n, ok := toInt64(a); ok {
+			if n < 0 {
+				n = 0
+			}
+			return &object.Str{V: strings.Repeat(sb.V, int(n))}, nil
+		}
+	}
+	// list * int
+	if la, ok := a.(*object.List); ok {
+		if n, ok := toInt64(b); ok {
+			return &object.List{V: repeatSlice(la.V, int(n))}, nil
+		}
+	}
+	if lb, ok := b.(*object.List); ok {
+		if n, ok := toInt64(a); ok {
+			return &object.List{V: repeatSlice(lb.V, int(n))}, nil
+		}
+	}
+	// tuple * int
+	if ta, ok := a.(*object.Tuple); ok {
+		if n, ok := toInt64(b); ok {
+			return &object.Tuple{V: repeatSlice(ta.V, int(n))}, nil
+		}
+	}
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for *: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+	}
+	if aF || bF {
+		return &object.Float{V: toFloat(ai, af, aF) * toFloat(bi, bf, bF)}, nil
+	}
+	return &object.Int{V: new(big.Int).Mul(ai, bi)}, nil
+}
+
+func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for /")
+	}
+	fa, fb := toFloat(ai, af, aF), toFloat(bi, bf, bF)
+	if fb == 0 {
+		return nil, object.Errorf(i.zeroDivErr, "division by zero")
+	}
+	return &object.Float{V: fa / fb}, nil
+}
+
+func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for //")
+	}
+	if aF || bF {
+		fa, fb := toFloat(ai, af, aF), toFloat(bi, bf, bF)
+		if fb == 0 {
+			return nil, object.Errorf(i.zeroDivErr, "float floor division by zero")
+		}
+		return &object.Float{V: math.Floor(fa / fb)}, nil
+	}
+	if bi.Sign() == 0 {
+		return nil, object.Errorf(i.zeroDivErr, "integer division or modulo by zero")
+	}
+	q, _ := new(big.Int).QuoRem(ai, bi, new(big.Int))
+	// Python floor division: adjust toward negative infinity
+	r := new(big.Int).Sub(ai, new(big.Int).Mul(q, bi))
+	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
+		q.Sub(q, big.NewInt(1))
+	}
+	return &object.Int{V: q}, nil
+}
+
+func (i *Interp) mod(a, b object.Object) (object.Object, error) {
+	// str % tuple-ish — skip; not implementing printf-style formatting.
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for %%")
+	}
+	if aF || bF {
+		fa, fb := toFloat(ai, af, aF), toFloat(bi, bf, bF)
+		if fb == 0 {
+			return nil, object.Errorf(i.zeroDivErr, "float modulo")
+		}
+		return &object.Float{V: fa - math.Floor(fa/fb)*fb}, nil
+	}
+	if bi.Sign() == 0 {
+		return nil, object.Errorf(i.zeroDivErr, "integer division or modulo by zero")
+	}
+	r := new(big.Int).Mod(ai, bi)
+	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
+		r.Add(r, bi)
+	}
+	return &object.Int{V: r}, nil
+}
+
+func (i *Interp) pow(a, b object.Object) (object.Object, error) {
+	ai, af, aF, aok := asIntOrFloat(a)
+	bi, bf, bF, bok := asIntOrFloat(b)
+	if !aok || !bok {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for **")
+	}
+	if aF || bF || (bi != nil && bi.Sign() < 0) {
+		return &object.Float{V: math.Pow(toFloat(ai, af, aF), toFloat(bi, bf, bF))}, nil
+	}
+	return &object.Int{V: new(big.Int).Exp(ai, bi, nil)}, nil
+}
+
+func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
+	n, okA := toBigInt(a)
+	k, okB := toBigInt(b)
+	if !okA || !okB {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for shift")
+	}
+	if !k.IsInt64() || k.Int64() < 0 {
+		return nil, object.Errorf(i.valueErr, "negative shift count")
+	}
+	nk := uint(k.Int64())
+	r := new(big.Int)
+	if left {
+		r.Lsh(n, nk)
+	} else {
+		r.Rsh(n, nk)
+	}
+	return &object.Int{V: r}, nil
+}
+
+func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
+	// set ops first
+	if sa, ok := a.(*object.Set); ok {
+		if sb, ok := b.(*object.Set); ok {
+			out := object.NewSet()
+			aItems := sa.Items()
+			bItems := sb.Items()
+			switch kind {
+			case "|":
+				for _, x := range aItems {
+					_ = out.Add(x)
+				}
+				for _, x := range bItems {
+					_ = out.Add(x)
+				}
+			case "&":
+				for _, x := range aItems {
+					c, _ := sb.Contains(x)
+					if c {
+						_ = out.Add(x)
+					}
+				}
+			case "^":
+				for _, x := range aItems {
+					c, _ := sb.Contains(x)
+					if !c {
+						_ = out.Add(x)
+					}
+				}
+				for _, x := range bItems {
+					c, _ := sa.Contains(x)
+					if !c {
+						_ = out.Add(x)
+					}
+				}
+			}
+			return out, nil
+		}
+	}
+	ni, okA := toBigInt(a)
+	nj, okB := toBigInt(b)
+	if !okA || !okB {
+		return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for %s", kind)
+	}
+	r := new(big.Int)
+	switch kind {
+	case "&":
+		r.And(ni, nj)
+	case "|":
+		r.Or(ni, nj)
+	case "^":
+		r.Xor(ni, nj)
+	}
+	return &object.Int{V: r}, nil
+}
+
+// --- subscript / slicing ---
+
+func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
+	switch c := container.(type) {
+	case *object.List:
+		return i.seqGetitem(c.V, key, "list")
+	case *object.Tuple:
+		return i.seqGetitem(c.V, key, "tuple")
+	case *object.Str:
+		return i.strGetitem(c, key)
+	case *object.Bytes:
+		return i.bytesGetitem(c, key)
+	case *object.Dict:
+		v, ok, err := c.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		return v, nil
+	case *object.Range:
+		n, ok := toInt64(key)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "range indices must be integers")
+		}
+		length := rangeLen(c)
+		if n < 0 {
+			n += length
+		}
+		if n < 0 || n >= length {
+			return nil, object.Errorf(i.indexErr, "range object index out of range")
+		}
+		return object.NewInt(c.Start + n*c.Step), nil
+	}
+	return nil, object.Errorf(i.typeErr, "'%s' object is not subscriptable", object.TypeName(container))
+}
+
+func (i *Interp) seqGetitem(seq []object.Object, key object.Object, name string) (object.Object, error) {
+	if sl, ok := key.(*object.Slice); ok {
+		start, stop, step, err := i.resolveSlice(sl, len(seq))
+		if err != nil {
+			return nil, err
+		}
+		out := sliceSeq(seq, start, stop, step)
+		if name == "tuple" {
+			return &object.Tuple{V: out}, nil
+		}
+		return &object.List{V: out}, nil
+	}
+	n, ok := toInt64(key)
+	if !ok {
+		return nil, object.Errorf(i.typeErr, "%s indices must be integers", name)
+	}
+	L := int64(len(seq))
+	if n < 0 {
+		n += L
+	}
+	if n < 0 || n >= L {
+		return nil, object.Errorf(i.indexErr, "%s index out of range", name)
+	}
+	return seq[n], nil
+}
+
+func (i *Interp) strGetitem(s *object.Str, key object.Object) (object.Object, error) {
+	rs := s.Runes()
+	L := int64(len(rs))
+	if sl, ok := key.(*object.Slice); ok {
+		start, stop, step, err := i.resolveSlice(sl, int(L))
+		if err != nil {
+			return nil, err
+		}
+		return &object.Str{V: string(sliceRunes(rs, start, stop, step))}, nil
+	}
+	n, ok := toInt64(key)
+	if !ok {
+		return nil, object.Errorf(i.typeErr, "string indices must be integers")
+	}
+	if n < 0 {
+		n += L
+	}
+	if n < 0 || n >= L {
+		return nil, object.Errorf(i.indexErr, "string index out of range")
+	}
+	return &object.Str{V: string(rs[n])}, nil
+}
+
+func (i *Interp) bytesGetitem(b *object.Bytes, key object.Object) (object.Object, error) {
+	if sl, ok := key.(*object.Slice); ok {
+		start, stop, step, err := i.resolveSlice(sl, len(b.V))
+		if err != nil {
+			return nil, err
+		}
+		out := []byte{}
+		if step > 0 {
+			for j := start; j < stop; j += step {
+				out = append(out, b.V[j])
+			}
+		} else if step < 0 {
+			for j := start; j > stop; j += step {
+				out = append(out, b.V[j])
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}
+	n, ok := toInt64(key)
+	if !ok {
+		return nil, object.Errorf(i.typeErr, "byte indices must be integers")
+	}
+	L := int64(len(b.V))
+	if n < 0 {
+		n += L
+	}
+	if n < 0 || n >= L {
+		return nil, object.Errorf(i.indexErr, "index out of range")
+	}
+	return object.NewInt(int64(b.V[n])), nil
+}
+
+func (i *Interp) resolveSlice(s *object.Slice, length int) (start, stop, step int, err error) {
+	step = 1
+	if s.Step != nil {
+		if n, ok := toInt64(s.Step); ok {
+			step = int(n)
+		} else if _, isNone := s.Step.(*object.NoneType); !isNone {
+			return 0, 0, 0, object.Errorf(i.typeErr, "slice indices must be integers")
+		}
+	}
+	if step == 0 {
+		return 0, 0, 0, object.Errorf(i.valueErr, "slice step cannot be zero")
+	}
+	// start
+	if s.Start == nil {
+		if step > 0 {
+			start = 0
+		} else {
+			start = length - 1
+		}
+	} else if _, isNone := s.Start.(*object.NoneType); isNone {
+		if step > 0 {
+			start = 0
+		} else {
+			start = length - 1
+		}
+	} else if n, ok := toInt64(s.Start); ok {
+		start = int(n)
+		if start < 0 {
+			start += length
+		}
+		if step > 0 {
+			if start < 0 {
+				start = 0
+			}
+			if start > length {
+				start = length
+			}
+		} else {
+			if start < -1 {
+				start = -1
+			}
+			if start > length-1 {
+				start = length - 1
+			}
+		}
+	}
+	// stop
+	if s.Stop == nil {
+		if step > 0 {
+			stop = length
+		} else {
+			stop = -1
+		}
+	} else if _, isNone := s.Stop.(*object.NoneType); isNone {
+		if step > 0 {
+			stop = length
+		} else {
+			stop = -1
+		}
+	} else if n, ok := toInt64(s.Stop); ok {
+		stop = int(n)
+		if stop < 0 {
+			stop += length
+		}
+		if step > 0 {
+			if stop < 0 {
+				stop = 0
+			}
+			if stop > length {
+				stop = length
+			}
+		} else {
+			if stop < -1 {
+				stop = -1
+			}
+			if stop > length-1 {
+				stop = length - 1
+			}
+		}
+	}
+	return
+}
+
+func sliceSeq(s []object.Object, start, stop, step int) []object.Object {
+	var out []object.Object
+	if step > 0 {
+		for j := start; j < stop; j += step {
+			out = append(out, s[j])
+		}
+	} else {
+		for j := start; j > stop; j += step {
+			out = append(out, s[j])
+		}
+	}
+	return out
+}
+
+func sliceRunes(s []rune, start, stop, step int) []rune {
+	var out []rune
+	if step > 0 {
+		for j := start; j < stop; j += step {
+			out = append(out, s[j])
+		}
+	} else {
+		for j := start; j > stop; j += step {
+			out = append(out, s[j])
+		}
+	}
+	return out
+}
+
+// toInt64 converts small Int/Bool to int64; returns ok=false otherwise.
+func toInt64(o object.Object) (int64, bool) {
+	switch v := o.(type) {
+	case *object.Bool:
+		if v.V {
+			return 1, true
+		}
+		return 0, true
+	case *object.Int:
+		if v.V.IsInt64() {
+			return v.V.Int64(), true
+		}
+	}
+	return 0, false
+}
+
+// toBigInt converts Int/Bool to *big.Int.
+func toBigInt(o object.Object) (*big.Int, bool) {
+	switch v := o.(type) {
+	case *object.Bool:
+		if v.V {
+			return big.NewInt(1), true
+		}
+		return big.NewInt(0), true
+	case *object.Int:
+		return v.V, true
+	}
+	return nil, false
+}
+
+// rangeLen returns the number of elements in a range.
+func rangeLen(r *object.Range) int64 {
+	if r.Step > 0 && r.Stop > r.Start {
+		return (r.Stop - r.Start + r.Step - 1) / r.Step
+	}
+	if r.Step < 0 && r.Stop < r.Start {
+		return (r.Start - r.Stop - r.Step - 1) / (-r.Step)
+	}
+	return 0
+}
+
+func repeatSlice(s []object.Object, n int) []object.Object {
+	if n <= 0 {
+		return nil
+	}
+	out := make([]object.Object, 0, len(s)*n)
+	for k := 0; k < n; k++ {
+		out = append(out, s...)
+	}
+	return out
+}

@@ -1,0 +1,4 @@
+goipy
+/bin/
+__pycache__/
+*.pyc.bak
