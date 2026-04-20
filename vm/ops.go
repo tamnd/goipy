@@ -165,10 +165,7 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return v, nil
 		}
 		if v, ok := classLookup(inst.Class, name); ok {
-			if fn, ok := v.(*object.Function); ok {
-				return &object.BoundMethod{Self: inst, Fn: fn}, nil
-			}
-			return v, nil
+			return i.bindDescriptor(v, inst, inst.Class)
 		}
 		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
 	}
@@ -184,7 +181,7 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return &object.Tuple{V: bs}, nil
 		}
 		if v, ok := classLookup(cls, name); ok {
-			return v, nil
+			return i.bindDescriptor(v, nil, cls)
 		}
 		return nil, object.Errorf(i.attrErr, "type object '%s' has no attribute '%s'", cls.Name, name)
 	}
@@ -227,6 +224,28 @@ func (i *Interp) delAttr(o object.Object, name string) error {
 		return nil
 	}
 	return object.Errorf(i.attrErr, "can't delete attribute")
+}
+
+// bindDescriptor applies the descriptor protocol to v found in a class MRO.
+// inst is nil when the lookup came from a class rather than an instance.
+func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *object.Class) (object.Object, error) {
+	switch d := v.(type) {
+	case *object.Property:
+		if inst == nil {
+			return d, nil // accessed on the class itself
+		}
+		return i.callObject(d.Fget, []object.Object{inst}, nil)
+	case *object.ClassMethod:
+		return &object.BoundMethod{Self: cls, Fn: d.Fn}, nil
+	case *object.StaticMethod:
+		return d.Fn, nil
+	case *object.Function:
+		if inst != nil {
+			return &object.BoundMethod{Self: inst, Fn: d}, nil
+		}
+		return d, nil
+	}
+	return v, nil
 }
 
 // lookupAfter walks MRO(instCls) and returns the first attribute named `name`
