@@ -9,6 +9,11 @@ import (
 
 // Repr returns Python-style repr.
 func Repr(o Object) string {
+	if _, ok := o.(*Instance); ok && InstanceReprHook != nil {
+		if s, handled := InstanceReprHook(o); handled {
+			return s
+		}
+	}
 	switch v := o.(type) {
 	case nil:
 		return "None"
@@ -157,6 +162,11 @@ func pyBytesQuote(v []byte) string {
 }
 
 func Str_(o Object) string {
+	if _, ok := o.(*Instance); ok && InstanceStrHook != nil {
+		if s, handled := InstanceStrHook(o); handled {
+			return s
+		}
+	}
 	switch v := o.(type) {
 	case *Str:
 		return v.V

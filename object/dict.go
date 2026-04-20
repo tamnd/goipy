@@ -139,6 +139,19 @@ func Eq(a, b Object) (bool, error) {
 	if a == b {
 		return true, nil
 	}
+	if InstanceEqHook != nil {
+		if _, ok := a.(*Instance); ok {
+			eq, handled, err := InstanceEqHook(a, b)
+			if handled {
+				return eq, err
+			}
+		} else if _, ok := b.(*Instance); ok {
+			eq, handled, err := InstanceEqHook(a, b)
+			if handled {
+				return eq, err
+			}
+		}
+	}
 	// None
 	if _, ok := a.(*NoneType); ok {
 		_, ok2 := b.(*NoneType)
@@ -277,6 +290,12 @@ func seqEq(a, b []Object) (bool, error) {
 
 // Hash returns a 64-bit hash of a hashable object.
 func Hash(o Object) (uint64, error) {
+	if _, ok := o.(*Instance); ok && InstanceHashHook != nil {
+		h, handled, err := InstanceHashHook(o)
+		if handled {
+			return h, err
+		}
+	}
 	switch v := o.(type) {
 	case *NoneType:
 		return 0xdeadbeef, nil

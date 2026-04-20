@@ -2,6 +2,11 @@ package object
 
 // Truthy reports Python truth value of o.
 func Truthy(o Object) bool {
+	if _, ok := o.(*Instance); ok && InstanceTruthyHook != nil {
+		if b, handled := InstanceTruthyHook(o); handled {
+			return b
+		}
+	}
 	switch v := o.(type) {
 	case nil, *NoneType:
 		return false

@@ -1,0 +1,28 @@
+V(3)
+<v 3>
+<v 8>
+<v 13>
+<v 13>
+<v 2>
+<v 12>
+<v -3>
+True
+False
+True
+True
+True
+True False
+7
+one two
+2
+True
+False
+1
+2
+True False
+['a', 'b']
+False
+15
+110
+[0, 10, 20]
+9.5

@@ -56,6 +56,7 @@ func New() *Interp {
 		MaxDepth: 500,
 	}
 	i.initBuiltins()
+	i.installDunderHooks()
 	return i
 }
 
