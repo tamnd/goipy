@@ -157,6 +157,8 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 		return ok, err
 	case *object.Set:
 		return c.Contains(needle)
+	case *object.Frozenset:
+		return c.Contains(needle)
 	case *object.Range:
 		n, ok := toBigInt(needle)
 		if !ok {

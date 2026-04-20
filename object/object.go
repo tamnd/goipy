@@ -77,6 +77,15 @@ type Set struct {
 
 func NewSet() *Set { return &Set{index: map[uint64][]int{}} }
 
+// Frozenset is an immutable, hashable set. Shares the Set layout but is a
+// distinct type so TypeName, repr, and hashability differ.
+type Frozenset struct {
+	items []Object
+	index map[uint64][]int
+}
+
+func NewFrozenset() *Frozenset { return &Frozenset{index: map[uint64][]int{}} }
+
 // Dict: insertion-ordered.
 type Dict struct {
 	keys  []Object
@@ -227,6 +236,8 @@ func TypeName(o Object) string {
 		return "dict"
 	case *Set:
 		return "set"
+	case *Frozenset:
+		return "frozenset"
 	case *Slice:
 		return "slice"
 	case *Range:

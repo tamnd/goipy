@@ -141,6 +141,9 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) sub(a, b object.Object) (object.Object, error) {
+	if isSetLike(a) && isSetLike(b) {
+		return setBitop(a, b, "-"), nil
+	}
 	if isComplex(a) || isComplex(b) {
 		ar, ai2, ok1 := asComplex(a)
 		br, bi2, ok2 := asComplex(b)
@@ -350,44 +353,92 @@ func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
 	return &object.Int{V: r}, nil
 }
 
-func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
-	// set ops first
-	if sa, ok := a.(*object.Set); ok {
-		if sb, ok := b.(*object.Set); ok {
-			out := object.NewSet()
-			aItems := sa.Items()
-			bItems := sb.Items()
-			switch kind {
-			case "|":
-				for _, x := range aItems {
-					_ = out.Add(x)
-				}
-				for _, x := range bItems {
-					_ = out.Add(x)
-				}
-			case "&":
-				for _, x := range aItems {
-					c, _ := sb.Contains(x)
-					if c {
-						_ = out.Add(x)
-					}
-				}
-			case "^":
-				for _, x := range aItems {
-					c, _ := sb.Contains(x)
-					if !c {
-						_ = out.Add(x)
-					}
-				}
-				for _, x := range bItems {
-					c, _ := sa.Contains(x)
-					if !c {
-						_ = out.Add(x)
-					}
-				}
-			}
-			return out, nil
+// isSetLike reports whether o is a set or frozenset.
+func isSetLike(o object.Object) bool {
+	switch o.(type) {
+	case *object.Set, *object.Frozenset:
+		return true
+	}
+	return false
+}
+
+func setItems(o object.Object) []object.Object {
+	switch s := o.(type) {
+	case *object.Set:
+		return s.Items()
+	case *object.Frozenset:
+		return s.Items()
+	}
+	return nil
+}
+
+func setContains(o, x object.Object) bool {
+	switch s := o.(type) {
+	case *object.Set:
+		c, _ := s.Contains(x)
+		return c
+	case *object.Frozenset:
+		c, _ := s.Contains(x)
+		return c
+	}
+	return false
+}
+
+// setBitop computes |, &, ^, - between two set-like operands. Result type
+// follows the left operand (CPython semantics).
+func setBitop(a, b object.Object, kind string) object.Object {
+	_, frozen := a.(*object.Frozenset)
+	var addS func(object.Object)
+	var result object.Object
+	if frozen {
+		s := object.NewFrozenset()
+		addS = func(x object.Object) { _ = s.Add(x) }
+		result = s
+	} else {
+		s := object.NewSet()
+		addS = func(x object.Object) { _ = s.Add(x) }
+		result = s
+	}
+	aItems := setItems(a)
+	bItems := setItems(b)
+	switch kind {
+	case "|":
+		for _, x := range aItems {
+			addS(x)
 		}
+		for _, x := range bItems {
+			addS(x)
+		}
+	case "&":
+		for _, x := range aItems {
+			if setContains(b, x) {
+				addS(x)
+			}
+		}
+	case "^":
+		for _, x := range aItems {
+			if !setContains(b, x) {
+				addS(x)
+			}
+		}
+		for _, x := range bItems {
+			if !setContains(a, x) {
+				addS(x)
+			}
+		}
+	case "-":
+		for _, x := range aItems {
+			if !setContains(b, x) {
+				addS(x)
+			}
+		}
+	}
+	return result
+}
+
+func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
+	if isSetLike(a) && isSetLike(b) {
+		return setBitop(a, b, kind), nil
 	}
 	ni, okA := toBigInt(a)
 	nj, okB := toBigInt(b)

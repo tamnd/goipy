@@ -203,8 +203,39 @@ func Eq(a, b Object) (bool, error) {
 			return false, nil
 		}
 		return seqEq(av.V, bv.V)
+	case *Set:
+		return setEq(av.items, b)
+	case *Frozenset:
+		return setEq(av.items, b)
 	}
 	return false, nil
+}
+
+// setEq is true when every element of a's items is in b (a Set or Frozenset)
+// and sizes match. CPython treats set == frozenset by element equality.
+func setEq(aItems []Object, b Object) (bool, error) {
+	var bLen int
+	var bContains func(Object) (bool, error)
+	switch bv := b.(type) {
+	case *Set:
+		bLen = bv.Len()
+		bContains = bv.Contains
+	case *Frozenset:
+		bLen = bv.Len()
+		bContains = bv.Contains
+	default:
+		return false, nil
+	}
+	if len(aItems) != bLen {
+		return false, nil
+	}
+	for _, x := range aItems {
+		ok, err := bContains(x)
+		if err != nil || !ok {
+			return ok, err
+		}
+	}
+	return true, nil
 }
 
 func seqEq(a, b []Object) (bool, error) {
@@ -248,6 +279,17 @@ func Hash(o Object) (uint64, error) {
 				return 0, err
 			}
 			h = (h * 16777619) ^ xh
+		}
+		return h, nil
+	case *Frozenset:
+		// Commutative combiner so hash is order-independent.
+		var h uint64 = 0x9e3779b97f4a7c15
+		for _, x := range v.items {
+			xh, err := Hash(x)
+			if err != nil {
+				return 0, err
+			}
+			h ^= xh*0x100000001b3 + 0x9e3779b97f4a7c15
 		}
 		return h, nil
 	}

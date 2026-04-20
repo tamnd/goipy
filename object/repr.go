@@ -59,6 +59,15 @@ func Repr(o Object) string {
 			parts[i] = Repr(x)
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
+	case *Frozenset:
+		if v.Len() == 0 {
+			return "frozenset()"
+		}
+		parts := make([]string, len(v.items))
+		for i, x := range v.items {
+			parts[i] = Repr(x)
+		}
+		return "frozenset({" + strings.Join(parts, ", ") + "})"
 	case *Range:
 		if v.Step == 1 {
 			return "range(" + strconv.FormatInt(v.Start, 10) + ", " + strconv.FormatInt(v.Stop, 10) + ")"

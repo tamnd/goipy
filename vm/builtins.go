@@ -216,14 +216,16 @@ func (i *Interp) initBuiltins() {
 		return s, nil
 	}})
 	b.SetStr("frozenset", &object.BuiltinFunc{Name: "frozenset", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		s := object.NewSet()
+		s := object.NewFrozenset()
 		if len(a) > 0 {
 			items, err := iterate(ii.(*Interp), a[0])
 			if err != nil {
 				return nil, err
 			}
 			for _, x := range items {
-				_ = s.Add(x)
+				if err := s.Add(x); err != nil {
+					return nil, err
+				}
 			}
 		}
 		return s, nil
@@ -586,10 +588,10 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("id", &object.BuiltinFunc{Name: "id", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.NewInt(int64(fmt.Sprintf("%p", a[0])[2] ^ 0x42)), nil
 	}})
-	b.SetStr("hash", &object.BuiltinFunc{Name: "hash", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("hash", &object.BuiltinFunc{Name: "hash", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		h, err := object.Hash(a[0])
 		if err != nil {
-			return nil, err
+			return nil, object.Errorf(ii.(*Interp).typeErr, "unhashable type: '%s'", object.TypeName(a[0]))
 		}
 		return object.NewInt(int64(h)), nil
 	}})
