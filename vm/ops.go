@@ -874,10 +874,10 @@ func applyFloatGroup(body string, sep byte) string {
 }
 
 func applySign(body string, sign byte, signV int) string {
+	if len(body) > 0 && body[0] == '-' {
+		return body
+	}
 	if signV < 0 {
-		if len(body) > 0 && body[0] == '-' {
-			return body
-		}
 		return "-" + body
 	}
 	switch sign {
