@@ -226,6 +226,8 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 		return bytesContains(c.V, needle)
 	case *object.Bytearray:
 		return bytesContains(c.V, needle)
+	case *object.Memoryview:
+		return bytesContains(c.Buf(), needle)
 	case *object.Dict:
 		_, ok, err := c.Get(needle)
 		return ok, err

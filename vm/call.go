@@ -732,6 +732,39 @@ func isAsciiSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
 }
 
+func memoryviewAttr(mv *object.Memoryview, name string) (object.Object, bool) {
+	switch name {
+	case "readonly":
+		return object.BoolOf(mv.Readonly), true
+	case "obj":
+		return mv.Backing, true
+	case "nbytes":
+		return object.NewInt(int64(mv.Stop - mv.Start)), true
+	case "format":
+		return &object.Str{V: "B"}, true
+	case "itemsize":
+		return object.NewInt(1), true
+	case "tobytes":
+		return &object.BuiltinFunc{Name: "tobytes", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Bytes{V: mv.Bytes()}, nil
+		}}, true
+	case "tolist":
+		return &object.BuiltinFunc{Name: "tolist", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			buf := mv.Buf()
+			out := make([]object.Object, len(buf))
+			for k, b := range buf {
+				out[k] = object.NewInt(int64(b))
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "release":
+		return &object.BuiltinFunc{Name: "release", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		}}, true
+	}
+	return nil, false
+}
+
 func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 	if m, ok := bytesSubMethod(func() []byte { return ba.V }, true, name); ok {
 		return m, true

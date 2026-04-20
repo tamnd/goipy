@@ -66,6 +66,43 @@ type Bytes struct{ V []byte }
 // Bytearray is Python's mutable bytes.
 type Bytearray struct{ V []byte }
 
+// Memoryview is a shared view over a bytes/bytearray buffer. Start/stop
+// describe a contiguous Python slice of the backing buffer (step=1 only).
+// Readonly is true when the backing object is immutable (Bytes).
+type Memoryview struct {
+	Backing  Object // *Bytes or *Bytearray (pointer so mutations are visible)
+	Start    int
+	Stop     int
+	Readonly bool
+}
+
+// Bytes returns a snapshot of the current view. Not an alias — callers that
+// need to mutate should go through MV.Set/MV.Buf instead.
+func (m *Memoryview) Bytes() []byte {
+	raw := mvRaw(m)
+	return append([]byte(nil), raw[m.Start:m.Stop]...)
+}
+
+// Buf returns the live slice underlying this view. Mutating it will affect
+// the backing buffer. Nil if backing has shrunk below Stop.
+func (m *Memoryview) Buf() []byte {
+	raw := mvRaw(m)
+	if m.Stop > len(raw) {
+		return nil
+	}
+	return raw[m.Start:m.Stop]
+}
+
+func mvRaw(m *Memoryview) []byte {
+	switch b := m.Backing.(type) {
+	case *Bytes:
+		return b.V
+	case *Bytearray:
+		return b.V
+	}
+	return nil
+}
+
 // Tuple is immutable.
 type Tuple struct{ V []Object }
 
@@ -233,6 +270,8 @@ func TypeName(o Object) string {
 		return "bytes"
 	case *Bytearray:
 		return "bytearray"
+	case *Memoryview:
+		return "memoryview"
 	case *Tuple:
 		return "tuple"
 	case *List:

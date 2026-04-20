@@ -31,6 +31,8 @@ func Repr(o Object) string {
 		return "b" + pyBytesQuote(v.V)
 	case *Bytearray:
 		return "bytearray(b" + pyBytesQuote(v.V) + ")"
+	case *Memoryview:
+		return "<memory>"
 	case *Tuple:
 		parts := make([]string, len(v.V))
 		for i, x := range v.V {

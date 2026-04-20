@@ -1,0 +1,25 @@
+memoryview
+5
+104 111
+b'hello'
+b'hello'
+[104, 101, 108, 108, 111]
+True
+5 B 1
+[104, 101, 108, 108, 111]
+b'ell'
+True
+True
+True
+True
+False
+bytearray(b'Zbc')
+bytearray(b'ZYZ')
+b'AzCDE'
+readonly rejects assignment
+True
+False
+6
+True
+False
+None

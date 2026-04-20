@@ -501,6 +501,8 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		return i.bytesGetitem(c.V, key, false)
 	case *object.Bytearray:
 		return i.bytesGetitem(c.V, key, true)
+	case *object.Memoryview:
+		return i.memoryviewGetitem(c, key)
 	case *object.Dict:
 		v, ok, err := c.Get(key)
 		if err != nil {
@@ -609,6 +611,40 @@ func (i *Interp) bytesGetitem(data []byte, key object.Object, mutable bool) (obj
 		return nil, object.Errorf(i.indexErr, "index out of range")
 	}
 	return object.NewInt(int64(data[n])), nil
+}
+
+// memoryviewGetitem supports integer indexing (returns int) and contiguous
+// slicing (returns a memoryview sharing the backing buffer). Non-unit step
+// slices are rejected to keep the view semantics trivial.
+func (i *Interp) memoryviewGetitem(m *object.Memoryview, key object.Object) (object.Object, error) {
+	buf := m.Buf()
+	L := len(buf)
+	if sl, ok := key.(*object.Slice); ok {
+		start, stop, step, err := i.resolveSlice(sl, L)
+		if err != nil {
+			return nil, err
+		}
+		if step != 1 {
+			return nil, object.Errorf(i.valueErr, "memoryview extended slicing not supported")
+		}
+		return &object.Memoryview{
+			Backing:  m.Backing,
+			Start:    m.Start + start,
+			Stop:     m.Start + stop,
+			Readonly: m.Readonly,
+		}, nil
+	}
+	n, ok := toInt64(key)
+	if !ok {
+		return nil, object.Errorf(i.typeErr, "memoryview indices must be integers")
+	}
+	if n < 0 {
+		n += int64(L)
+	}
+	if n < 0 || n >= int64(L) {
+		return nil, object.Errorf(i.indexErr, "memoryview index out of range")
+	}
+	return object.NewInt(int64(buf[n])), nil
 }
 
 func (i *Interp) resolveSlice(s *object.Slice, length int) (start, stop, step int, err error) {
