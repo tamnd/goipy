@@ -1,49 +1,8 @@
 package vm
 
 import (
-	"os"
-	"path/filepath"
-
-	"github.com/tamnd/goipy/marshal"
 	"github.com/tamnd/goipy/object"
 )
-
-// importModule resolves a top-level module name. Lookup order:
-//  1. sys.modules cache (i.modules)
-//  2. built-in registry (asyncio, …)
-//  3. filesystem: {name}.pyc on i.SearchPath
-//
-// 7a only resolves top-level single-module imports; packages and
-// relative imports are the subject of 7b.
-func (i *Interp) importModule(name string) (*object.Module, error) {
-	if i.modules == nil {
-		i.modules = map[string]*object.Module{}
-	}
-	if m, ok := i.modules[name]; ok {
-		return m, nil
-	}
-	if m, ok := i.builtinModule(name); ok {
-		i.modules[name] = m
-		return m, nil
-	}
-	for _, dir := range i.SearchPath {
-		path := filepath.Join(dir, name+".pyc")
-		if _, err := os.Stat(path); err != nil {
-			continue
-		}
-		code, err := marshal.LoadPyc(path)
-		if err != nil {
-			return nil, object.Errorf(i.importErr, "cannot load %s: %v", path, err)
-		}
-		m, err := i.execModule(name, code)
-		if err != nil {
-			return nil, err
-		}
-		i.modules[name] = m
-		return m, nil
-	}
-	return nil, object.Errorf(i.importErr, "No module named '%s'", name)
-}
 
 // builtinModule returns VM-provided modules that don't need a .pyc.
 func (i *Interp) builtinModule(name string) (*object.Module, bool) {
@@ -52,24 +11,6 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildAsyncio(), true
 	}
 	return nil, false
-}
-
-// execModule runs a module-level code object in its own globals and
-// returns a Module whose dict is the resulting namespace. The module is
-// inserted into sys.modules before execution so that circular imports
-// see a partially-initialized module rather than re-entering the loader.
-func (i *Interp) execModule(name string, code *object.Code) (*object.Module, error) {
-	globals := object.NewDict()
-	globals.SetStr("__name__", &object.Str{V: name})
-	globals.SetStr("__builtins__", i.Builtins)
-	m := &object.Module{Name: name, Dict: globals}
-	i.modules[name] = m
-	frame := NewFrame(code, globals, i.Builtins, globals)
-	if _, err := i.runFrame(frame); err != nil {
-		delete(i.modules, name)
-		return nil, err
-	}
-	return m, nil
 }
 
 // buildAsyncio constructs a minimal asyncio module: run(coro), sleep(t),
