@@ -57,7 +57,7 @@ func (i *Interp) callFunction(fn *object.Function, args []object.Object, kwargs 
 	if err := i.bindArgs(fn, frame, args, kwargs); err != nil {
 		return nil, err
 	}
-	if code.Flags&CO_GENERATOR != 0 {
+	if code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0 {
 		return &object.Generator{Name: fn.Name, Frame: frame}, nil
 	}
 	return i.runFrame(frame)
@@ -70,7 +70,10 @@ const (
 	CO_VARARGS   = 0x0004
 	CO_VARKWDS   = 0x0008
 	CO_NESTED    = 0x0010
-	CO_GENERATOR = 0x0020
+	CO_GENERATOR         = 0x0020
+	CO_COROUTINE         = 0x0080
+	CO_ITERABLE_COROUTINE = 0x0100
+	CO_ASYNC_GENERATOR   = 0x0200
 )
 
 func (i *Interp) bindArgs(fn *object.Function, frame *Frame, args []object.Object, kwargs *object.Dict) error {
