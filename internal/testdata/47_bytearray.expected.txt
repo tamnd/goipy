@@ -1,0 +1,28 @@
+bytearray(b'hello')
+bytearray
+5
+104 111
+bytearray(b'ell')
+True
+True
+bytearray(b'Hello')
+bytearray(b'Hello!')
+bytearray(b'Hello! world')
+100
+72
+bytearray(b'ello! worl')
+bytearray(b'')
+bytearray(b'\x00\x00\x00')
+bytearray(b'ABC')
+65
+66
+True
+True
+True
+True
+False
+False
+bytes
+bytearray
+4142
+hi

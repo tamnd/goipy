@@ -30,8 +30,62 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 		return nil
 	case *object.Dict:
 		return c.Set(key, val)
+	case *object.Bytearray:
+		if sl, ok := key.(*object.Slice); ok {
+			return i.bytearraySetSlice(c, sl, val)
+		}
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "bytearray indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "bytearray index out of range")
+		}
+		bv, ok := toInt64(val)
+		if !ok || bv < 0 || bv > 255 {
+			return object.Errorf(i.valueErr, "byte must be in range(0, 256)")
+		}
+		c.V[n] = byte(bv)
+		return nil
 	}
 	return object.Errorf(i.typeErr, "'%s' does not support item assignment", object.TypeName(container))
+}
+
+func (i *Interp) bytearraySetSlice(ba *object.Bytearray, sl *object.Slice, val object.Object) error {
+	start, stop, step, err := i.resolveSlice(sl, len(ba.V))
+	if err != nil {
+		return err
+	}
+	if step != 1 {
+		return object.Errorf(i.valueErr, "extended slice assignment not supported")
+	}
+	var src []byte
+	if bb, ok := bytesBytesOrArray(val); ok {
+		src = bb
+	} else {
+		items, err := iterate(i, val)
+		if err != nil {
+			return err
+		}
+		src = make([]byte, len(items))
+		for k, x := range items {
+			n, ok := toInt64(x)
+			if !ok || n < 0 || n > 255 {
+				return object.Errorf(i.valueErr, "byte must be in range(0, 256)")
+			}
+			src[k] = byte(n)
+		}
+	}
+	out := make([]byte, 0, len(ba.V)-(stop-start)+len(src))
+	out = append(out, ba.V[:start]...)
+	out = append(out, src...)
+	out = append(out, ba.V[stop:]...)
+	ba.V = out
+	return nil
 }
 
 func (i *Interp) listSetSlice(l *object.List, sl *object.Slice, val object.Object) error {
@@ -90,6 +144,31 @@ func (i *Interp) delitem(container, key object.Object) error {
 			return object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
 		return nil
+	case *object.Bytearray:
+		if sl, ok := key.(*object.Slice); ok {
+			start, stop, step, err := i.resolveSlice(sl, len(c.V))
+			if err != nil {
+				return err
+			}
+			if step != 1 {
+				return object.Errorf(i.valueErr, "extended slice deletion not supported")
+			}
+			c.V = append(c.V[:start], c.V[stop:]...)
+			return nil
+		}
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "bytearray indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "bytearray index out of range")
+		}
+		c.V = append(c.V[:n], c.V[n+1:]...)
+		return nil
 	}
 	return object.Errorf(i.typeErr, "'%s' does not support item deletion", object.TypeName(container))
 }
@@ -117,6 +196,8 @@ func (i *Interp) length(v object.Object) (int64, error) {
 	case *object.Str:
 		return int64(len(x.Runes())), nil
 	case *object.Bytes:
+		return int64(len(x.V)), nil
+	case *object.Bytearray:
 		return int64(len(x.V)), nil
 	case *object.List:
 		return int64(len(x.V)), nil
@@ -160,6 +241,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	}
 	if s, ok := o.(*object.Frozenset); ok {
 		if m, ok := frozensetMethod(s, name); ok {
+			return m, nil
+		}
+	}
+	if ba, ok := o.(*object.Bytearray); ok {
+		if m, ok := bytearrayMethod(ba, name); ok {
 			return m, nil
 		}
 	}
@@ -381,8 +467,11 @@ func matchBuiltinType(o object.Object, name string) bool {
 	case "frozenset":
 		_, ok := o.(*object.Frozenset)
 		return ok
-	case "bytes", "bytearray":
+	case "bytes":
 		_, ok := o.(*object.Bytes)
+		return ok
+	case "bytearray":
+		_, ok := o.(*object.Bytearray)
 		return ok
 	}
 	return false
@@ -501,6 +590,16 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			return r, true, nil
 		}}, nil
 	case *object.Bytes:
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(x.V) {
+				return nil, false, nil
+			}
+			r := object.NewInt(int64(x.V[idx]))
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.Bytearray:
 		idx := 0
 		return &object.Iter{Next: func() (object.Object, bool, error) {
 			if idx >= len(x.V) {

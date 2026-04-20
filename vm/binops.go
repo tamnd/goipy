@@ -95,6 +95,18 @@ func toFloat(ibig *big.Int, f float64, isFloat bool) float64 {
 	return x
 }
 
+// bytesBytesOrArray returns the raw byte slice of o and true if it's a bytes
+// or bytearray.
+func bytesBytesOrArray(o object.Object) ([]byte, bool) {
+	switch v := o.(type) {
+	case *object.Bytes:
+		return v.V, true
+	case *object.Bytearray:
+		return v.V, true
+	}
+	return nil, false
+}
+
 func (i *Interp) add(a, b object.Object) (object.Object, error) {
 	// str + str
 	if sa, ok := a.(*object.Str); ok {
@@ -118,6 +130,24 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 			out = append(out, ta.V...)
 			out = append(out, tb.V...)
 			return &object.Tuple{V: out}, nil
+		}
+	}
+	// bytes/bytearray concatenation. Result type follows the left operand:
+	// bytes + bytes → bytes; bytearray + bytes → bytearray; bytes + bytearray → bytes.
+	if ab, ok := a.(*object.Bytes); ok {
+		if bb, ok := bytesBytesOrArray(b); ok {
+			out := make([]byte, 0, len(ab.V)+len(bb))
+			out = append(out, ab.V...)
+			out = append(out, bb...)
+			return &object.Bytes{V: out}, nil
+		}
+	}
+	if aba, ok := a.(*object.Bytearray); ok {
+		if bb, ok := bytesBytesOrArray(b); ok {
+			out := make([]byte, 0, len(aba.V)+len(bb))
+			out = append(out, aba.V...)
+			out = append(out, bb...)
+			return &object.Bytearray{V: out}, nil
 		}
 	}
 	if isComplex(a) || isComplex(b) {
@@ -468,7 +498,9 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 	case *object.Str:
 		return i.strGetitem(c, key)
 	case *object.Bytes:
-		return i.bytesGetitem(c, key)
+		return i.bytesGetitem(c.V, key, false)
+	case *object.Bytearray:
+		return i.bytesGetitem(c.V, key, true)
 	case *object.Dict:
 		v, ok, err := c.Get(key)
 		if err != nil {
@@ -544,21 +576,24 @@ func (i *Interp) strGetitem(s *object.Str, key object.Object) (object.Object, er
 	return &object.Str{V: string(rs[n])}, nil
 }
 
-func (i *Interp) bytesGetitem(b *object.Bytes, key object.Object) (object.Object, error) {
+func (i *Interp) bytesGetitem(data []byte, key object.Object, mutable bool) (object.Object, error) {
 	if sl, ok := key.(*object.Slice); ok {
-		start, stop, step, err := i.resolveSlice(sl, len(b.V))
+		start, stop, step, err := i.resolveSlice(sl, len(data))
 		if err != nil {
 			return nil, err
 		}
 		out := []byte{}
 		if step > 0 {
 			for j := start; j < stop; j += step {
-				out = append(out, b.V[j])
+				out = append(out, data[j])
 			}
 		} else if step < 0 {
 			for j := start; j > stop; j += step {
-				out = append(out, b.V[j])
+				out = append(out, data[j])
 			}
+		}
+		if mutable {
+			return &object.Bytearray{V: out}, nil
 		}
 		return &object.Bytes{V: out}, nil
 	}
@@ -566,14 +601,14 @@ func (i *Interp) bytesGetitem(b *object.Bytes, key object.Object) (object.Object
 	if !ok {
 		return nil, object.Errorf(i.typeErr, "byte indices must be integers")
 	}
-	L := int64(len(b.V))
+	L := int64(len(data))
 	if n < 0 {
 		n += L
 	}
 	if n < 0 || n >= L {
 		return nil, object.Errorf(i.indexErr, "index out of range")
 	}
-	return object.NewInt(int64(b.V[n])), nil
+	return object.NewInt(int64(data[n])), nil
 }
 
 func (i *Interp) resolveSlice(s *object.Slice, length int) (start, stop, step int, err error) {

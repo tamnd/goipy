@@ -138,6 +138,32 @@ func (i *Interp) initBuiltins() {
 		}
 		return &object.Bytes{V: out}, nil
 	}})
+	b.SetStr("bytearray", &object.BuiltinFunc{Name: "bytearray", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return &object.Bytearray{V: []byte{}}, nil
+		}
+		if bb, ok := bytesBytesOrArray(a[0]); ok {
+			cp := make([]byte, len(bb))
+			copy(cp, bb)
+			return &object.Bytearray{V: cp}, nil
+		}
+		if n, ok := toInt64(a[0]); ok {
+			return &object.Bytearray{V: make([]byte, n)}, nil
+		}
+		items, err := iterate(ii.(*Interp), a[0])
+		if err != nil {
+			return nil, err
+		}
+		out := make([]byte, len(items))
+		for k, x := range items {
+			n, ok := toInt64(x)
+			if !ok || n < 0 || n > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "bytes must be in range(0, 256)")
+			}
+			out[k] = byte(n)
+		}
+		return &object.Bytearray{V: out}, nil
+	}})
 	b.SetStr("list", &object.BuiltinFunc{Name: "list", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.List{}, nil

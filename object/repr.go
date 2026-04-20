@@ -28,7 +28,9 @@ func Repr(o Object) string {
 	case *Str:
 		return pyStrRepr(v.V)
 	case *Bytes:
-		return "b" + strconv.Quote(string(v.V))
+		return "b" + pyBytesQuote(v.V)
+	case *Bytearray:
+		return "bytearray(b" + pyBytesQuote(v.V) + ")"
 	case *Tuple:
 		parts := make([]string, len(v.V))
 		for i, x := range v.V {
@@ -105,13 +107,58 @@ func Repr(o Object) string {
 }
 
 // Str returns Python-style str().
+// pyBytesQuote formats a bytes literal body the way CPython does: single
+// quotes by default, double quotes if the payload contains a single quote
+// but no double quote. Non-printable and non-ASCII bytes are escaped.
+func pyBytesQuote(v []byte) string {
+	hasSingle := false
+	hasDouble := false
+	for _, c := range v {
+		if c == '\'' {
+			hasSingle = true
+		}
+		if c == '"' {
+			hasDouble = true
+		}
+	}
+	quote := byte('\'')
+	if hasSingle && !hasDouble {
+		quote = '"'
+	}
+	const hex = "0123456789abcdef"
+	buf := make([]byte, 0, len(v)+2)
+	buf = append(buf, quote)
+	for _, c := range v {
+		switch {
+		case c == quote:
+			buf = append(buf, '\\', c)
+		case c == '\\':
+			buf = append(buf, '\\', '\\')
+		case c == '\t':
+			buf = append(buf, '\\', 't')
+		case c == '\n':
+			buf = append(buf, '\\', 'n')
+		case c == '\r':
+			buf = append(buf, '\\', 'r')
+		case c < 0x20 || c >= 0x7f:
+			buf = append(buf, '\\', 'x', hex[c>>4], hex[c&0xf])
+		default:
+			buf = append(buf, c)
+		}
+	}
+	buf = append(buf, quote)
+	return string(buf)
+}
+
 func Str_(o Object) string {
 	switch v := o.(type) {
 	case *Str:
 		return v.V
 	case *Bytes:
 		// str(b'...') returns the repr in Python, but we'll be lenient.
-		return "b" + strconv.Quote(string(v.V))
+		return "b" + pyBytesQuote(v.V)
+	case *Bytearray:
+		return "bytearray(b" + pyBytesQuote(v.V) + ")"
 	case *Exception:
 		// str(exc): single arg → that arg's str; no args → empty; many → tuple repr.
 		if v.Args == nil || len(v.Args.V) == 0 {
