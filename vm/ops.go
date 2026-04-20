@@ -226,6 +226,139 @@ func (i *Interp) delAttr(o object.Object, name string) error {
 	return object.Errorf(i.attrErr, "can't delete attribute")
 }
 
+// matchClass implements PEP 634 class-pattern extraction. Returns a tuple of
+// attributes on match or None on miss. count is positional sub-pattern count;
+// kwnamesObj is a tuple of keyword attribute names that follow them.
+func (i *Interp) matchClass(subject, cls, kwnamesObj object.Object, count int) (object.Object, error) {
+	kwnames, _ := kwnamesObj.(*object.Tuple)
+	nkw := 0
+	if kwnames != nil {
+		nkw = len(kwnames.V)
+	}
+	if !matchTypeCheck(subject, cls) {
+		return object.None, nil
+	}
+	if bf, ok := cls.(*object.BuiltinFunc); ok && isSpecialMatchClass(bf.Name) {
+		if count == 0 && nkw == 0 {
+			return &object.Tuple{V: nil}, nil
+		}
+		if count == 1 && nkw == 0 {
+			return &object.Tuple{V: []object.Object{subject}}, nil
+		}
+		if count > 1 {
+			return nil, object.Errorf(i.typeErr, "match() accepts at most 1 positional sub-pattern for builtin class %s", bf.Name)
+		}
+	}
+	var matchArgs []string
+	if count > 0 {
+		uc, ok := cls.(*object.Class)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "class pattern requires __match_args__")
+		}
+		v, ok := classLookup(uc, "__match_args__")
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "%s has no __match_args__", uc.Name)
+		}
+		t, ok := v.(*object.Tuple)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "__match_args__ must be a tuple")
+		}
+		if len(t.V) < count {
+			return nil, object.Errorf(i.typeErr, "%s has %d positional patterns but __match_args__ has %d", uc.Name, count, len(t.V))
+		}
+		for k := 0; k < count; k++ {
+			s, ok := t.V[k].(*object.Str)
+			if !ok {
+				return nil, object.Errorf(i.typeErr, "__match_args__ elements must be strings")
+			}
+			matchArgs = append(matchArgs, s.V)
+		}
+	}
+	attrs := make([]object.Object, 0, count+nkw)
+	for _, name := range matchArgs {
+		v, gerr := i.getAttr(subject, name)
+		if gerr != nil {
+			return object.None, nil
+		}
+		attrs = append(attrs, v)
+	}
+	if kwnames != nil {
+		for _, n := range kwnames.V {
+			s, ok := n.(*object.Str)
+			if !ok {
+				continue
+			}
+			v, gerr := i.getAttr(subject, s.V)
+			if gerr != nil {
+				return object.None, nil
+			}
+			attrs = append(attrs, v)
+		}
+	}
+	return &object.Tuple{V: attrs}, nil
+}
+
+func matchTypeCheck(o, t object.Object) bool {
+	if cls, ok := t.(*object.Class); ok {
+		if inst, ok := o.(*object.Instance); ok {
+			return object.IsSubclass(inst.Class, cls)
+		}
+		if e, ok := o.(*object.Exception); ok {
+			return object.IsSubclass(e.Class, cls)
+		}
+		return false
+	}
+	if bf, ok := t.(*object.BuiltinFunc); ok {
+		return matchBuiltinType(o, bf.Name)
+	}
+	return false
+}
+
+func isSpecialMatchClass(name string) bool {
+	switch name {
+	case "bool", "bytearray", "bytes", "dict", "float", "frozenset",
+		"int", "list", "set", "str", "tuple":
+		return true
+	}
+	return false
+}
+
+func matchBuiltinType(o object.Object, name string) bool {
+	switch name {
+	case "int":
+		if _, ok := o.(*object.Int); ok {
+			return true
+		}
+		_, ok := o.(*object.Bool)
+		return ok
+	case "bool":
+		_, ok := o.(*object.Bool)
+		return ok
+	case "float":
+		_, ok := o.(*object.Float)
+		return ok
+	case "str":
+		_, ok := o.(*object.Str)
+		return ok
+	case "list":
+		_, ok := o.(*object.List)
+		return ok
+	case "tuple":
+		_, ok := o.(*object.Tuple)
+		return ok
+	case "dict":
+		_, ok := o.(*object.Dict)
+		return ok
+	case "set", "frozenset":
+		_, ok := o.(*object.Set)
+		return ok
+	case "bytes", "bytearray":
+		_, ok := o.(*object.Bytes)
+		return ok
+	}
+	return false
+}
+
 // bindDescriptor applies the descriptor protocol to v found in a class MRO.
 // inst is nil when the lookup came from a class rather than an instance.
 func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *object.Class) (object.Object, error) {

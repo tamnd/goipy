@@ -518,6 +518,59 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.push(object.NewInt(n))
 
+		// --- match/case (PEP 634) ---
+		case op.MATCH_MAPPING:
+			if _, ok := f.top().(*object.Dict); ok {
+				f.push(object.True)
+			} else {
+				f.push(object.False)
+			}
+		case op.MATCH_SEQUENCE:
+			switch f.top().(type) {
+			case *object.List, *object.Tuple, *object.Range:
+				f.push(object.True)
+			default:
+				f.push(object.False)
+			}
+		case op.MATCH_KEYS:
+			keysObj := f.top()
+			subject := f.peek(1)
+			d, dok := subject.(*object.Dict)
+			keysT, kok := keysObj.(*object.Tuple)
+			if !dok || !kok {
+				f.push(object.None)
+				break
+			}
+			values := make([]object.Object, 0, len(keysT.V))
+			miss := false
+			for _, k := range keysT.V {
+				v, found, gerr := d.Get(k)
+				if gerr != nil {
+					err = gerr
+					goto handleErr
+				}
+				if !found {
+					miss = true
+					break
+				}
+				values = append(values, v)
+			}
+			if miss {
+				f.push(object.None)
+			} else {
+				f.push(&object.Tuple{V: values})
+			}
+		case op.MATCH_CLASS:
+			kwnames := f.pop()
+			cls := f.pop()
+			subject := f.pop()
+			var attrs object.Object
+			attrs, err = i.matchClass(subject, cls, kwnames, int(oparg))
+			if err != nil {
+				goto handleErr
+			}
+			f.push(attrs)
+
 		// --- iteration ---
 		case op.GET_ITER:
 			v := f.pop()
