@@ -57,6 +57,9 @@ func (i *Interp) callFunction(fn *object.Function, args []object.Object, kwargs 
 	if err := i.bindArgs(fn, frame, args, kwargs); err != nil {
 		return nil, err
 	}
+	if code.Flags&CO_GENERATOR != 0 {
+		return &object.Generator{Name: fn.Name, Frame: frame}, nil
+	}
 	return i.runFrame(frame)
 }
 

@@ -158,12 +158,38 @@ func (i *Interp) initBuiltins() {
 		return &object.Tuple{V: items}, nil
 	}})
 	b.SetStr("dict", &object.BuiltinFunc{Name: "dict", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
 		d := object.NewDict()
 		if len(a) > 0 {
 			if src, ok := a[0].(*object.Dict); ok {
 				keys, vals := src.Items()
 				for k, key := range keys {
 					_ = d.Set(key, vals[k])
+				}
+			} else {
+				items, err := iterate(in, a[0])
+				if err != nil {
+					return nil, err
+				}
+				for _, pair := range items {
+					var k, v object.Object
+					switch p := pair.(type) {
+					case *object.Tuple:
+						if len(p.V) != 2 {
+							return nil, object.Errorf(in.valueErr, "dict update sequence element has length %d; 2 required", len(p.V))
+						}
+						k, v = p.V[0], p.V[1]
+					case *object.List:
+						if len(p.V) != 2 {
+							return nil, object.Errorf(in.valueErr, "dict update sequence element has length %d; 2 required", len(p.V))
+						}
+						k, v = p.V[0], p.V[1]
+					default:
+						return nil, object.Errorf(in.typeErr, "cannot convert dictionary update sequence element to 2-tuple")
+					}
+					if err := d.Set(k, v); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
@@ -271,6 +297,18 @@ func (i *Interp) initBuiltins() {
 	}})
 	b.SetStr("next", &object.BuiltinFunc{Name: "next", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
+		if gen, ok := a[0].(*object.Generator); ok {
+			v, err := in.resumeGenerator(gen, object.None)
+			if err != nil {
+				if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, in.stopIter) {
+					if len(a) > 1 {
+						return a[1], nil
+					}
+				}
+				return nil, err
+			}
+			return v, nil
+		}
 		it, ok := a[0].(*object.Iter)
 		if !ok {
 			return nil, object.Errorf(in.typeErr, "next() arg is not an iterator")
@@ -366,7 +404,7 @@ func (i *Interp) initBuiltins() {
 			return r, true, nil
 		}}, nil
 	}})
-	b.SetStr("enumerate", &object.BuiltinFunc{Name: "enumerate", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("enumerate", &object.BuiltinFunc{Name: "enumerate", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
 		it, err := in.getIter(a[0])
 		if err != nil {
@@ -376,6 +414,13 @@ func (i *Interp) initBuiltins() {
 		if len(a) > 1 {
 			if n, ok := toInt64(a[1]); ok {
 				start = n
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("start"); ok {
+				if n, ok := toInt64(v); ok {
+					start = n
+				}
 			}
 		}
 		return &object.Iter{Next: func() (object.Object, bool, error) {
@@ -738,6 +783,9 @@ func isinstance(o, t object.Object) bool {
 	// check by type name for builtin types
 	if s, ok := t.(*object.Str); ok {
 		return object.TypeName(o) == s.V
+	}
+	if bf, ok := t.(*object.BuiltinFunc); ok {
+		return matchBuiltinType(o, bf.Name)
 	}
 	return false
 }

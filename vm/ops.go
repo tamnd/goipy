@@ -159,6 +159,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if g, ok := o.(*object.Generator); ok {
+		if m, ok := i.genMethod(g, name); ok {
+			return m, nil
+		}
+	}
 	// Class attr lookup on instance
 	if inst, ok := o.(*object.Instance); ok {
 		if v, ok := inst.Dict.GetStr(name); ok {
@@ -438,6 +443,8 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 	switch x := v.(type) {
 	case *object.Iter:
 		return x, nil
+	case *object.Generator:
+		return i.genIter(x), nil
 	case *object.List:
 		idx := 0
 		return &object.Iter{Next: func() (object.Object, bool, error) {
