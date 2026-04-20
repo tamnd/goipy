@@ -1,0 +1,9 @@
+enter a
+body a
+exit a None
+enter b
+exit b ValueError
+caught boom
+enter c
+exit c RuntimeError
+after c
