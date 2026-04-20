@@ -152,6 +152,47 @@ func (i *Interp) containsOp(container, needle object.Object, invert bool) (objec
 	return object.BoolOf(found), nil
 }
 
+func bytesContains(data []byte, needle object.Object) (bool, error) {
+	switch n := needle.(type) {
+	case *object.Bytes:
+		return bytesHasSub(data, n.V), nil
+	case *object.Bytearray:
+		return bytesHasSub(data, n.V), nil
+	}
+	if n, ok := toInt64(needle); ok {
+		if n < 0 || n > 255 {
+			return false, nil
+		}
+		b := byte(n)
+		for _, x := range data {
+			if x == b {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return false, nil
+}
+
+func bytesHasSub(hay, needle []byte) bool {
+	if len(needle) == 0 {
+		return true
+	}
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		match := true
+		for j := range needle {
+			if hay[i+j] != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 func (i *Interp) contains(container, needle object.Object) (bool, error) {
 	switch c := container.(type) {
 	case *object.List:
@@ -181,6 +222,10 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 			return containsStr(c.V, ns.V), nil
 		}
 		return false, object.Errorf(i.typeErr, "'in <string>' requires string as left operand")
+	case *object.Bytes:
+		return bytesContains(c.V, needle)
+	case *object.Bytearray:
+		return bytesContains(c.V, needle)
 	case *object.Dict:
 		_, ok, err := c.Get(needle)
 		return ok, err

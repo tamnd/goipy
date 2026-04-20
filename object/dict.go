@@ -188,7 +188,17 @@ func Eq(a, b Object) (bool, error) {
 			return av.V == bv.V, nil
 		}
 	case *Bytes:
-		if bv, ok := b.(*Bytes); ok {
+		switch bv := b.(type) {
+		case *Bytes:
+			return string(av.V) == string(bv.V), nil
+		case *Bytearray:
+			return string(av.V) == string(bv.V), nil
+		}
+	case *Bytearray:
+		switch bv := b.(type) {
+		case *Bytes:
+			return string(av.V) == string(bv.V), nil
+		case *Bytearray:
 			return string(av.V) == string(bv.V), nil
 		}
 	case *Tuple:

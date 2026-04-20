@@ -17,6 +17,8 @@ func Truthy(o Object) bool {
 		return v.V != ""
 	case *Bytes:
 		return len(v.V) != 0
+	case *Bytearray:
+		return len(v.V) != 0
 	case *Tuple:
 		return len(v.V) != 0
 	case *List:

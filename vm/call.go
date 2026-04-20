@@ -557,6 +557,73 @@ func dictMethod(d *object.Dict, name string) (object.Object, bool) {
 	return nil, false
 }
 
+func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
+	switch name {
+	case "append":
+		return &object.BuiltinFunc{Name: "append", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			n, ok := toInt64(a[0])
+			if !ok || n < 0 || n > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
+			}
+			ba.V = append(ba.V, byte(n))
+			return object.None, nil
+		}}, true
+	case "extend":
+		return &object.BuiltinFunc{Name: "extend", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if bb, ok := bytesBytesOrArray(a[0]); ok {
+				ba.V = append(ba.V, bb...)
+				return object.None, nil
+			}
+			items, err := iterate(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			for _, x := range items {
+				n, ok := toInt64(x)
+				if !ok || n < 0 || n > 255 {
+					return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
+				}
+				ba.V = append(ba.V, byte(n))
+			}
+			return object.None, nil
+		}}, true
+	case "pop":
+		return &object.BuiltinFunc{Name: "pop", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			idx := len(ba.V) - 1
+			if len(a) > 0 {
+				n, ok := toInt64(a[0])
+				if !ok {
+					return nil, object.Errorf(ii.(*Interp).typeErr, "bytearray indices must be integers")
+				}
+				idx = int(n)
+				if idx < 0 {
+					idx += len(ba.V)
+				}
+			}
+			if idx < 0 || idx >= len(ba.V) {
+				return nil, object.Errorf(ii.(*Interp).indexErr, "pop from empty bytearray")
+			}
+			v := ba.V[idx]
+			ba.V = append(ba.V[:idx], ba.V[idx+1:]...)
+			return object.NewInt(int64(v)), nil
+		}}, true
+	case "decode":
+		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: string(ba.V)}, nil
+		}}, true
+	case "hex":
+		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			const digits = "0123456789abcdef"
+			buf := make([]byte, 0, 2*len(ba.V))
+			for _, c := range ba.V {
+				buf = append(buf, digits[c>>4], digits[c&0xf])
+			}
+			return &object.Str{V: string(buf)}, nil
+		}}, true
+	}
+	return nil, false
+}
+
 func setMethod(s *object.Set, name string) (object.Object, bool) {
 	switch name {
 	case "add":

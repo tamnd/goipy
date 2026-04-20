@@ -63,6 +63,9 @@ func (s *Str) Runes() []rune {
 // Bytes.
 type Bytes struct{ V []byte }
 
+// Bytearray is Python's mutable bytes.
+type Bytearray struct{ V []byte }
+
 // Tuple is immutable.
 type Tuple struct{ V []Object }
 
@@ -228,6 +231,8 @@ func TypeName(o Object) string {
 		return "str"
 	case *Bytes:
 		return "bytes"
+	case *Bytearray:
+		return "bytearray"
 	case *Tuple:
 		return "tuple"
 	case *List:
