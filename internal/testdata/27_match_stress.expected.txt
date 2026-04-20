@@ -1,0 +1,15 @@
+origin
+y-axis at 5
+x-axis at 5
+diagonal 3
+point 1,2
+origin circle r=10
+circle@(4,5) r=2
+?
+small
+big
+mid
+list12+[3, 4]
+tag-x more=[('a', 1), ('b', 2)]
+other
+other
