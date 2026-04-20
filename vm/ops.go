@@ -564,7 +564,9 @@ func formatValue(v object.Object, spec string) (string, error) {
 		sign = s[0]
 		s = s[1:]
 	}
+	altForm := false
 	if len(s) > 0 && s[0] == '#' {
+		altForm = true
 		s = s[1:]
 	}
 	if len(s) > 0 && s[0] == '0' {
@@ -579,9 +581,9 @@ func formatValue(v object.Object, spec string) (string, error) {
 		width = width*10 + int(s[0]-'0')
 		s = s[1:]
 	}
-	comma := false
-	if len(s) > 0 && s[0] == ',' {
-		comma = true
+	group := byte(0)
+	if len(s) > 0 && (s[0] == ',' || s[0] == '_') {
+		group = s[0]
 		s = s[1:]
 	}
 	if len(s) > 0 && s[0] == '.' {
@@ -597,60 +599,138 @@ func formatValue(v object.Object, spec string) (string, error) {
 	}
 
 	var body string
+	zeroPadHandled := false
 	switch x := v.(type) {
 	case *object.Int:
-		switch typ {
+		it := typ
+		if it == 'n' {
+			it = 'd'
+		}
+		absV := new(big.Int).Abs(x.V)
+		var prefix, digits string
+		switch it {
 		case 'b':
-			body = x.V.Text(2)
+			digits = absV.Text(2)
+			if altForm {
+				prefix = "0b"
+			}
 		case 'o':
-			body = x.V.Text(8)
+			digits = absV.Text(8)
+			if altForm {
+				prefix = "0o"
+			}
 		case 'x':
-			body = x.V.Text(16)
+			digits = absV.Text(16)
+			if altForm {
+				prefix = "0x"
+			}
 		case 'X':
-			body = strings.ToUpper(x.V.Text(16))
+			digits = strings.ToUpper(absV.Text(16))
+			if altForm {
+				prefix = "0X"
+			}
+		case 'c':
+			cp := absV.Int64()
+			body = string(rune(cp))
 		case 'd', 0:
-			body = x.V.String()
+			digits = absV.String()
 		case 'f', 'F':
 			fv, _ := new(big.Float).SetInt(x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6
 			}
-			body = strconv.FormatFloat(fv, 'f', p, 64)
+			digits = strconv.FormatFloat(fv, 'f', p, 64)
 		case 'e', 'E':
 			fv, _ := new(big.Float).SetInt(x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6
 			}
-			body = strconv.FormatFloat(fv, byte(typ), p, 64)
+			digits = strconv.FormatFloat(fv, byte(it), p, 64)
 		default:
-			body = x.V.String()
+			digits = absV.String()
 		}
-		if comma && (typ == 0 || typ == 'd') {
-			body = addThousands(body)
+		if it == 'c' {
+			// no sign/prefix/group
+		} else {
+			var signHead string
+			switch {
+			case x.V.Sign() < 0:
+				signHead = "-"
+			case sign == '+':
+				signHead = "+"
+			case sign == ' ':
+				signHead = " "
+			}
+			head := signHead + prefix
+			grouped := group != 0 && (it == 0 || it == 'd' || it == 'b' || it == 'o' || it == 'x' || it == 'X')
+			stride := 3
+			if it == 'b' || it == 'o' || it == 'x' || it == 'X' {
+				stride = 4
+			}
+			if align == '=' && fill == '0' && width > len(head)+len(digits) {
+				target := width - len(head)
+				if grouped {
+					d := len(digits)
+					for d+(d-1)/stride < target {
+						d++
+					}
+					if d > len(digits) {
+						digits = strings.Repeat("0", d-len(digits)) + digits
+					}
+					digits = addGroups(digits, group, stride)
+					if len(digits) < target {
+						digits = strings.Repeat("0", target-len(digits)) + digits
+					}
+				} else {
+					digits = strings.Repeat("0", target-len(digits)) + digits
+				}
+				body = head + digits
+				zeroPadHandled = true
+			} else {
+				if grouped {
+					digits = addGroups(digits, group, stride)
+				}
+				body = head + digits
+			}
 		}
-		body = applySign(body, sign, x.V.Sign())
 	case *object.Float:
 		p := precision
 		ft := typ
 		if ft == 0 {
 			ft = 'g'
 		}
+		if ft == 'n' {
+			ft = 'g'
+		}
+		pct := false
+		if ft == '%' {
+			ft = 'f'
+			pct = true
+		}
 		if p < 0 {
 			p = 6
 		}
-		if ft == 'g' || ft == 'G' {
-			if precision < 0 {
-				p = 6
-			}
+		fv := x.V
+		if pct {
+			fv *= 100
 		}
-		body = strconv.FormatFloat(x.V, ft, p, 64)
+		body = strconv.FormatFloat(fv, ft, p, 64)
+		if altForm && (ft == 'g' || ft == 'G') {
+			body = padGTrailingZeros(body, p)
+		}
+		if pct {
+			body += "%"
+		}
 		signV := 0
 		if x.V > 0 {
 			signV = 1
 		} else if x.V < 0 {
 			signV = -1
+		}
+		if group != 0 {
+			body = applyFloatGroup(body, group)
 		}
 		body = applySign(body, sign, signV)
 	case *object.Str:
@@ -662,6 +742,9 @@ func formatValue(v object.Object, spec string) (string, error) {
 		body = object.Str_(v)
 	}
 
+	if zeroPadHandled {
+		return body, nil
+	}
 	if width > len(body) {
 		pad := width - len(body)
 		padStr := strings.Repeat(string(fill), pad)
@@ -685,28 +768,31 @@ func formatValue(v object.Object, spec string) (string, error) {
 	return body, nil
 }
 
-func addThousands(s string) string {
+// addGroups inserts sep every `stride` digits from the right of the digit
+// portion of s. s may have an optional leading '-' sign; any non-digit prefix
+// (e.g. 0x) should not be passed in.
+func addGroups(s string, sep byte, stride int) string {
 	neg := false
 	if len(s) > 0 && s[0] == '-' {
 		neg = true
 		s = s[1:]
 	}
 	n := len(s)
-	if n <= 3 {
+	if n <= stride {
 		if neg {
 			return "-" + s
 		}
 		return s
 	}
 	var b strings.Builder
-	first := n % 3
+	first := n % stride
 	if first == 0 {
-		first = 3
+		first = stride
 	}
 	b.WriteString(s[:first])
-	for j := first; j < n; j += 3 {
-		b.WriteByte(',')
-		b.WriteString(s[j : j+3])
+	for j := first; j < n; j += stride {
+		b.WriteByte(sep)
+		b.WriteString(s[j : j+stride])
 	}
 	if neg {
 		return "-" + b.String()
@@ -714,14 +800,91 @@ func addThousands(s string) string {
 	return b.String()
 }
 
-func applySign(body string, sign byte, signV int) string {
-	if signV >= 0 {
-		switch sign {
-		case '+':
-			return "+" + body
-		case ' ':
-			return " " + body
+// padGTrailingZeros expands a 'g'/'G'-formatted float to carry its full
+// significant-digit precision, matching CPython's alt-form `#g` behavior.
+// The mantissa is padded with trailing zeros so it has exactly `prec`
+// significant digits, and a trailing "." is added if no decimal exists.
+func padGTrailingZeros(s string, prec int) string {
+	if prec <= 0 {
+		prec = 1
+	}
+	sign := ""
+	if len(s) > 0 && (s[0] == '-' || s[0] == '+') {
+		sign = string(s[0])
+		s = s[1:]
+	}
+	mantissa, exp := s, ""
+	if k := strings.IndexAny(s, "eE"); k >= 0 {
+		mantissa, exp = s[:k], s[k:]
+	}
+	sig := 0
+	seenNonZero := false
+	for k := 0; k < len(mantissa); k++ {
+		c := mantissa[k]
+		if c == '.' {
+			continue
 		}
+		if c >= '1' && c <= '9' {
+			seenNonZero = true
+			sig++
+		} else if c == '0' && seenNonZero {
+			sig++
+		}
+	}
+	need := prec - sig
+	if need < 0 {
+		need = 0
+	}
+	if !strings.Contains(mantissa, ".") && need > 0 {
+		mantissa += "."
+	} else if !strings.Contains(mantissa, ".") && exp == "" {
+		// alt form requires a trailing decimal point even if full precision.
+		mantissa += "."
+	}
+	if need > 0 {
+		mantissa += strings.Repeat("0", need)
+	}
+	return sign + mantissa + exp
+}
+
+// applyFloatGroup inserts group separators into the integer portion of a
+// formatted float body, preserving any fractional/exponent tail and the
+// optional leading sign.
+func applyFloatGroup(body string, sep byte) string {
+	neg := false
+	s := body
+	if len(s) > 0 && s[0] == '-' {
+		neg = true
+		s = s[1:]
+	}
+	end := len(s)
+	for k := 0; k < len(s); k++ {
+		if s[k] == '.' || s[k] == 'e' || s[k] == 'E' {
+			end = k
+			break
+		}
+	}
+	intPart := s[:end]
+	tail := s[end:]
+	out := addGroups(intPart, sep, 3) + tail
+	if neg {
+		return "-" + out
+	}
+	return out
+}
+
+func applySign(body string, sign byte, signV int) string {
+	if len(body) > 0 && body[0] == '-' {
+		return body
+	}
+	if signV < 0 {
+		return "-" + body
+	}
+	switch sign {
+	case '+':
+		return "+" + body
+	case ' ':
+		return " " + body
 	}
 	return body
 }
