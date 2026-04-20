@@ -918,15 +918,45 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.push(&object.Str{V: s})
 
-		// --- import (very limited) ---
+		// --- import (minimal, registry-based) ---
 		case op.IMPORT_NAME:
 			name := f.Code.Names[oparg]
 			f.pop() // fromlist
 			f.pop() // level
-			return nil, object.Errorf(i.importErr, "import not supported: %s", name)
+			mod, ierr := i.importModule(name)
+			if ierr != nil {
+				err = ierr
+				goto handleErr
+			}
+			f.push(mod)
 		case op.IMPORT_FROM:
 			name := f.Code.Names[oparg]
-			return nil, object.Errorf(i.importErr, "import not supported: %s", name)
+			mod := f.top()
+			m, ok := mod.(*object.Module)
+			if !ok {
+				err = object.Errorf(i.importErr, "IMPORT_FROM: not a module")
+				goto handleErr
+			}
+			v, ok := m.Dict.GetStr(name)
+			if !ok {
+				err = object.Errorf(i.importErr, "cannot import name '%s' from '%s'", name, m.Name)
+				goto handleErr
+			}
+			f.push(v)
+
+		// --- async ---
+		case op.GET_AWAITABLE:
+			// For our purposes, Generator/Coroutine/Iter are already
+			// awaitable; pass them through. Anything else must expose
+			// __await__() (not implemented).
+			v := f.top()
+			switch v.(type) {
+			case *object.Generator, *object.Iter:
+				// already awaitable
+			default:
+				err = object.Errorf(i.typeErr, "object %s can't be used in 'await' expression", object.TypeName(v))
+				goto handleErr
+			}
 
 		// --- exceptions ---
 		case op.RAISE_VARARGS:

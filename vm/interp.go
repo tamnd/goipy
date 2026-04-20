@@ -37,6 +37,10 @@ type Interp struct {
 
 	MaxDepth  int
 	callDepth int
+
+	// modules is the minimal sys.modules equivalent used by IMPORT_NAME
+	// until the full import machinery lands in PR #7.
+	modules map[string]*object.Module
 }
 
 // New builds a fresh interpreter.
