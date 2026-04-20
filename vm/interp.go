@@ -38,9 +38,14 @@ type Interp struct {
 	MaxDepth  int
 	callDepth int
 
-	// modules is the minimal sys.modules equivalent used by IMPORT_NAME
-	// until the full import machinery lands in PR #7.
+	// modules is the sys.modules equivalent used by IMPORT_NAME.
 	modules map[string]*object.Module
+
+	// SearchPath is the list of directories searched for `.pyc` files when
+	// resolving `import <name>`. The main entry point typically seeds this
+	// with the directory of the script being executed. Built-in modules
+	// (e.g. asyncio) resolve before the search path is consulted.
+	SearchPath []string
 }
 
 // New builds a fresh interpreter.
