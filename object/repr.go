@@ -76,6 +76,19 @@ func Repr(o Object) string {
 		return "<module '" + v.Name + "'>"
 	case *Slice:
 		return "slice(" + Repr(v.Start) + ", " + Repr(v.Stop) + ", " + Repr(v.Step) + ")"
+	case *Exception:
+		name := "Exception"
+		if v.Class != nil {
+			name = v.Class.Name
+		}
+		if v.Args == nil || len(v.Args.V) == 0 {
+			return name + "()"
+		}
+		parts := make([]string, len(v.Args.V))
+		for i, x := range v.Args.V {
+			parts[i] = Repr(x)
+		}
+		return name + "(" + strings.Join(parts, ", ") + ")"
 	}
 	return "<?>"
 }
@@ -88,6 +101,15 @@ func Str_(o Object) string {
 	case *Bytes:
 		// str(b'...') returns the repr in Python, but we'll be lenient.
 		return "b" + strconv.Quote(string(v.V))
+	case *Exception:
+		// str(exc): single arg → that arg's str; no args → empty; many → tuple repr.
+		if v.Args == nil || len(v.Args.V) == 0 {
+			return ""
+		}
+		if len(v.Args.V) == 1 {
+			return Str_(v.Args.V[0])
+		}
+		return Repr(v.Args)
 	}
 	return Repr(o)
 }

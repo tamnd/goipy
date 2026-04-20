@@ -208,7 +208,13 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 		}
 		return nil, object.Errorf(i.typeErr, "expected list")
 	case op.INTRINSIC_STOPITERATION_ERROR:
-		return nil, object.Errorf(i.stopIter, "")
+		// PEP 479: if a generator body lets a StopIteration leak, convert
+		// it to RuntimeError. Any other exception passes through untouched
+		// for the following RERAISE to propagate.
+		if exc, ok := v.(*object.Exception); ok && object.IsSubclass(exc.Class, i.stopIter) {
+			return object.NewException(i.runtimeErr, "generator raised StopIteration"), nil
+		}
+		return v, nil
 	}
 	return nil, object.Errorf(i.notImpl, "intrinsic %d not implemented", idx)
 }
