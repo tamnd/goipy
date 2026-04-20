@@ -1,0 +1,10 @@
+_40pkg
+hi-from-a
+hi-from-a
+hi-from-a|_40pkg|25
+True
+True
+_40pkg.a.b
+True
+missing-name: cannot import name 'nope' from '_40pkg.a.helper'
+missing-module: No module named '_40pkg.a.does_not_exist'
