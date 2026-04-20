@@ -918,12 +918,20 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.push(&object.Str{V: s})
 
-		// --- import (minimal, registry-based) ---
+		// --- import ---
 		case op.IMPORT_NAME:
 			name := f.Code.Names[oparg]
-			f.pop() // fromlist
-			f.pop() // level
-			mod, ierr := i.importModule(name)
+			fromlist := f.pop()
+			levelObj := f.pop()
+			level := 0
+			if l, ok := levelObj.(*object.Int); ok {
+				level = int(l.V.Int64())
+			}
+			var fl *object.Tuple
+			if t, ok := fromlist.(*object.Tuple); ok {
+				fl = t
+			}
+			mod, ierr := i.importName(name, f.Globals, fl, level)
 			if ierr != nil {
 				err = ierr
 				goto handleErr
@@ -937,12 +945,20 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				err = object.Errorf(i.importErr, "IMPORT_FROM: not a module")
 				goto handleErr
 			}
-			v, ok := m.Dict.GetStr(name)
-			if !ok {
-				err = object.Errorf(i.importErr, "cannot import name '%s' from '%s'", name, m.Name)
-				goto handleErr
+			if v, ok := m.Dict.GetStr(name); ok {
+				f.push(v)
+				break
 			}
-			f.push(v)
+			// Fall back to loading `m.name` as a submodule: `from pkg import sub`
+			// where `sub` has not been touched yet.
+			if isPackage(m) {
+				if sub, lerr := i.loadModule(m.Name + "." + name); lerr == nil {
+					f.push(sub)
+					break
+				}
+			}
+			err = object.Errorf(i.importErr, "cannot import name '%s' from '%s'", name, m.Name)
+			goto handleErr
 
 		// --- async ---
 		case op.GET_AWAITABLE:
