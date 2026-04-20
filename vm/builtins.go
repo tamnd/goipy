@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -339,8 +340,30 @@ func (i *Interp) initBuiltins() {
 				return object.NewInt(1), nil
 			}
 			return object.NewInt(0), nil
+		case *object.Complex:
+			return &object.Float{V: math.Hypot(v.Real, v.Imag)}, nil
 		}
 		return nil, object.Errorf(ii.(*Interp).typeErr, "bad abs() arg")
+	}})
+	b.SetStr("complex", &object.BuiltinFunc{Name: "complex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		re, im := 0.0, 0.0
+		if len(a) >= 1 {
+			r, i2, ok := asComplex(a[0])
+			if !ok {
+				return nil, object.Errorf(in.typeErr, "complex() first argument must be a number, not '%s'", object.TypeName(a[0]))
+			}
+			re, im = r, i2
+		}
+		if len(a) >= 2 {
+			br, bi, ok := asComplex(a[1])
+			if !ok {
+				return nil, object.Errorf(in.typeErr, "complex() second argument must be a number, not '%s'", object.TypeName(a[1]))
+			}
+			// complex(r, i): result is (r.real - i.imag) + (r.imag + i.real)j
+			re, im = re-bi, im+br
+		}
+		return &object.Complex{Real: re, Imag: im}, nil
 	}})
 	b.SetStr("min", &object.BuiltinFunc{Name: "min", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return reduceMinMax(ii.(*Interp), a, true)

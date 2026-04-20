@@ -44,6 +44,34 @@ func (i *Interp) binaryOp(a, b object.Object, nb uint32) (object.Object, error) 
 
 // --- arithmetic ---
 
+// asComplex coerces a numeric scalar to a Complex value. Returns ok=false
+// for non-numeric objects.
+func asComplex(o object.Object) (re, im float64, ok bool) {
+	switch v := o.(type) {
+	case *object.Bool:
+		if v.V {
+			return 1, 0, true
+		}
+		return 0, 0, true
+	case *object.Int:
+		f, _ := new(big.Float).SetInt(v.V).Float64()
+		return f, 0, true
+	case *object.Float:
+		return v.V, 0, true
+	case *object.Complex:
+		return v.Real, v.Imag, true
+	}
+	return 0, 0, false
+}
+
+// complexResult returns a Complex unless the imaginary part is exactly
+// zero and neither input was already a Complex — in which case callers
+// prefer the plain int/float result.
+func isComplex(o object.Object) bool {
+	_, ok := o.(*object.Complex)
+	return ok
+}
+
 func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok bool) {
 	switch v := o.(type) {
 	case *object.Bool:
@@ -92,6 +120,14 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 			return &object.Tuple{V: out}, nil
 		}
 	}
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for +: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+		}
+		return &object.Complex{Real: ar + br, Imag: ai2 + bi2}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -105,6 +141,14 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) sub(a, b object.Object) (object.Object, error) {
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for -: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+		}
+		return &object.Complex{Real: ar - br, Imag: ai2 - bi2}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -151,6 +195,14 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 			return &object.Tuple{V: repeatSlice(ta.V, int(n))}, nil
 		}
 	}
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for *: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
+		}
+		return &object.Complex{Real: ar*br - ai2*bi2, Imag: ar*bi2 + ai2*br}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -163,6 +215,21 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for /")
+		}
+		denom := br*br + bi2*bi2
+		if denom == 0 {
+			return nil, object.Errorf(i.zeroDivErr, "complex division by zero")
+		}
+		return &object.Complex{
+			Real: (ar*br + ai2*bi2) / denom,
+			Imag: (ai2*br - ar*bi2) / denom,
+		}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -225,6 +292,15 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) pow(a, b object.Object) (object.Object, error) {
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for **")
+		}
+		r, im := complexPow(ar, ai2, br, bi2)
+		return &object.Complex{Real: r, Imag: im}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -234,6 +310,25 @@ func (i *Interp) pow(a, b object.Object) (object.Object, error) {
 		return &object.Float{V: math.Pow(toFloat(ai, af, aF), toFloat(bi, bf, bF))}, nil
 	}
 	return &object.Int{V: new(big.Int).Exp(ai, bi, nil)}, nil
+}
+
+// complexPow is a|b for complex numbers using the standard polar
+// formulation. 0**0 == 1+0j to match CPython.
+func complexPow(ar, ai, br, bi float64) (float64, float64) {
+	if br == 0 && bi == 0 {
+		return 1, 0
+	}
+	if ar == 0 && ai == 0 {
+		return 0, 0
+	}
+	r := math.Hypot(ar, ai)
+	theta := math.Atan2(ai, ar)
+	logR := math.Log(r)
+	// exponent applied in log-polar space
+	lnRe := br*logR - bi*theta
+	lnIm := br*theta + bi*logR
+	mag := math.Exp(lnRe)
+	return mag * math.Cos(lnIm), mag * math.Sin(lnIm)
 }
 
 func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {

@@ -106,6 +106,8 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 		return &object.Int{V: new(big.Int).Neg(x.V)}, nil
 	case *object.Float:
 		return &object.Float{V: -x.V}, nil
+	case *object.Complex:
+		return &object.Complex{Real: -x.Real, Imag: -x.Imag}, nil
 	}
 	return nil, object.Errorf(i.typeErr, "bad operand for unary -: '%s'", object.TypeName(v))
 }
@@ -162,6 +164,18 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	if g, ok := o.(*object.Generator); ok {
 		if m, ok := i.genMethod(g, name); ok {
 			return m, nil
+		}
+	}
+	if c, ok := o.(*object.Complex); ok {
+		switch name {
+		case "real":
+			return &object.Float{V: c.Real}, nil
+		case "imag":
+			return &object.Float{V: c.Imag}, nil
+		case "conjugate":
+			return &object.BuiltinFunc{Name: "conjugate", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+				return &object.Complex{Real: c.Real, Imag: -c.Imag}, nil
+			}}, nil
 		}
 	}
 	// Class attr lookup on instance

@@ -43,6 +43,9 @@ func NewInt(n int64) *Int { return &Int{V: big.NewInt(n)} }
 // Float.
 type Float struct{ V float64 }
 
+// Complex is Python's complex number, a pair of IEEE-754 doubles.
+type Complex struct{ Real, Imag float64 }
+
 // Str holds a UTF-8 string. Indexing is by rune; we cache the rune slice on
 // first indexed access.
 type Str struct {
@@ -210,6 +213,8 @@ func TypeName(o Object) string {
 		return "int"
 	case *Float:
 		return "float"
+	case *Complex:
+		return "complex"
 	case *Str:
 		return "str"
 	case *Bytes:

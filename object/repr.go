@@ -23,6 +23,8 @@ func Repr(o Object) string {
 		return v.V.String()
 	case *Float:
 		return formatFloat(v.V)
+	case *Complex:
+		return formatComplex(v.Real, v.Imag)
 	case *Str:
 		return pyStrRepr(v.V)
 	case *Bytes:
@@ -112,6 +114,41 @@ func Str_(o Object) string {
 		return Repr(v.Args)
 	}
 	return Repr(o)
+}
+
+// formatComplex renders a Python-style complex repr:
+//   - bare imag form when real is +0.0 (e.g. "2j", "0j")
+//   - parenthesised "(r+ij)" / "(r-ij)" otherwise, including signed-zero
+//     real like "(-0-2j)".
+func formatComplex(re, im float64) string {
+	if re == 0 && !isNegZero(re) {
+		return formatComplexComponent(im) + "j"
+	}
+	sign := "+"
+	imStr := formatComplexComponent(im)
+	if len(imStr) > 0 && imStr[0] == '-' {
+		sign = "-"
+		imStr = imStr[1:]
+	}
+	return "(" + formatComplexComponent(re) + sign + imStr + "j)"
+}
+
+func formatComplexComponent(f float64) string {
+	if math.IsInf(f, 1) {
+		return "inf"
+	}
+	if math.IsInf(f, -1) {
+		return "-inf"
+	}
+	if math.IsNaN(f) {
+		return "nan"
+	}
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	return s
+}
+
+func isNegZero(f float64) bool {
+	return f == 0 && math.Signbit(f)
 }
 
 func formatFloat(f float64) string {
