@@ -878,11 +878,12 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				f.push(val)
 				f.push(self)
 			} else {
-				if fn, ok := val.(*object.Function); ok {
-					f.push(&object.BoundMethod{Self: self, Fn: fn})
-				} else {
-					f.push(val)
+				bound, berr := i.bindDescriptor(val, inst, inst.Class)
+				if berr != nil {
+					err = berr
+					goto handleErr
 				}
+				f.push(bound)
 			}
 		case op.LOAD_SPECIAL:
 			// oparg: 0=__enter__ 1=__exit__ 2=__aenter__ 3=__aexit__

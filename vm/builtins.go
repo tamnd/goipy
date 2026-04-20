@@ -505,7 +505,15 @@ func (i *Interp) initBuiltins() {
 		return object.BoolOf(object.IsSubclass(ca, cb)), nil
 	}})
 	b.SetStr("type", &object.BuiltinFunc{Name: "type", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		return &object.Str{V: object.TypeName(a[0])}, nil
+		if inst, ok := a[0].(*object.Instance); ok {
+			return inst.Class, nil
+		}
+		if exc, ok := a[0].(*object.Exception); ok {
+			return exc.Class, nil
+		}
+		// Fallback: synthesize a bare class with just the name; good enough
+		// for `type(x).__name__` on builtin types.
+		return &object.Class{Name: object.TypeName(a[0]), Dict: object.NewDict()}, nil
 	}})
 	b.SetStr("id", &object.BuiltinFunc{Name: "id", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.NewInt(int64(fmt.Sprintf("%p", a[0])[2] ^ 0x42)), nil
@@ -605,6 +613,25 @@ func (i *Interp) initBuiltins() {
 		_, err := ii.(*Interp).getAttr(a[0], a[1].(*object.Str).V)
 		return object.BoolOf(err == nil), nil
 	}})
+	b.SetStr("property", &object.BuiltinFunc{Name: "property", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		p := &object.Property{}
+		if len(a) > 0 {
+			p.Fget = a[0]
+		}
+		if len(a) > 1 {
+			p.Fset = a[1]
+		}
+		if len(a) > 2 {
+			p.Fdel = a[2]
+		}
+		return p, nil
+	}})
+	b.SetStr("classmethod", &object.BuiltinFunc{Name: "classmethod", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.ClassMethod{Fn: a[0]}, nil
+	}})
+	b.SetStr("staticmethod", &object.BuiltinFunc{Name: "staticmethod", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.StaticMethod{Fn: a[0]}, nil
+	}})
 	// super is a stub — LOAD_SUPER_ATTR handles the real work by receiving
 	// (super, __class__, self) on the stack.
 	b.SetStr("super", &object.BuiltinFunc{Name: "super", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -647,6 +674,13 @@ func (i *Interp) initBuiltins() {
 			return nil, err
 		}
 		cls := &object.Class{Name: name, Bases: bases, Dict: ns}
+		// Populate __class__ cell so zero-arg super() in methods resolves.
+		if v, ok := ns.GetStr("__classcell__"); ok {
+			if c, ok := v.(*object.Cell); ok {
+				c.V = cls
+				c.Set = true
+			}
+		}
 		return cls, nil
 	}})
 }
