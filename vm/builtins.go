@@ -123,7 +123,19 @@ func (i *Interp) initBuiltins() {
 		if n, ok := toInt64(a[0]); ok {
 			return &object.Bytes{V: make([]byte, n)}, nil
 		}
-		return nil, object.Errorf(ii.(*Interp).typeErr, "bytes() only supports int size")
+		items, err := iterate(ii.(*Interp), a[0])
+		if err != nil {
+			return nil, err
+		}
+		out := make([]byte, len(items))
+		for k, x := range items {
+			n, ok := toInt64(x)
+			if !ok || n < 0 || n > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "bytes must be in range(0, 256)")
+			}
+			out[k] = byte(n)
+		}
+		return &object.Bytes{V: out}, nil
 	}})
 	b.SetStr("list", &object.BuiltinFunc{Name: "list", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {

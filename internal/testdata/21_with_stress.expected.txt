@@ -1,0 +1,8 @@
+a ['enter', ('exit', None)]
+b ['enter', ('exit', None)]
+c ['enter', ('exit', None)] d ['enter', ('exit', None)]
+outer ['enter', ('exit', 'ValueError')]
+inner ['enter', ('exit', 'ValueError')]
+caught boom
+ret 42
+e ['enter', ('exit', None)]
