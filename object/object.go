@@ -167,6 +167,9 @@ type Slice struct{ Start, Stop, Step Object }
 type Module struct {
 	Name string
 	Dict *Dict
+	// Path is the filesystem path of the .pyc the module was loaded
+	// from, or "" for built-in modules. Used by importlib.reload.
+	Path string
 }
 
 // Class is a minimal user-defined class object.

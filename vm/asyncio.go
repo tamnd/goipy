@@ -9,6 +9,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 	switch name {
 	case "asyncio":
 		return i.buildAsyncio(), true
+	case "importlib":
+		return i.buildImportlib(), true
 	}
 	return nil, false
 }
