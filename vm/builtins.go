@@ -46,6 +46,8 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("None", object.None)
 	b.SetStr("True", object.True)
 	b.SetStr("False", object.False)
+	b.SetStr("Ellipsis", object.Ellipsis)
+	b.SetStr("NotImplemented", object.NotImplemented)
 
 	// Constructors / types.
 	b.SetStr("int", &object.BuiltinFunc{Name: "int", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -375,6 +377,83 @@ func (i *Interp) initBuiltins() {
 			return nil, object.Errorf(in.stopIter, "")
 		}
 		return v, nil
+	}})
+	b.SetStr("pow", &object.BuiltinFunc{Name: "pow", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) < 2 || len(a) > 3 {
+			return nil, object.Errorf(in.typeErr, "pow() takes 2 or 3 arguments")
+		}
+		if len(a) == 3 {
+			// 3-arg form: integers only, modular exponentiation.
+			base, ok1 := toBigInt(a[0])
+			exp, ok2 := toBigInt(a[1])
+			mod, ok3 := toBigInt(a[2])
+			if !ok1 || !ok2 || !ok3 {
+				return nil, object.Errorf(in.typeErr, "pow() 3rd argument requires integers")
+			}
+			if mod.Sign() == 0 {
+				return nil, object.Errorf(in.valueErr, "pow() 3rd argument cannot be 0")
+			}
+			return &object.Int{V: new(big.Int).Exp(base, exp, mod)}, nil
+		}
+		return in.pow(a[0], a[1])
+	}})
+	b.SetStr("format", &object.BuiltinFunc{Name: "format", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 1 {
+			return &object.Str{V: object.Str_(a[0])}, nil
+		}
+		spec, _ := a[1].(*object.Str)
+		if spec == nil || spec.V == "" {
+			return &object.Str{V: object.Str_(a[0])}, nil
+		}
+		s, err := formatValue(a[0], spec.V)
+		if err != nil {
+			return nil, err
+		}
+		return &object.Str{V: s}, nil
+	}})
+	b.SetStr("ascii", &object.BuiltinFunc{Name: "ascii", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.Str{V: asciiRepr(a[0])}, nil
+	}})
+	b.SetStr("slice", &object.BuiltinFunc{Name: "slice", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		switch len(a) {
+		case 1:
+			return &object.Slice{Start: object.None, Stop: a[0], Step: object.None}, nil
+		case 2:
+			return &object.Slice{Start: a[0], Stop: a[1], Step: object.None}, nil
+		case 3:
+			return &object.Slice{Start: a[0], Stop: a[1], Step: a[2]}, nil
+		}
+		return nil, object.Errorf(ii.(*Interp).typeErr, "slice expected 1..3 arguments")
+	}})
+	b.SetStr("dir", &object.BuiltinFunc{Name: "dir", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.List{V: dirOf(a)}, nil
+	}})
+	b.SetStr("delattr", &object.BuiltinFunc{Name: "delattr", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		name, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(in.typeErr, "delattr: attribute name must be string")
+		}
+		var d *object.Dict
+		switch obj := a[0].(type) {
+		case *object.Instance:
+			d = obj.Dict
+		case *object.Class:
+			d = obj.Dict
+		case *object.Module:
+			d = obj.Dict
+		default:
+			return nil, object.Errorf(in.attrErr, "'%s' object has no attribute '%s'", object.TypeName(a[0]), name.V)
+		}
+		ok2, err := d.Delete(&object.Str{V: name.V})
+		if err != nil {
+			return nil, err
+		}
+		if !ok2 {
+			return nil, object.Errorf(in.attrErr, "%s", name.V)
+		}
+		return object.None, nil
 	}})
 	b.SetStr("abs", &object.BuiltinFunc{Name: "abs", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		switch v := a[0].(type) {
@@ -861,4 +940,97 @@ func isinstance(o, t object.Object) bool {
 		return matchBuiltinType(o, bf.Name)
 	}
 	return false
+}
+
+// asciiRepr returns Repr(o) with any non-ASCII character escaped as \xHH or
+// \uHHHH. Mirrors Python's ascii() builtin.
+func asciiRepr(o object.Object) string {
+	r := object.Repr(o)
+	var buf strings.Builder
+	for _, c := range r {
+		switch {
+		case c < 0x80:
+			buf.WriteRune(c)
+		case c <= 0xff:
+			fmt.Fprintf(&buf, "\\x%02x", c)
+		case c <= 0xffff:
+			fmt.Fprintf(&buf, "\\u%04x", c)
+		default:
+			fmt.Fprintf(&buf, "\\U%08x", c)
+		}
+	}
+	return buf.String()
+}
+
+// dirOf returns a sorted list of attribute names for an object. With no
+// argument, returns the empty list (we don't expose the caller's frame).
+func dirOf(args []object.Object) []object.Object {
+	if len(args) == 0 {
+		return nil
+	}
+	var names []string
+	switch v := args[0].(type) {
+	case *object.Module:
+		keys, _ := v.Dict.Items()
+		for _, k := range keys {
+			if s, ok := k.(*object.Str); ok {
+				names = append(names, s.V)
+			}
+		}
+	case *object.Instance:
+		keys, _ := v.Dict.Items()
+		for _, k := range keys {
+			if s, ok := k.(*object.Str); ok {
+				names = append(names, s.V)
+			}
+		}
+		for c := v.Class; c != nil; {
+			keys, _ := c.Dict.Items()
+			for _, k := range keys {
+				if s, ok := k.(*object.Str); ok {
+					names = append(names, s.V)
+				}
+			}
+			if len(c.Bases) == 0 {
+				break
+			}
+			c = c.Bases[0]
+		}
+	case *object.Class:
+		keys, _ := v.Dict.Items()
+		for _, k := range keys {
+			if s, ok := k.(*object.Str); ok {
+				names = append(names, s.V)
+			}
+		}
+	case *object.Dict:
+		keys, _ := v.Items()
+		for _, k := range keys {
+			if s, ok := k.(*object.Str); ok {
+				names = append(names, s.V)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	out := []object.Object{}
+	sorted := make([]string, 0, len(names))
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			sorted = append(sorted, n)
+		}
+	}
+	sortStrings(sorted)
+	for _, n := range sorted {
+		out = append(out, &object.Str{V: n})
+	}
+	return out
+}
+
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
 }

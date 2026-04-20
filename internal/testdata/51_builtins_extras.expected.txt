@@ -1,0 +1,24 @@
+1024
+24
+5
+8.0
+1.4142135624
+ff
+3.14
+hi
+42
+'ab'
+'cafe'
+'caf\xe9'
+1 5 2
+[2, 4]
+bdf
+Ellipsis
+ellipsis
+True
+NotImplemented
+NotImplementedType
+True
+False
+['field', 'm']
+mod 0 rejected

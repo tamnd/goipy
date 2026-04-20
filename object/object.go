@@ -17,14 +17,24 @@ type Object = any
 
 // Singletons.
 var (
-	None  = &NoneType{}
-	True  = &Bool{V: true}
-	False = &Bool{V: false}
+	None          = &NoneType{}
+	True          = &Bool{V: true}
+	False         = &Bool{V: false}
+	Ellipsis      = &EllipsisType{}
+	NotImplemented = &NotImplementedType{}
 )
 
 type NoneType struct{}
 
 func (*NoneType) String() string { return "None" }
+
+type EllipsisType struct{}
+
+func (*EllipsisType) String() string { return "Ellipsis" }
+
+type NotImplementedType struct{}
+
+func (*NotImplementedType) String() string { return "NotImplemented" }
 
 type Bool struct{ V bool }
 
@@ -256,6 +266,10 @@ func TypeName(o Object) string {
 		return "NoneType"
 	case *NoneType:
 		return "NoneType"
+	case *EllipsisType:
+		return "ellipsis"
+	case *NotImplementedType:
+		return "NotImplementedType"
 	case *Bool:
 		return "bool"
 	case *Int:
