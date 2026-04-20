@@ -307,6 +307,16 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return a, nil
 		}
 	}
+	if sl, ok := o.(*object.Slice); ok {
+		switch name {
+		case "start":
+			return sl.Start, nil
+		case "stop":
+			return sl.Stop, nil
+		case "step":
+			return sl.Step, nil
+		}
+	}
 	if t, ok := o.(*object.Tuple); ok {
 		if m, ok := tupleMethod(t, name); ok {
 			return m, nil

@@ -14,6 +14,10 @@ func Repr(o Object) string {
 		return "None"
 	case *NoneType:
 		return "None"
+	case *EllipsisType:
+		return "Ellipsis"
+	case *NotImplementedType:
+		return "NotImplemented"
 	case *Bool:
 		if v.V {
 			return "True"

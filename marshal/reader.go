@@ -149,7 +149,7 @@ func (r *Reader) ReadObject() (object.Object, error) {
 	case TYPE_STOPITER:
 		return nil, errors.New("marshal: TYPE_STOPITER not supported")
 	case TYPE_ELLIPSIS:
-		return object.None, nil // we don't model Ellipsis separately
+		return object.Ellipsis, nil
 	case TYPE_INT:
 		v, err := r.readI32()
 		if err != nil {
