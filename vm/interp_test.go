@@ -32,6 +32,9 @@ func TestFixtures(t *testing.T) {
 			var buf bytes.Buffer
 			i := New()
 			i.Stdout = &buf
+			if dir, derr := filepath.Abs(filepath.Dir(pyc)); derr == nil {
+				i.SearchPath = []string{dir}
+			}
 			if _, err := i.Run(code); err != nil {
 				t.Fatalf("run: %v\noutput so far:\n%s", err, buf.String())
 			}

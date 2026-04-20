@@ -1,0 +1,10 @@
+hello
+5
+hello, world
+30
+hello, goipy
+6
+16
+16
+True
+[1, 2, 3]
