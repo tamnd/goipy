@@ -121,6 +121,14 @@ func (i *Interp) initBuiltins() {
 		if len(a) == 0 {
 			return &object.Bytes{V: nil}, nil
 		}
+		if mv, ok := a[0].(*object.Memoryview); ok {
+			return &object.Bytes{V: mv.Bytes()}, nil
+		}
+		if bb, ok := bytesBytesOrArray(a[0]); ok {
+			cp := make([]byte, len(bb))
+			copy(cp, bb)
+			return &object.Bytes{V: cp}, nil
+		}
 		if n, ok := toInt64(a[0]); ok {
 			return &object.Bytes{V: make([]byte, n)}, nil
 		}
@@ -137,6 +145,20 @@ func (i *Interp) initBuiltins() {
 			out[k] = byte(n)
 		}
 		return &object.Bytes{V: out}, nil
+	}})
+	b.SetStr("memoryview", &object.BuiltinFunc{Name: "memoryview", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "memoryview() takes exactly one argument")
+		}
+		switch src := a[0].(type) {
+		case *object.Bytes:
+			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: true}, nil
+		case *object.Bytearray:
+			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: false}, nil
+		case *object.Memoryview:
+			return src, nil
+		}
+		return nil, object.Errorf(ii.(*Interp).typeErr, "memoryview: a bytes-like object is required")
 	}})
 	b.SetStr("bytearray", &object.BuiltinFunc{Name: "bytearray", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {

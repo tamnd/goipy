@@ -30,6 +30,57 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 		return nil
 	case *object.Dict:
 		return c.Set(key, val)
+	case *object.Memoryview:
+		if c.Readonly {
+			return object.Errorf(i.typeErr, "cannot modify read-only memoryview")
+		}
+		buf := c.Buf()
+		if sl, ok := key.(*object.Slice); ok {
+			start, stop, step, err := i.resolveSlice(sl, len(buf))
+			if err != nil {
+				return err
+			}
+			if step != 1 {
+				return object.Errorf(i.valueErr, "memoryview extended slice assignment not supported")
+			}
+			src, ok := bytesBytesOrArray(val)
+			if !ok {
+				items, err := iterate(i, val)
+				if err != nil {
+					return err
+				}
+				src = make([]byte, len(items))
+				for k, x := range items {
+					n, ok := toInt64(x)
+					if !ok || n < 0 || n > 255 {
+						return object.Errorf(i.valueErr, "byte must be in range(0, 256)")
+					}
+					src[k] = byte(n)
+				}
+			}
+			if len(src) != stop-start {
+				return object.Errorf(i.valueErr, "memoryview assignment: lvalue and rvalue have different structures")
+			}
+			copy(buf[start:stop], src)
+			return nil
+		}
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "memoryview indices must be integers")
+		}
+		L := int64(len(buf))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "memoryview index out of range")
+		}
+		bv, ok := toInt64(val)
+		if !ok || bv < 0 || bv > 255 {
+			return object.Errorf(i.valueErr, "byte must be in range(0, 256)")
+		}
+		buf[n] = byte(bv)
+		return nil
 	case *object.Bytearray:
 		if sl, ok := key.(*object.Slice); ok {
 			return i.bytearraySetSlice(c, sl, val)
@@ -199,6 +250,8 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(len(x.V)), nil
 	case *object.Bytearray:
 		return int64(len(x.V)), nil
+	case *object.Memoryview:
+		return int64(x.Stop - x.Start), nil
 	case *object.List:
 		return int64(len(x.V)), nil
 	case *object.Tuple:
@@ -247,6 +300,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	if ba, ok := o.(*object.Bytearray); ok {
 		if m, ok := bytearrayMethod(ba, name); ok {
 			return m, nil
+		}
+	}
+	if mv, ok := o.(*object.Memoryview); ok {
+		if a, ok := memoryviewAttr(mv, name); ok {
+			return a, nil
 		}
 	}
 	if t, ok := o.(*object.Tuple); ok {
@@ -473,6 +531,9 @@ func matchBuiltinType(o object.Object, name string) bool {
 	case "bytearray":
 		_, ok := o.(*object.Bytearray)
 		return ok
+	case "memoryview":
+		_, ok := o.(*object.Memoryview)
+		return ok
 	}
 	return false
 }
@@ -606,6 +667,17 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 				return nil, false, nil
 			}
 			r := object.NewInt(int64(x.V[idx]))
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.Memoryview:
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			buf := x.Buf()
+			if idx >= len(buf) {
+				return nil, false, nil
+			}
+			r := object.NewInt(int64(buf[idx]))
 			idx++
 			return r, true, nil
 		}}, nil

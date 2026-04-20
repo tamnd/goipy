@@ -193,6 +193,8 @@ func Eq(a, b Object) (bool, error) {
 			return string(av.V) == string(bv.V), nil
 		case *Bytearray:
 			return string(av.V) == string(bv.V), nil
+		case *Memoryview:
+			return string(av.V) == string(bv.Bytes()), nil
 		}
 	case *Bytearray:
 		switch bv := b.(type) {
@@ -200,6 +202,18 @@ func Eq(a, b Object) (bool, error) {
 			return string(av.V) == string(bv.V), nil
 		case *Bytearray:
 			return string(av.V) == string(bv.V), nil
+		case *Memoryview:
+			return string(av.V) == string(bv.Bytes()), nil
+		}
+	case *Memoryview:
+		aBytes := av.Bytes()
+		switch bv := b.(type) {
+		case *Bytes:
+			return string(aBytes) == string(bv.V), nil
+		case *Bytearray:
+			return string(aBytes) == string(bv.V), nil
+		case *Memoryview:
+			return string(aBytes) == string(bv.Bytes()), nil
 		}
 	case *Tuple:
 		bv, ok := b.(*Tuple)
