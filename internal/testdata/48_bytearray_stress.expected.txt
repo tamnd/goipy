@@ -1,0 +1,25 @@
+bytearray(b'HOWDY, World!')
+bytearray(b'Hi, World!')
+bytearray(b'Hi-there, World!')
+bytearray(b'there, World!')
+bytearray(b'ace')
+bytearray(b'fedcba')
+bytearray(b'fedcba')
+0
+bytearray(b'aZbc')
+bytearray(b'abc')
+3
+3
+-1
+0
+True
+True
+False
+bytearray(b'XXcX')
+[bytearray(b'a'), bytearray(b'b'), bytearray(b'c')]
+True
+True
+True
+unhashable
+bytearray(b'abc')
+remove missing raises

@@ -31,6 +31,9 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 	case *object.Dict:
 		return c.Set(key, val)
 	case *object.Bytearray:
+		if sl, ok := key.(*object.Slice); ok {
+			return i.bytearraySetSlice(c, sl, val)
+		}
 		n, ok := toInt64(key)
 		if !ok {
 			return object.Errorf(i.typeErr, "bytearray indices must be integers")
@@ -50,6 +53,39 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 		return nil
 	}
 	return object.Errorf(i.typeErr, "'%s' does not support item assignment", object.TypeName(container))
+}
+
+func (i *Interp) bytearraySetSlice(ba *object.Bytearray, sl *object.Slice, val object.Object) error {
+	start, stop, step, err := i.resolveSlice(sl, len(ba.V))
+	if err != nil {
+		return err
+	}
+	if step != 1 {
+		return object.Errorf(i.valueErr, "extended slice assignment not supported")
+	}
+	var src []byte
+	if bb, ok := bytesBytesOrArray(val); ok {
+		src = bb
+	} else {
+		items, err := iterate(i, val)
+		if err != nil {
+			return err
+		}
+		src = make([]byte, len(items))
+		for k, x := range items {
+			n, ok := toInt64(x)
+			if !ok || n < 0 || n > 255 {
+				return object.Errorf(i.valueErr, "byte must be in range(0, 256)")
+			}
+			src[k] = byte(n)
+		}
+	}
+	out := make([]byte, 0, len(ba.V)-(stop-start)+len(src))
+	out = append(out, ba.V[:start]...)
+	out = append(out, src...)
+	out = append(out, ba.V[stop:]...)
+	ba.V = out
+	return nil
 }
 
 func (i *Interp) listSetSlice(l *object.List, sl *object.Slice, val object.Object) error {
@@ -107,6 +143,31 @@ func (i *Interp) delitem(container, key object.Object) error {
 		if !ok {
 			return object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
+		return nil
+	case *object.Bytearray:
+		if sl, ok := key.(*object.Slice); ok {
+			start, stop, step, err := i.resolveSlice(sl, len(c.V))
+			if err != nil {
+				return err
+			}
+			if step != 1 {
+				return object.Errorf(i.valueErr, "extended slice deletion not supported")
+			}
+			c.V = append(c.V[:start], c.V[stop:]...)
+			return nil
+		}
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "bytearray indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "bytearray index out of range")
+		}
+		c.V = append(c.V[:n], c.V[n+1:]...)
 		return nil
 	}
 	return object.Errorf(i.typeErr, "'%s' does not support item deletion", object.TypeName(container))

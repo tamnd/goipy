@@ -557,8 +557,239 @@ func dictMethod(d *object.Dict, name string) (object.Object, bool) {
 	return nil, false
 }
 
-func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
+// bytesSubMethod returns read-only methods common to bytes and bytearray.
+// `mutable` controls whether replace/split return bytearray or bytes.
+func bytesSubMethod(data func() []byte, mutable bool, name string) (object.Object, bool) {
+	wrap := func(b []byte) object.Object {
+		if mutable {
+			return &object.Bytearray{V: b}
+		}
+		return &object.Bytes{V: b}
+	}
+	needleBytes := func(o object.Object) ([]byte, bool) {
+		return bytesBytesOrArray(o)
+	}
 	switch name {
+	case "count":
+		return &object.BuiltinFunc{Name: "count", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, ok := needleBytes(a[0])
+			if !ok {
+				return object.NewInt(0), nil
+			}
+			hay := data()
+			if len(nd) == 0 {
+				return object.NewInt(int64(len(hay) + 1)), nil
+			}
+			n := 0
+			for i := 0; i+len(nd) <= len(hay); {
+				if bytesEqAt(hay, i, nd) {
+					n++
+					i += len(nd)
+				} else {
+					i++
+				}
+			}
+			return object.NewInt(int64(n)), nil
+		}}, true
+	case "find":
+		return &object.BuiltinFunc{Name: "find", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, _ := needleBytes(a[0])
+			return object.NewInt(int64(bytesIndex(data(), nd))), nil
+		}}, true
+	case "index":
+		return &object.BuiltinFunc{Name: "index", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, _ := needleBytes(a[0])
+			idx := bytesIndex(data(), nd)
+			if idx < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "subsection not found")
+			}
+			return object.NewInt(int64(idx)), nil
+		}}, true
+	case "startswith":
+		return &object.BuiltinFunc{Name: "startswith", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, ok := needleBytes(a[0])
+			if !ok {
+				return object.False, nil
+			}
+			hay := data()
+			if len(nd) > len(hay) {
+				return object.False, nil
+			}
+			return object.BoolOf(bytesEqAt(hay, 0, nd)), nil
+		}}, true
+	case "endswith":
+		return &object.BuiltinFunc{Name: "endswith", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, ok := needleBytes(a[0])
+			if !ok {
+				return object.False, nil
+			}
+			hay := data()
+			if len(nd) > len(hay) {
+				return object.False, nil
+			}
+			return object.BoolOf(bytesEqAt(hay, len(hay)-len(nd), nd)), nil
+		}}, true
+	case "replace":
+		return &object.BuiltinFunc{Name: "replace", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			old, _ := needleBytes(a[0])
+			new_, _ := needleBytes(a[1])
+			return wrap(bytesReplace(data(), old, new_)), nil
+		}}, true
+	case "split":
+		return &object.BuiltinFunc{Name: "split", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			var sep []byte
+			if len(a) > 0 {
+				sep, _ = needleBytes(a[0])
+			}
+			parts := bytesSplit(data(), sep)
+			out := make([]object.Object, len(parts))
+			for k, p := range parts {
+				out[k] = wrap(p)
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	}
+	return nil, false
+}
+
+func bytesEqAt(hay []byte, i int, needle []byte) bool {
+	if i < 0 || i+len(needle) > len(hay) {
+		return false
+	}
+	for j := range needle {
+		if hay[i+j] != needle[j] {
+			return false
+		}
+	}
+	return true
+}
+
+func bytesIndex(hay, needle []byte) int {
+	if len(needle) == 0 {
+		return 0
+	}
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		if bytesEqAt(hay, i, needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+func bytesReplace(hay, old, new_ []byte) []byte {
+	if len(old) == 0 {
+		return append([]byte(nil), hay...)
+	}
+	out := make([]byte, 0, len(hay))
+	for i := 0; i < len(hay); {
+		if bytesEqAt(hay, i, old) {
+			out = append(out, new_...)
+			i += len(old)
+		} else {
+			out = append(out, hay[i])
+			i++
+		}
+	}
+	return out
+}
+
+func bytesSplit(hay, sep []byte) [][]byte {
+	if len(sep) == 0 {
+		// split on whitespace runs
+		var parts [][]byte
+		i := 0
+		for i < len(hay) {
+			for i < len(hay) && isAsciiSpace(hay[i]) {
+				i++
+			}
+			if i >= len(hay) {
+				break
+			}
+			j := i
+			for j < len(hay) && !isAsciiSpace(hay[j]) {
+				j++
+			}
+			parts = append(parts, append([]byte(nil), hay[i:j]...))
+			i = j
+		}
+		return parts
+	}
+	var parts [][]byte
+	i := 0
+	for i <= len(hay) {
+		idx := bytesIndex(hay[i:], sep)
+		if idx < 0 {
+			parts = append(parts, append([]byte(nil), hay[i:]...))
+			break
+		}
+		parts = append(parts, append([]byte(nil), hay[i:i+idx]...))
+		i += idx + len(sep)
+	}
+	return parts
+}
+
+func isAsciiSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
+}
+
+func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
+	if m, ok := bytesSubMethod(func() []byte { return ba.V }, true, name); ok {
+		return m, true
+	}
+	switch name {
+	case "clear":
+		return &object.BuiltinFunc{Name: "clear", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			ba.V = ba.V[:0]
+			return object.None, nil
+		}}, true
+	case "reverse":
+		return &object.BuiltinFunc{Name: "reverse", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			for i, j := 0, len(ba.V)-1; i < j; i, j = i+1, j-1 {
+				ba.V[i], ba.V[j] = ba.V[j], ba.V[i]
+			}
+			return object.None, nil
+		}}, true
+	case "insert":
+		return &object.BuiltinFunc{Name: "insert", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			n, ok := toInt64(a[0])
+			if !ok {
+				return nil, object.Errorf(ii.(*Interp).typeErr, "bytearray indices must be integers")
+			}
+			v, ok := toInt64(a[1])
+			if !ok || v < 0 || v > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
+			}
+			idx := int(n)
+			L := len(ba.V)
+			if idx < 0 {
+				idx += L
+			}
+			if idx < 0 {
+				idx = 0
+			}
+			if idx > L {
+				idx = L
+			}
+			ba.V = append(ba.V, 0)
+			copy(ba.V[idx+1:], ba.V[idx:])
+			ba.V[idx] = byte(v)
+			return object.None, nil
+		}}, true
+	case "remove":
+		return &object.BuiltinFunc{Name: "remove", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			v, ok := toInt64(a[0])
+			if !ok || v < 0 || v > 255 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
+			}
+			b := byte(v)
+			for idx, x := range ba.V {
+				if x == b {
+					ba.V = append(ba.V[:idx], ba.V[idx+1:]...)
+					return object.None, nil
+				}
+			}
+			return nil, object.Errorf(ii.(*Interp).valueErr, "value not found in bytearray")
+		}}, true
 	case "append":
 		return &object.BuiltinFunc{Name: "append", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			n, ok := toInt64(a[0])

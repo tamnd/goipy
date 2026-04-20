@@ -102,10 +102,10 @@ func (i *Interp) lt(a, b object.Object) (bool, error) {
 			return as.V < bs.V, nil
 		}
 	}
-	// Bytes
-	if ab, ok := a.(*object.Bytes); ok {
-		if bb, ok := b.(*object.Bytes); ok {
-			return string(ab.V) < string(bb.V), nil
+	// Bytes / bytearray (any mix).
+	if ab, ok := bytesBytesOrArray(a); ok {
+		if bb, ok := bytesBytesOrArray(b); ok {
+			return string(ab) < string(bb), nil
 		}
 	}
 	// Sequences lex compare
