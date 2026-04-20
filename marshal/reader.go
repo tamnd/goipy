@@ -191,13 +191,15 @@ func (r *Reader) ReadObject() (object.Object, error) {
 		idx := r.reserveRef(flag)
 		return r.setRef(idx, o), nil
 	case TYPE_BINARY_COMPLEX:
-		// ignore complex numbers: decode then return float(real)
 		re, _ := r.readU64()
-		_, err := r.readU64()
+		im, err := r.readU64()
 		if err != nil {
 			return nil, err
 		}
-		o := &object.Float{V: math.Float64frombits(re)}
+		o := &object.Complex{
+			Real: math.Float64frombits(re),
+			Imag: math.Float64frombits(im),
+		}
 		idx := r.reserveRef(flag)
 		return r.setRef(idx, o), nil
 	case TYPE_STRING:
