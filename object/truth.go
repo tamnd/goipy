@@ -11,6 +11,8 @@ func Truthy(o Object) bool {
 		return v.V.Sign() != 0
 	case *Float:
 		return v.V != 0
+	case *Complex:
+		return v.Real != 0 || v.Imag != 0
 	case *Str:
 		return v.V != ""
 	case *Bytes:

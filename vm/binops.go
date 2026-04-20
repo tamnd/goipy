@@ -292,6 +292,15 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 }
 
 func (i *Interp) pow(a, b object.Object) (object.Object, error) {
+	if isComplex(a) || isComplex(b) {
+		ar, ai2, ok1 := asComplex(a)
+		br, bi2, ok2 := asComplex(b)
+		if !ok1 || !ok2 {
+			return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for **")
+		}
+		r, im := complexPow(ar, ai2, br, bi2)
+		return &object.Complex{Real: r, Imag: im}, nil
+	}
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -301,6 +310,25 @@ func (i *Interp) pow(a, b object.Object) (object.Object, error) {
 		return &object.Float{V: math.Pow(toFloat(ai, af, aF), toFloat(bi, bf, bF))}, nil
 	}
 	return &object.Int{V: new(big.Int).Exp(ai, bi, nil)}, nil
+}
+
+// complexPow is a|b for complex numbers using the standard polar
+// formulation. 0**0 == 1+0j to match CPython.
+func complexPow(ar, ai, br, bi float64) (float64, float64) {
+	if br == 0 && bi == 0 {
+		return 1, 0
+	}
+	if ar == 0 && ai == 0 {
+		return 0, 0
+	}
+	r := math.Hypot(ar, ai)
+	theta := math.Atan2(ai, ar)
+	logR := math.Log(r)
+	// exponent applied in log-polar space
+	lnRe := br*logR - bi*theta
+	lnIm := br*theta + bi*logR
+	mag := math.Exp(lnRe)
+	return mag * math.Cos(lnIm), mag * math.Sin(lnIm)
 }
 
 func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {

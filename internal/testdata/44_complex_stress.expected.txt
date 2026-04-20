@@ -1,0 +1,25 @@
+(-3+4j)
+(-11-2j)
+(1+0j)
+(1024+0j)
+0.0 2.0
+False
+False
+True
+True
+True
+True
+True
+True
+True
+False
+2
+b c
+True
+False
+True
+25.0
+(2+2j)
+(2+4j)
+(0.5+1j)
+(1-1j)

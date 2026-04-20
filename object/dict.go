@@ -234,6 +234,8 @@ func Hash(o Object) (uint64, error) {
 		return v.V.Uint64() ^ uint64(v.V.Sign())*0x9e3779b97f4a7c15, nil
 	case *Float:
 		return uint64(v.V * 1e6), nil
+	case *Complex:
+		return uint64(v.Real*1e6) ^ (uint64(v.Imag*1e6) * 0x9e3779b97f4a7c15), nil
 	case *Str:
 		return stringHash(v.V), nil
 	case *Bytes:
