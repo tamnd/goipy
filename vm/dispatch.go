@@ -677,18 +677,16 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.push(r)
 		case op.CALL_FUNCTION_EX:
-			hasKw := oparg&1 != 0
+			// 3.14 layout: [callable, NULL, args, kwargs_or_NULL]
+			_ = oparg
+			top := f.pop()
 			var kw *object.Dict
-			if hasKw {
-				d, ok := f.pop().(*object.Dict)
-				if !ok {
-					return nil, object.Errorf(i.typeErr, "CALL_FUNCTION_EX expects dict")
-				}
+			if d, ok := top.(*object.Dict); ok {
 				kw = d
 			}
 			argsObj := f.pop()
+			_ = f.pop() // NULL slot beneath callable
 			callable := f.pop()
-			_ = f.pop() // NULL
 			var args []object.Object
 			switch a := argsObj.(type) {
 			case *object.Tuple:
@@ -858,6 +856,77 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				return nil, object.Errorf(i.typeErr, "except type must be a class")
 			}
 			f.push(object.BoolOf(object.IsSubclass(tos.Class, cls)))
+		case op.LOAD_SUPER_ATTR, op.LOAD_SUPER_ATTR_ATTR, op.LOAD_SUPER_ATTR_METHOD:
+			// oparg bit 0 = method (push self after), bit 1 = two-arg super
+			methodBit := oparg&1 != 0
+			name := f.Code.Names[oparg>>2]
+			self := f.pop()
+			startCls, _ := f.pop().(*object.Class)
+			_ = f.pop() // super callable
+			if startCls == nil {
+				return nil, object.Errorf(i.typeErr, "super() expects class as 2nd arg")
+			}
+			inst, instOk := self.(*object.Instance)
+			if !instOk {
+				return nil, object.Errorf(i.typeErr, "super() requires an instance")
+			}
+			val, found := lookupAfter(inst.Class, startCls, name)
+			if !found {
+				return nil, object.Errorf(i.attrErr, "'super' object has no attribute '%s'", name)
+			}
+			if methodBit {
+				f.push(val)
+				f.push(self)
+			} else {
+				if fn, ok := val.(*object.Function); ok {
+					f.push(&object.BoundMethod{Self: self, Fn: fn})
+				} else {
+					f.push(val)
+				}
+			}
+		case op.LOAD_SPECIAL:
+			// oparg: 0=__enter__ 1=__exit__ 2=__aenter__ 3=__aexit__
+			inst := f.pop()
+			var name string
+			switch oparg {
+			case 0:
+				name = "__enter__"
+			case 1:
+				name = "__exit__"
+			case 2:
+				name = "__aenter__"
+			case 3:
+				name = "__aexit__"
+			default:
+				return nil, object.Errorf(i.runtimeErr, "unknown LOAD_SPECIAL %d", oparg)
+			}
+			var method object.Object
+			if inst2, ok := inst.(*object.Instance); ok {
+				if v, ok := classLookup(inst2.Class, name); ok {
+					method = v
+				}
+			}
+			if method == nil {
+				return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", object.TypeName(inst), name)
+			}
+			f.push(method)
+			f.push(inst)
+		case op.WITH_EXCEPT_START:
+			// Stack after PUSH_EXC_INFO in a with-handler:
+			// [..., exit_func, self_cm, lasti, prev_excinfo, exc]
+			exc := f.top()
+			self := f.peek(3)
+			exitFn := f.peek(4)
+			var excCls object.Object = object.None
+			if e, ok := exc.(*object.Exception); ok {
+				excCls = e.Class
+			}
+			args := []object.Object{self, excCls, exc, object.None}
+			result, err = i.callObject(exitFn, args, nil)
+			if err != nil {
+				goto handleErr
+			}
+			f.push(result)
 		case op.CHECK_EG_MATCH:
 			// Exception groups not supported; treat like CHECK_EXC_MATCH.
 			excType := f.pop()

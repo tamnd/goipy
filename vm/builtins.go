@@ -593,6 +593,30 @@ func (i *Interp) initBuiltins() {
 		_, err := ii.(*Interp).getAttr(a[0], a[1].(*object.Str).V)
 		return object.BoolOf(err == nil), nil
 	}})
+	// super is a stub — LOAD_SUPER_ATTR handles the real work by receiving
+	// (super, __class__, self) on the stack.
+	b.SetStr("super", &object.BuiltinFunc{Name: "super", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	b.SetStr("callable", &object.BuiltinFunc{Name: "callable", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		switch a[0].(type) {
+		case *object.BuiltinFunc, *object.Function, *object.BoundMethod, *object.Class:
+			return object.True, nil
+		}
+		return object.False, nil
+	}})
+	b.SetStr("divmod", &object.BuiltinFunc{Name: "divmod", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		q, err := in.floordiv(a[0], a[1])
+		if err != nil {
+			return nil, err
+		}
+		r, err := in.mod(a[0], a[1])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Tuple{V: []object.Object{q, r}}, nil
+	}})
 	b.SetStr("__build_class__", &object.BuiltinFunc{Name: "__build_class__", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		// args: func, name, *bases, **kwds
 		in := ii.(*Interp)
