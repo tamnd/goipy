@@ -135,6 +135,12 @@ func Repr(o Object) string {
 			parts = append(parts, "("+Repr(k)+", "+Repr(v.D.vals[i])+")")
 		}
 		return "OrderedDict([" + strings.Join(parts, ", ") + "])"
+	case *StringIO:
+		return fmt.Sprintf("<_io.StringIO object at 0x%p>", v)
+	case *BytesIO:
+		return fmt.Sprintf("<_io.BytesIO object at 0x%p>", v)
+	case *Hasher:
+		return fmt.Sprintf("<%s _hashlib.HASH object>", v.Name)
 	case *Pattern:
 		return "re.compile(" + Repr(&Str{V: v.Pattern}) + ")"
 	case *Match:

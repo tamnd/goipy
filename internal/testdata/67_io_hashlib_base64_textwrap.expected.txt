@@ -1,0 +1,55 @@
+hello world
+11
+hello
+ world
+line1
+
+line2
+
+['line3\n']
+a
+b
+c
+
+True
+b'hello world'
+11
+b'hello'
+b'\x01\x02\x03'
+b'ef'
+d41d8cd98f00b204e9800998ecf8427e
+da39a3ee5e6b4b0d3255bfef95601890afd80709
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+5d41402abc4b2a76b9719d911017c592
+2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+True
+bytes
+str
+20
+20
+sha1
+True
+cf83e1357eefb8bd
+b'aGVsbG8='
+b'hello'
+b'hello'
+True
+b'-_8_'
+b'\xfb\xff?'
+b'MZXW6==='
+b'foo'
+b'666F6F'
+b'foo'
+line one
+line two
+line three
+>> a
+
+>> b
+
+['The quick brown', 'fox jumps over', 'the lazy dog']
+one two
+three four
+five six
+The quick [...]
+a b c

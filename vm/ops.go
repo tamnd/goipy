@@ -428,6 +428,21 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if sio, ok := o.(*object.StringIO); ok {
+		if m, ok := stringIOAttr(i, sio, name); ok {
+			return m, nil
+		}
+	}
+	if bio, ok := o.(*object.BytesIO); ok {
+		if m, ok := bytesIOAttr(i, bio, name); ok {
+			return m, nil
+		}
+	}
+	if h, ok := o.(*object.Hasher); ok {
+		if m, ok := hasherAttr(i, h, name); ok {
+			return m, nil
+		}
+	}
 	if mv, ok := o.(*object.Memoryview); ok {
 		if a, ok := memoryviewAttr(mv, name); ok {
 			return a, nil
