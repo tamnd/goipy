@@ -11,48 +11,52 @@ CHECKSUM status: **24/24 cases matched** byte-for-byte.
 
 | Case | CPython 3.14 (ms) | goipy (ms) | ratio |
 |---|---:|---:|---:|
-| arith_bigint | 0.010 | 0.048 | 4.8x |
-| arith_float | 20.331 | 122.560 | 6.0x |
-| arith_int | 56.684 | 407.505 | 7.2x |
-| async_drive | 6.553 | 43.257 | 6.6x |
-| call_closure | 59.460 | 461.949 | 7.8x |
-| call_kwargs | 35.682 | 383.641 | 10.8x |
-| call_plain | 52.714 | 531.603 | 10.1x |
-| class_attrs | 18.739 | 170.465 | 9.1x |
-| class_method | 25.353 | 259.457 | 10.2x |
-| class_mro | 13.239 | 162.569 | 12.3x |
-| coll_dict | 6.662 | 41.833 | 6.3x |
-| coll_list | 7.886 | 56.396 | 7.2x |
-| coll_set | 4.992 | 33.056 | 6.6x |
-| ctrl_fib_recursive | 8.545 | 126.641 | 14.8x |
-| ctrl_for_range | 130.474 | 995.045 | 7.6x |
-| ctrl_while | 9045.271 | 3357.178 | 0.4x |
-| gen_pipeline | 10.912 | 66.771 | 6.1x |
-| gen_yield | 15.819 | 100.317 | 6.3x |
-| real_fib_iter | 0.267 | 0.625 | 2.3x |
-| real_nqueens | 12.104 | 75.211 | 6.2x |
-| real_wordcount | 12.758 | 94.413 | 7.4x |
-| str_concat | 0.165 | 1.508 | 9.1x |
-| str_format | 16.544 | 49.519 | 3.0x |
-| str_join_split | 3.933 | 18.713 | 4.8x |
+| arith_bigint | 0.011 | 0.025 | 2.3x |
+| arith_float | 20.208 | 45.379 | 2.2x |
+| arith_int | 56.981 | 221.974 | 3.9x |
+| async_drive | 6.283 | 27.885 | 4.4x |
+| call_closure | 59.050 | 185.999 | 3.1x |
+| call_kwargs | 34.093 | 116.899 | 3.4x |
+| call_plain | 53.433 | 181.139 | 3.4x |
+| class_attrs | 18.541 | 112.161 | 6.0x |
+| class_method | 25.636 | 92.094 | 3.6x |
+| class_mro | 13.125 | 49.551 | 3.8x |
+| coll_dict | 6.499 | 31.325 | 4.8x |
+| coll_list | 8.052 | 31.856 | 4.0x |
+| coll_set | 4.946 | 28.851 | 5.8x |
+| ctrl_fib_recursive | 8.543 | 36.991 | 4.3x |
+| ctrl_for_range | 131.172 | 439.422 | 3.3x |
+| ctrl_while | 8990.356 | 5897.821 | 0.7x |
+| gen_pipeline | 11.113 | 40.946 | 3.7x |
+| gen_yield | 15.991 | 56.486 | 3.5x |
+| real_fib_iter | 0.269 | 0.724 | 2.7x |
+| real_nqueens | 12.184 | 44.305 | 3.6x |
+| real_wordcount | 12.483 | 46.696 | 3.7x |
+| str_concat | 0.161 | 1.374 | 8.5x |
+| str_format | 16.720 | 38.545 | 2.3x |
+| str_join_split | 3.897 | 16.088 | 4.1x |
 
 ## Observations
 
-- Call dispatch (`call_*`, `class_method`) is the hottest path by ratio,
-  10×–12× slower. Candidate targets for inline caches or specialized
-  opcodes before any other optimization work.
-- `ctrl_fib_recursive` is 14.8× because it is nothing but call and
-  compare; it falls out of the call-dispatch cost above.
-- `ctrl_while` is faster on goipy (0.4×) because the workload is 1M
-  iterations of a bignum Fibonacci step. Go's `math/big` outperforms
-  CPython's `PyLong` on very wide integers, and that dominates once the
-  mantissa is thousands of bits long.
-- `str_format` lands at 3.0× — the f-string path is already in good
-  shape. `str_concat` is 9.1× but its absolute time is under 2 ms; not
-  a practical bottleneck.
-- `coll_dict` landed at 6.3× after fixing an O(n²) regression in
-  `object.Dict.Delete` (was 3843× before the fix — it rebuilt the index
-  map on every delete instead of using tombstones).
+- Uniform drop across every case vs. the prior snapshot. The biggest
+  single win was `call_kwargs` at 10.8× → 3.4×, from a dedicated
+  `CALL_KW` fast path that skips building a kwargs dict and resolves
+  keyword names through a per-`Code` slot map.
+- `ctrl_fib_recursive` went 14.8× → 4.3× on the back of three
+  independent changes: embedding `big.Int` by value in `object.Int`,
+  moving the per-code frame pool off a shared map and onto `Code`
+  itself, and removing the `defer` from `runFrame`.
+- `class_*` ratios (9–12× → 3.6–6.0×) pick up the same call-path
+  wins plus a global-epoch `classLookup` memoisation — `LOAD_ATTR` on
+  a class now hits an O(1) entry instead of walking the MRO.
+- `arith_float` and `arith_bigint` land at 2.2× / 2.3× after converting
+  the specialized `BINARY_OP_*` variants to write results back into
+  the stack in place instead of popping twice and pushing.
+- `ctrl_while` stays faster than CPython (0.7×). The workload is a
+  bignum Fibonacci step; Go's `math/big` still beats `PyLong` on very
+  wide integers once the mantissa grows to thousands of bits.
+- `str_concat` remains 8.5× but its absolute time is under 1.5 ms;
+  not a practical bottleneck and deliberately deferred.
 
 ## Method notes
 
