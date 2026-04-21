@@ -100,6 +100,40 @@ func Repr(o Object) string {
 		return "<module '" + v.Name + "'>"
 	case *Slice:
 		return "slice(" + Repr(v.Start) + ", " + Repr(v.Stop) + ", " + Repr(v.Step) + ")"
+	case *Deque:
+		parts := make([]string, len(v.V))
+		for i, x := range v.V {
+			parts[i] = Repr(x)
+		}
+		if v.MaxLen >= 0 {
+			return "deque([" + strings.Join(parts, ", ") + "], maxlen=" + strconv.Itoa(v.MaxLen) + ")"
+		}
+		return "deque([" + strings.Join(parts, ", ") + "])"
+	case *Counter:
+		parts := make([]string, 0, v.D.Len())
+		for i, k := range v.D.keys {
+			parts = append(parts, Repr(k)+": "+Repr(v.D.vals[i]))
+		}
+		return "Counter({" + strings.Join(parts, ", ") + "})"
+	case *DefaultDict:
+		parts := make([]string, 0, v.D.Len())
+		for i, k := range v.D.keys {
+			parts = append(parts, Repr(k)+": "+Repr(v.D.vals[i]))
+		}
+		factoryRepr := "None"
+		if v.Factory != nil {
+			factoryRepr = Repr(v.Factory)
+		}
+		return "defaultdict(" + factoryRepr + ", {" + strings.Join(parts, ", ") + "})"
+	case *OrderedDict:
+		if v.D.Len() == 0 {
+			return "OrderedDict()"
+		}
+		parts := make([]string, 0, v.D.Len())
+		for i, k := range v.D.keys {
+			parts = append(parts, "("+Repr(k)+", "+Repr(v.D.vals[i])+")")
+		}
+		return "OrderedDict([" + strings.Join(parts, ", ") + "])"
 	case *Exception:
 		name := "Exception"
 		if v.Class != nil {

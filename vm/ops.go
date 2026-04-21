@@ -35,6 +35,26 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 		return nil
 	case *object.Dict:
 		return c.Set(key, val)
+	case *object.Deque:
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "deque indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "deque index out of range")
+		}
+		c.V[n] = val
+		return nil
+	case *object.Counter:
+		return c.D.Set(key, val)
+	case *object.DefaultDict:
+		return c.D.Set(key, val)
+	case *object.OrderedDict:
+		return c.D.Set(key, val)
 	case *object.Memoryview:
 		if c.Readonly {
 			return object.Errorf(i.typeErr, "cannot modify read-only memoryview")
@@ -205,6 +225,47 @@ func (i *Interp) delitem(container, key object.Object) error {
 			return object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
 		return nil
+	case *object.Deque:
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "deque indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "deque index out of range")
+		}
+		c.V = append(c.V[:n], c.V[n+1:]...)
+		return nil
+	case *object.Counter:
+		ok, err := c.D.Delete(key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		return nil
+	case *object.DefaultDict:
+		ok, err := c.D.Delete(key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		return nil
+	case *object.OrderedDict:
+		ok, err := c.D.Delete(key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		return nil
 	case *object.Bytearray:
 		if sl, ok := key.(*object.Slice); ok {
 			start, stop, step, err := i.resolveSlice(sl, len(c.V))
@@ -291,6 +352,14 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(x.Len()), nil
 	case *object.Range:
 		return rangeLen(x), nil
+	case *object.Deque:
+		return int64(len(x.V)), nil
+	case *object.Counter:
+		return int64(x.D.Len()), nil
+	case *object.DefaultDict:
+		return int64(x.D.Len()), nil
+	case *object.OrderedDict:
+		return int64(x.D.Len()), nil
 	}
 	return 0, object.Errorf(i.typeErr, "object of type '%s' has no len()", object.TypeName(v))
 }
@@ -326,6 +395,26 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	}
 	if ba, ok := o.(*object.Bytearray); ok {
 		if m, ok := bytearrayMethod(ba, name); ok {
+			return m, nil
+		}
+	}
+	if dq, ok := o.(*object.Deque); ok {
+		if m, ok := dequeMethod(i, dq, name); ok {
+			return m, nil
+		}
+	}
+	if c, ok := o.(*object.Counter); ok {
+		if m, ok := counterMethod(i, c, name); ok {
+			return m, nil
+		}
+	}
+	if dd, ok := o.(*object.DefaultDict); ok {
+		if m, ok := defaultDictMethod(i, dd, name); ok {
+			return m, nil
+		}
+	}
+	if od, ok := o.(*object.OrderedDict); ok {
+		if m, ok := orderedDictMethod(i, od, name); ok {
 			return m, nil
 		}
 	}
@@ -699,6 +788,11 @@ func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *obj
 			return &object.BoundMethod{Self: inst, Fn: d}, nil
 		}
 		return d, nil
+	case *object.BuiltinFunc:
+		if inst != nil {
+			return &object.BoundMethod{Self: inst, Fn: d}, nil
+		}
+		return d, nil
 	case *object.Instance:
 		// User descriptor: if its class defines __get__, invoke it.
 		if getFn, ok := classLookup(d.Class, "__get__"); ok {
@@ -853,6 +947,49 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 		}}, nil
 	case *object.Dict:
 		keys, _ := x.Items()
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(keys) {
+				return nil, false, nil
+			}
+			r := keys[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.Deque:
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(x.V) {
+				return nil, false, nil
+			}
+			r := x.V[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.Counter:
+		keys, _ := x.D.Items()
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(keys) {
+				return nil, false, nil
+			}
+			r := keys[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.DefaultDict:
+		keys, _ := x.D.Items()
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(keys) {
+				return nil, false, nil
+			}
+			r := keys[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.OrderedDict:
+		keys, _ := x.D.Items()
 		idx := 0
 		return &object.Iter{Next: func() (object.Object, bool, error) {
 			if idx >= len(keys) {

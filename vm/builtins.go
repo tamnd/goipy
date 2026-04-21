@@ -243,7 +243,18 @@ func (i *Interp) initBuiltins() {
 		in := ii.(*Interp)
 		d := object.NewDict()
 		if len(a) > 0 {
-			if src, ok := a[0].(*object.Dict); ok {
+			var src *object.Dict
+			switch x := a[0].(type) {
+			case *object.Dict:
+				src = x
+			case *object.DefaultDict:
+				src = x.D
+			case *object.OrderedDict:
+				src = x.D
+			case *object.Counter:
+				src = x.D
+			}
+			if src != nil {
 				keys, vals := src.Items()
 				for k, key := range keys {
 					_ = d.Set(key, vals[k])
@@ -573,12 +584,18 @@ func (i *Interp) initBuiltins() {
 		cp := make([]object.Object, len(items))
 		copy(cp, items)
 		reverse := false
+		var key object.Object
 		if kw != nil {
 			if v, ok := kw.GetStr("reverse"); ok {
 				reverse = object.Truthy(v)
 			}
+			if v, ok := kw.GetStr("key"); ok {
+				if _, isNone := v.(*object.NoneType); !isNone {
+					key = v
+				}
+			}
 		}
-		if err := sortList(in, cp, reverse); err != nil {
+		if err := sortListKey(in, cp, key, reverse); err != nil {
 			return nil, err
 		}
 		return &object.List{V: cp}, nil
