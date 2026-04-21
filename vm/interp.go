@@ -54,14 +54,21 @@ type Interp struct {
 	// curFrame is the innermost executing frame; sys.exc_info walks this
 	// chain via Frame.Back to find the active exception.
 	curFrame *Frame
+
+	// framePool caches at most one reusable *Frame per *Code for
+	// non-generator calls. Hot loops like `for _ in range(N): inc(x)`
+	// hit the same Code repeatedly; pooling saves the per-call Fast +
+	// Stack slice allocations.
+	framePool map[*object.Code]*Frame
 }
 
 // New builds a fresh interpreter.
 func New() *Interp {
 	i := &Interp{
-		Stdout:   os.Stdout,
-		Stderr:   os.Stderr,
-		MaxDepth: 500,
+		Stdout:    os.Stdout,
+		Stderr:    os.Stderr,
+		MaxDepth:  500,
+		framePool: make(map[*object.Code]*Frame, 64),
 	}
 	i.initBuiltins()
 	i.installDunderHooks()

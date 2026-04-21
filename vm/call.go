@@ -48,6 +48,89 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 	return nil, object.Errorf(i.typeErr, "'%s' object is not callable", object.TypeName(callable))
 }
 
+// callFunctionFast is a hot-path variant of callFunction used when the caller
+// has already verified that fn takes exactly positional args, no defaults or
+// kwargs are involved, and there is no *args/**kwargs. self may be nil.
+// It skips bindArgs entirely and copies directly into Fast.
+func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args []object.Object) (object.Object, error) {
+	code := fn.Code
+	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
+	var frame *Frame
+	if !isGen {
+		if f, ok := i.framePool[code]; ok {
+			delete(i.framePool, code)
+			frame = f
+			frame.Globals = fn.Globals
+			frame.Builtins = i.Builtins
+			// Fast slice: clear any stale entries so GC can reclaim and
+			// so unset slots read as nil. `clear` compiles to memclr.
+			clear(frame.Fast)
+			frame.SP = 0
+			frame.IP = 0
+			frame.LastIP = 0
+			frame.Back = nil
+			frame.ExcInfo = nil
+			frame.curExc = nil
+			frame.Yielded = nil
+			// Cells may have been captured by escaped closures; allocate fresh.
+			if code.NCells+code.NFrees > 0 {
+				frame.Cells = make([]*object.Cell, code.NCells+code.NFrees)
+			} else {
+				frame.Cells = nil
+			}
+		}
+	}
+	if frame == nil {
+		frame = NewFrame(code, fn.Globals, i.Builtins, nil)
+	}
+	if code.Flags&CO_OPTIMIZED != 0 {
+		frame.Locals = nil
+	} else {
+		frame.Locals = object.NewDict()
+	}
+	off := 0
+	if self != nil {
+		frame.Fast[0] = self
+		off = 1
+	}
+	copy(frame.Fast[off:off+len(args)], args)
+	if fn.Closure != nil {
+		base := code.NLocals + code.NCells
+		for k, cell := range fn.Closure.V {
+			if c, ok := cell.(*object.Cell); ok {
+				frame.Fast[base+k] = c
+			}
+		}
+	}
+	if isGen {
+		return &object.Generator{Name: fn.Name, Frame: frame}, nil
+	}
+	r, err := i.runFrame(frame)
+	// Return frame to pool unless something kept a reference (generator
+	// branch above returned early; tracebacks can retain frames via
+	// exception info — skip pooling when err != nil to be safe).
+	if err == nil {
+		if _, exists := i.framePool[code]; !exists {
+			i.framePool[code] = frame
+		}
+	}
+	return r, err
+}
+
+// isFastCallable reports whether fn can be invoked through callFunctionFast
+// given nArgsTotal (including any bound self): same arity, no *args/**kwargs,
+// no keyword-only args.
+func isFastCallable(fn *object.Function, nArgsTotal int) bool {
+	code := fn.Code
+	if code.Flags&(CO_VARARGS|CO_VARKWDS) != 0 {
+		return false
+	}
+	if code.KwOnlyArgCount != 0 {
+		return false
+	}
+	return nArgsTotal == code.ArgCount
+}
+
 // callFunction builds a fresh frame for fn and runs it.
 func (i *Interp) callFunction(fn *object.Function, args []object.Object, kwargs *object.Dict) (object.Object, error) {
 	code := fn.Code
@@ -333,16 +416,20 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 	return nil, false
 }
 
+// Shared package-level BuiltinFuncs for hot list methods. These receive self
+// as args[0] so they can be wrapped in a BoundMethod without allocating a
+// per-list closure. The CALL dispatch has a fast path that forwards
+// BoundMethod{Fn:*BuiltinFunc} without allocating a new args slice.
+var sharedListAppend = &object.BuiltinFunc{Name: "append", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	l := a[0].(*object.List)
+	l.V = append(l.V, a[1])
+	return object.None, nil
+}}
+
 func listMethod(l *object.List, name string) (object.Object, bool) {
 	switch name {
 	case "append":
-		return &object.BuiltinFunc{Name: "append", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) != 1 {
-				return nil, nil
-			}
-			l.V = append(l.V, a[0])
-			return object.None, nil
-		}}, true
+		return &object.BoundMethod{Self: l, Fn: sharedListAppend}, true
 	case "extend":
 		return &object.BuiltinFunc{Name: "extend", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			items, err := iterate(ii.(*Interp), a[0])
