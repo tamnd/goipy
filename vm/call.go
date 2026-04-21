@@ -196,6 +196,11 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 		// Used by REPL for auto-print; we ignore.
 		return v, nil
 	case op.INTRINSIC_UNARY_POSITIVE:
+		if inst, ok := v.(*object.Instance); ok {
+			if r, ok, err := i.callInstanceDunder(inst, "__pos__"); ok {
+				return r, err
+			}
+		}
 		switch x := v.(type) {
 		case *object.Int, *object.Float:
 			return x, nil

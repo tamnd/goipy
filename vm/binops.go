@@ -12,34 +12,89 @@ import (
 // binaryOp executes a BINARY_OP with oparg = NB_*.
 func (i *Interp) binaryOp(a, b object.Object, nb uint32) (object.Object, error) {
 	switch nb {
-	case op.NB_ADD, op.NB_INPLACE_ADD:
+	case op.NB_ADD:
 		return i.add(a, b)
-	case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
+	case op.NB_INPLACE_ADD:
+		return i.inplaceOp(a, b, "__iadd__", (*Interp).add)
+	case op.NB_SUBTRACT:
 		return i.sub(a, b)
-	case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
+	case op.NB_INPLACE_SUBTRACT:
+		return i.inplaceOp(a, b, "__isub__", (*Interp).sub)
+	case op.NB_MULTIPLY:
 		return i.mul(a, b)
-	case op.NB_TRUE_DIVIDE, op.NB_INPLACE_TRUE_DIVIDE:
+	case op.NB_INPLACE_MULTIPLY:
+		return i.inplaceOp(a, b, "__imul__", (*Interp).mul)
+	case op.NB_TRUE_DIVIDE:
 		return i.truediv(a, b)
-	case op.NB_FLOOR_DIVIDE, op.NB_INPLACE_FLOOR_DIVIDE:
+	case op.NB_INPLACE_TRUE_DIVIDE:
+		return i.inplaceOp(a, b, "__itruediv__", (*Interp).truediv)
+	case op.NB_FLOOR_DIVIDE:
 		return i.floordiv(a, b)
-	case op.NB_REMAINDER, op.NB_INPLACE_REMAINDER:
+	case op.NB_INPLACE_FLOOR_DIVIDE:
+		return i.inplaceOp(a, b, "__ifloordiv__", (*Interp).floordiv)
+	case op.NB_REMAINDER:
 		return i.mod(a, b)
-	case op.NB_POWER, op.NB_INPLACE_POWER:
+	case op.NB_INPLACE_REMAINDER:
+		return i.inplaceOp(a, b, "__imod__", (*Interp).mod)
+	case op.NB_POWER:
 		return i.pow(a, b)
-	case op.NB_LSHIFT, op.NB_INPLACE_LSHIFT:
+	case op.NB_INPLACE_POWER:
+		return i.inplaceOp(a, b, "__ipow__", (*Interp).pow)
+	case op.NB_MATRIX_MULTIPLY:
+		return i.matmul(a, b)
+	case op.NB_INPLACE_MATRIX_MULTIPLY:
+		return i.inplaceOp(a, b, "__imatmul__", (*Interp).matmul)
+	case op.NB_LSHIFT:
 		return i.shift(a, b, true)
-	case op.NB_RSHIFT, op.NB_INPLACE_RSHIFT:
+	case op.NB_INPLACE_LSHIFT:
+		return i.inplaceOp(a, b, "__ilshift__", func(ii *Interp, x, y object.Object) (object.Object, error) { return ii.shift(x, y, true) })
+	case op.NB_RSHIFT:
 		return i.shift(a, b, false)
-	case op.NB_AND, op.NB_INPLACE_AND:
+	case op.NB_INPLACE_RSHIFT:
+		return i.inplaceOp(a, b, "__irshift__", func(ii *Interp, x, y object.Object) (object.Object, error) { return ii.shift(x, y, false) })
+	case op.NB_AND:
 		return i.bitop(a, b, "&")
-	case op.NB_OR, op.NB_INPLACE_OR:
+	case op.NB_INPLACE_AND:
+		return i.inplaceOp(a, b, "__iand__", func(ii *Interp, x, y object.Object) (object.Object, error) { return ii.bitop(x, y, "&") })
+	case op.NB_OR:
 		return i.bitop(a, b, "|")
-	case op.NB_XOR, op.NB_INPLACE_XOR:
+	case op.NB_INPLACE_OR:
+		return i.inplaceOp(a, b, "__ior__", func(ii *Interp, x, y object.Object) (object.Object, error) { return ii.bitop(x, y, "|") })
+	case op.NB_XOR:
 		return i.bitop(a, b, "^")
+	case op.NB_INPLACE_XOR:
+		return i.inplaceOp(a, b, "__ixor__", func(ii *Interp, x, y object.Object) (object.Object, error) { return ii.bitop(x, y, "^") })
 	case op.NB_SUBSCR:
 		return i.getitem(a, b)
 	}
 	return nil, object.Errorf(i.typeErr, "unsupported BINARY_OP %d", nb)
+}
+
+// inplaceOp tries __iop__ on an instance; if not defined or returns
+// NotImplemented, falls back to the regular op.
+func (i *Interp) inplaceOp(a, b object.Object, name string, fallback func(*Interp, object.Object, object.Object) (object.Object, error)) (object.Object, error) {
+	if inst, ok := a.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, name, b); ok {
+			if err != nil {
+				return nil, err
+			}
+			if !isNotImplemented(r) {
+				return r, nil
+			}
+		}
+	}
+	return fallback(i, a, b)
+}
+
+// matmul dispatches @ to __matmul__/__rmatmul__. There is no builtin type
+// backing @, so without a dunder it's a TypeError.
+func (i *Interp) matmul(a, b object.Object) (object.Object, error) {
+	if hasInstance(a, b) {
+		if r, ok, err := i.tryBinaryDunder(a, b, "__matmul__", "__rmatmul__"); ok {
+			return r, err
+		}
+	}
+	return nil, object.Errorf(i.typeErr, "unsupported operand type(s) for @: '%s' and '%s'", object.TypeName(a), object.TypeName(b))
 }
 
 // --- arithmetic ---
@@ -400,6 +455,15 @@ func complexPow(ar, ai, br, bi float64) (float64, float64) {
 }
 
 func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
+	if hasInstance(a, b) {
+		fwd, rev := "__lshift__", "__rlshift__"
+		if !left {
+			fwd, rev = "__rshift__", "__rrshift__"
+		}
+		if r, ok, err := i.tryBinaryDunder(a, b, fwd, rev); ok {
+			return r, err
+		}
+	}
 	n, okA := toBigInt(a)
 	k, okB := toBigInt(b)
 	if !okA || !okB {
@@ -423,6 +487,18 @@ func hasInstance(a, b object.Object) bool {
 	_, aok := a.(*object.Instance)
 	_, bok := b.(*object.Instance)
 	return aok || bok
+}
+
+func bitopDunderNames(kind string) (fwd, rev string) {
+	switch kind {
+	case "&":
+		return "__and__", "__rand__"
+	case "|":
+		return "__or__", "__ror__"
+	case "^":
+		return "__xor__", "__rxor__"
+	}
+	return "", ""
 }
 
 // isSetLike reports whether o is a set or frozenset.
@@ -509,6 +585,12 @@ func setBitop(a, b object.Object, kind string) object.Object {
 }
 
 func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
+	if hasInstance(a, b) {
+		fwd, rev := bitopDunderNames(kind)
+		if r, ok, err := i.tryBinaryDunder(a, b, fwd, rev); ok {
+			return r, err
+		}
+	}
 	if isSetLike(a) && isSetLike(b) {
 		return setBitop(a, b, kind), nil
 	}

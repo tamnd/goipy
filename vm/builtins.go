@@ -55,6 +55,19 @@ func (i *Interp) initBuiltins() {
 		if len(a) == 0 {
 			return object.NewInt(0), nil
 		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			for _, name := range [2]string{"__int__", "__index__"} {
+				if r, ok, err := in.callInstanceDunder(inst, name); ok {
+					if err != nil {
+						return nil, err
+					}
+					if _, ok := r.(*object.Int); ok {
+						return r, nil
+					}
+					return nil, object.Errorf(in.typeErr, "%s returned non-int", name)
+				}
+			}
+		}
 		switch v := a[0].(type) {
 		case *object.Int:
 			return v, nil
@@ -86,6 +99,17 @@ func (i *Interp) initBuiltins() {
 		in := ii.(*Interp)
 		if len(a) == 0 {
 			return &object.Float{V: 0}, nil
+		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			if r, ok, err := in.callInstanceDunder(inst, "__float__"); ok {
+				if err != nil {
+					return nil, err
+				}
+				if _, ok := r.(*object.Float); ok {
+					return r, nil
+				}
+				return nil, object.Errorf(in.typeErr, "__float__ returned non-float")
+			}
 		}
 		switch v := a[0].(type) {
 		case *object.Float:
@@ -398,15 +422,24 @@ func (i *Interp) initBuiltins() {
 		}
 		return in.pow(a[0], a[1])
 	}})
-	b.SetStr("format", &object.BuiltinFunc{Name: "format", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 1 {
+	b.SetStr("format", &object.BuiltinFunc{Name: "format", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		spec := ""
+		if len(a) > 1 {
+			if s, ok := a[1].(*object.Str); ok {
+				spec = s.V
+			}
+		}
+		if r, ok, err := in.instanceFormat(a[0], spec); ok {
+			if err != nil {
+				return nil, err
+			}
+			return &object.Str{V: r}, nil
+		}
+		if spec == "" {
 			return &object.Str{V: object.Str_(a[0])}, nil
 		}
-		spec, _ := a[1].(*object.Str)
-		if spec == nil || spec.V == "" {
-			return &object.Str{V: object.Str_(a[0])}, nil
-		}
-		s, err := formatValue(a[0], spec.V)
+		s, err := formatValue(a[0], spec)
 		if err != nil {
 			return nil, err
 		}
@@ -456,6 +489,12 @@ func (i *Interp) initBuiltins() {
 		return object.None, nil
 	}})
 	b.SetStr("abs", &object.BuiltinFunc{Name: "abs", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if inst, ok := a[0].(*object.Instance); ok {
+			if r, ok, err := in.callInstanceDunder(inst, "__abs__"); ok {
+				return r, err
+			}
+		}
 		switch v := a[0].(type) {
 		case *object.Int:
 			return &object.Int{V: new(big.Int).Abs(v.V)}, nil
@@ -472,7 +511,7 @@ func (i *Interp) initBuiltins() {
 		case *object.Complex:
 			return &object.Float{V: math.Hypot(v.Real, v.Imag)}, nil
 		}
-		return nil, object.Errorf(ii.(*Interp).typeErr, "bad abs() arg")
+		return nil, object.Errorf(in.typeErr, "bad abs() arg")
 	}})
 	b.SetStr("complex", &object.BuiltinFunc{Name: "complex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
@@ -758,7 +797,17 @@ func (i *Interp) initBuiltins() {
 		}
 		return &object.Str{V: "0b" + n.Text(2)}, nil
 	}})
-	b.SetStr("round", &object.BuiltinFunc{Name: "round", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("round", &object.BuiltinFunc{Name: "round", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if inst, ok := a[0].(*object.Instance); ok {
+			args := []object.Object{}
+			if len(a) > 1 {
+				args = append(args, a[1])
+			}
+			if r, ok, err := in.callInstanceDunder(inst, "__round__", args...); ok {
+				return r, err
+			}
+		}
 		ndigits := 0
 		if len(a) > 1 {
 			if n, ok := toInt64(a[1]); ok {
@@ -843,6 +892,16 @@ func (i *Interp) initBuiltins() {
 	}})
 	b.SetStr("divmod", &object.BuiltinFunc{Name: "divmod", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
+		if inst, ok := a[0].(*object.Instance); ok {
+			if r, ok, err := in.callInstanceDunder(inst, "__divmod__", a[1]); ok {
+				return r, err
+			}
+		}
+		if inst, ok := a[1].(*object.Instance); ok {
+			if r, ok, err := in.callInstanceDunder(inst, "__rdivmod__", a[0]); ok {
+				return r, err
+			}
+		}
 		q, err := in.floordiv(a[0], a[1])
 		if err != nil {
 			return nil, err
