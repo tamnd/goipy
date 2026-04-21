@@ -11,6 +11,10 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildAsyncio(), true
 	case "importlib":
 		return i.buildImportlib(), true
+	case "functools":
+		return i.buildFunctools(), true
+	case "itertools":
+		return i.buildItertools(), true
 	}
 	return nil, false
 }
