@@ -6,3 +6,9 @@ package object
 type UUID struct {
 	Bytes [16]byte
 }
+
+// SequenceMatcher is difflib's similarity-scoring object. We keep the two
+// inputs as strings and compute ratios on demand.
+type SequenceMatcher struct {
+	A, B string
+}

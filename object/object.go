@@ -343,6 +343,8 @@ func TypeName(o Object) string {
 		return "ParseResult"
 	case *UUID:
 		return "UUID"
+	case *SequenceMatcher:
+		return "SequenceMatcher"
 	}
 	return fmt.Sprintf("%T", o)
 }

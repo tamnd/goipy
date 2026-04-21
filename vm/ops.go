@@ -468,6 +468,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if sm, ok := o.(*object.SequenceMatcher); ok {
+		if m, ok := sequenceMatcherAttr(sm, name); ok {
+			return m, nil
+		}
+	}
 	if mv, ok := o.(*object.Memoryview); ok {
 		if a, ok := memoryviewAttr(mv, name); ok {
 			return a, nil
