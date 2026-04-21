@@ -1,0 +1,23 @@
+rex 4
+typeerr: expected int
+attrerr: age
+after-del: name
+7
+_x
+10 10
+0
+[('Mid', 'mid'), ('Leaf', 'leaf')]
+Pair[int, str]
+Pair[int]
+42 shadow 42
+30
+1
+30
+desc-value
+instance-value
+Host t
+['a', 'b']
+('inst', 'Use')
+('noinst', 'Use')
+[[('a', 1), ('b', 2)]]
+25
