@@ -19,6 +19,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCollections(), true
 	case "operator":
 		return i.buildOperator(), true
+	case "math":
+		return i.buildMath(), true
+	case "heapq":
+		return i.buildHeapq(), true
+	case "bisect":
+		return i.buildBisect(), true
+	case "random":
+		return i.buildRandom(), true
 	}
 	return nil, false
 }
