@@ -194,16 +194,16 @@ func Eq(a, b Object) (bool, error) {
 		case *Bool:
 			return Eq(a, boolToInt(bv))
 		case *Int:
-			return av.V.Cmp(bv.V) == 0, nil
+			return av.V.Cmp(&bv.V) == 0, nil
 		case *Float:
-			return bigIntEqFloat(av.V, bv.V), nil
+			return bigIntEqFloat(&av.V, bv.V), nil
 		}
 	case *Float:
 		switch bv := b.(type) {
 		case *Bool:
 			return av.V == float64(btoi(bv.V)), nil
 		case *Int:
-			return bigIntEqFloat(bv.V, av.V), nil
+			return bigIntEqFloat(&bv.V, av.V), nil
 		case *Float:
 			return av.V == bv.V, nil
 		case *Complex:
@@ -214,7 +214,7 @@ func Eq(a, b Object) (bool, error) {
 		case *Bool:
 			return av.Imag == 0 && av.Real == float64(btoi(bv.V)), nil
 		case *Int:
-			return av.Imag == 0 && bigIntEqFloat(bv.V, av.Real), nil
+			return av.Imag == 0 && bigIntEqFloat(&bv.V, av.Real), nil
 		case *Float:
 			return av.Imag == 0 && av.Real == bv.V, nil
 		case *Complex:

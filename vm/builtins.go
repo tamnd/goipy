@@ -79,7 +79,7 @@ func (i *Interp) initBuiltins() {
 		case *object.Float:
 			n := new(big.Int)
 			new(big.Float).SetFloat64(v.V).Int(n)
-			return &object.Int{V: n}, nil
+			return object.IntFromBig(n), nil
 		case *object.Str:
 			base := 10
 			if len(a) > 1 {
@@ -98,7 +98,7 @@ func (i *Interp) initBuiltins() {
 			if !ok {
 				return nil, object.Errorf(in.valueErr, "invalid literal for int()")
 			}
-			return &object.Int{V: n}, nil
+			return object.IntFromBig(n), nil
 		}
 		return nil, object.Errorf(in.typeErr, "int() argument must be str or int")
 	}})
@@ -122,7 +122,7 @@ func (i *Interp) initBuiltins() {
 		case *object.Float:
 			return v, nil
 		case *object.Int:
-			f, _ := new(big.Float).SetInt(v.V).Float64()
+			f, _ := new(big.Float).SetInt(&v.V).Float64()
 			return &object.Float{V: f}, nil
 		case *object.Bool:
 			if v.V {
@@ -436,7 +436,7 @@ func (i *Interp) initBuiltins() {
 			if mod.Sign() == 0 {
 				return nil, object.Errorf(in.valueErr, "pow() 3rd argument cannot be 0")
 			}
-			return &object.Int{V: new(big.Int).Exp(base, exp, mod)}, nil
+			return object.IntFromBig(new(big.Int).Exp(base, exp, mod)), nil
 		}
 		return in.pow(a[0], a[1])
 	}})
@@ -515,7 +515,7 @@ func (i *Interp) initBuiltins() {
 		}
 		switch v := a[0].(type) {
 		case *object.Int:
-			return &object.Int{V: new(big.Int).Abs(v.V)}, nil
+			return object.IntFromBig(new(big.Int).Abs(&v.V)), nil
 		case *object.Float:
 			if v.V < 0 {
 				return &object.Float{V: -v.V}, nil

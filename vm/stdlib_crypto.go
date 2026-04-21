@@ -328,7 +328,7 @@ func (i *Interp) buildSecrets() *object.Module {
 		if err != nil {
 			return nil, err
 		}
-		return &object.Int{V: bn}, nil
+		return object.IntFromBig(bn), nil
 	}})
 
 	m.Dict.SetStr("randbits", &object.BuiltinFunc{Name: "randbits", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -353,7 +353,7 @@ func (i *Interp) buildSecrets() *object.Module {
 			buf[0] &= byte(0xff >> excess)
 		}
 		out := new(big.Int).SetBytes(buf)
-		return &object.Int{V: out}, nil
+		return object.IntFromBig(out), nil
 	}})
 
 	m.Dict.SetStr("choice", &object.BuiltinFunc{Name: "choice", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -573,7 +573,7 @@ func uuidAttr(u *object.UUID, name string) (object.Object, bool) {
 		b[6], b[7] = b[7], b[6]
 		return &object.Bytes{V: b}, true
 	case "int":
-		return &object.Int{V: new(big.Int).SetBytes(u.Bytes[:])}, true
+		return object.IntFromBig(new(big.Int).SetBytes(u.Bytes[:])), true
 	case "version":
 		// CPython exposes a version only when the variant is RFC 4122.
 		if u.Bytes[8]&0xc0 != 0x80 {

@@ -155,7 +155,7 @@ func (r *Reader) ReadObject() (object.Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		o := &object.Int{V: big.NewInt(int64(v))}
+		o := object.IntFromBig(big.NewInt(int64(v)))
 		idx := r.reserveRef(flag)
 		return r.setRef(idx, o), nil
 	case TYPE_INT64:
@@ -163,7 +163,7 @@ func (r *Reader) ReadObject() (object.Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		o := &object.Int{V: new(big.Int).SetInt64(int64(v))}
+		o := object.IntFromBig(new(big.Int).SetInt64(int64(v)))
 		idx := r.reserveRef(flag)
 		return r.setRef(idx, o), nil
 	case TYPE_LONG:
@@ -372,7 +372,7 @@ func (r *Reader) readLong(flag bool) (object.Object, error) {
 	if neg {
 		result.Neg(result)
 	}
-	o := &object.Int{V: result}
+	o := object.IntFromBig(result)
 	idx := r.reserveRef(flag)
 	return r.setRef(idx, o), nil
 }

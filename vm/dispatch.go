@@ -486,7 +486,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							continue
 						}
 					}
-					f.push(&object.Int{V: new(big.Int).Add(ai.V, bi.V)})
+					f.push(object.IntFromBig(new(big.Int).Add(&ai.V, &bi.V)))
 					continue
 				}
 			}
@@ -538,7 +538,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							continue
 						}
 					}
-					f.push(&object.Int{V: new(big.Int).Sub(ai.V, bi.V)})
+					f.push(object.IntFromBig(new(big.Int).Sub(&ai.V, &bi.V)))
 					continue
 				}
 			}
@@ -575,7 +575,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							continue
 						}
 					}
-					f.push(&object.Int{V: new(big.Int).Mul(ai.V, bi.V)})
+					f.push(object.IntFromBig(new(big.Int).Mul(&ai.V, &bi.V)))
 					continue
 				}
 			}
@@ -660,7 +660,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				return nil, object.Errorf(i.typeErr, "bad operand for ~")
 			}
 			r := new(big.Int).Not(bi)
-			f.push(&object.Int{V: r})
+			f.push(object.IntFromBig(r))
 		case op.TO_BOOL, op.TO_BOOL_ALWAYS_TRUE, op.TO_BOOL_BOOL,
 			op.TO_BOOL_INT, op.TO_BOOL_LIST, op.TO_BOOL_NONE, op.TO_BOOL_STR:
 			f.setTop(object.BoolOf(object.Truthy(f.top())))

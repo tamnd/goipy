@@ -45,45 +45,23 @@ func BoolOf(b bool) *Bool {
 	return False
 }
 
-// Int holds a Python integer. When V is nil, the value lives in I as an
-// int64; Big() materialises the *big.Int lazily. Hot arithmetic paths in
-// dispatch exploit the inline form to skip the big.NewInt allocation on
-// every BINARY_OP.
-//
-// Direct reads of V are still supported for backwards compatibility, but
-// callers must either guard with `if V != nil` or invoke Big() to force
-// materialisation. Use IsInt64 / Int64 / Big for safe access.
+// Int holds a Python integer. V is a value-embedded big.Int so creating an
+// Int is one heap allocation containing both the object header and the
+// big.Int body, instead of three (Int header + big.Int header + nat slice).
+// Callers passing *big.Int to the big API should use &ai.V.
 type Int struct {
-	V *big.Int
+	V big.Int
 	I int64
 }
 
-// Big returns a *big.Int view of n, materialising it from the inline int64
-// on first call. Safe for concurrent callers that only read (each caller
-// would race the assignment, but they'd all produce identical big.Ints;
-// if true multi-threaded use is ever added, this needs synchronisation).
-func (n *Int) Big() *big.Int {
-	if n.V == nil {
-		n.V = big.NewInt(n.I)
-	}
-	return n.V
-}
+// Big returns a pointer to the embedded big.Int for APIs that need one.
+func (n *Int) Big() *big.Int { return &n.V }
 
 // IsInt64 reports whether n fits in an int64.
-func (n *Int) IsInt64() bool {
-	if n.V == nil {
-		return true
-	}
-	return n.V.IsInt64()
-}
+func (n *Int) IsInt64() bool { return n.V.IsInt64() }
 
 // Int64 returns n as an int64. Caller must have verified IsInt64.
-func (n *Int) Int64() int64 {
-	if n.V == nil {
-		return n.I
-	}
-	return n.V.Int64()
-}
+func (n *Int) Int64() int64 { return n.V.Int64() }
 
 // smallIntCache covers the range Python's CPython caches internally. Hot
 // loops like `for i in range(...)` and boolean int promotion hit this path
@@ -98,7 +76,9 @@ var smallIntCache [smallIntMax - smallIntMin + 1]*Int
 func init() {
 	for i := range smallIntCache {
 		n := int64(smallIntMin + i)
-		smallIntCache[i] = &Int{V: big.NewInt(n), I: n}
+		x := &Int{I: n}
+		x.V.SetInt64(n)
+		smallIntCache[i] = x
 	}
 }
 
@@ -108,7 +88,9 @@ func IntFromInt64(n int64) *Int {
 	if n >= smallIntMin && n <= smallIntMax {
 		return smallIntCache[n-smallIntMin]
 	}
-	return &Int{V: big.NewInt(n), I: n}
+	x := &Int{I: n}
+	x.V.SetInt64(n)
+	return x
 }
 
 // IntFromBig wraps a *big.Int into an *Int, hitting the small-int cache when
@@ -120,9 +102,13 @@ func IntFromBig(b *big.Int) *Int {
 		if n >= smallIntMin && n <= smallIntMax {
 			return smallIntCache[n-smallIntMin]
 		}
-		return &Int{V: b, I: n}
+		x := &Int{I: n}
+		x.V.Set(b)
+		return x
 	}
-	return &Int{V: b}
+	x := &Int{}
+	x.V.Set(b)
+	return x
 }
 
 func NewInt(n int64) *Int { return IntFromInt64(n) }

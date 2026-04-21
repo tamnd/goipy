@@ -109,7 +109,7 @@ func asComplex(o object.Object) (re, im float64, ok bool) {
 		}
 		return 0, 0, true
 	case *object.Int:
-		f, _ := new(big.Float).SetInt(v.V).Float64()
+		f, _ := new(big.Float).SetInt(&v.V).Float64()
 		return f, 0, true
 	case *object.Float:
 		return v.V, 0, true
@@ -171,7 +171,7 @@ func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok b
 		}
 		return big.NewInt(0), 0, false, true
 	case *object.Int:
-		return v.V, 0, false, true
+		return &v.V, 0, false, true
 	case *object.Float:
 		return nil, v.V, true, true
 	}
@@ -263,7 +263,7 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 		return &object.Float{V: toFloat(ai, af, aF) + toFloat(bi, bf, bF)}, nil
 	}
 	r := new(big.Int).Add(ai, bi)
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 func (i *Interp) sub(a, b object.Object) (object.Object, error) {
@@ -291,7 +291,7 @@ func (i *Interp) sub(a, b object.Object) (object.Object, error) {
 	if aF || bF {
 		return &object.Float{V: toFloat(ai, af, aF) - toFloat(bi, bf, bF)}, nil
 	}
-	return &object.Int{V: new(big.Int).Sub(ai, bi)}, nil
+	return object.IntFromBig(new(big.Int).Sub(ai, bi)), nil
 }
 
 func (i *Interp) mul(a, b object.Object) (object.Object, error) {
@@ -350,7 +350,7 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 	if aF || bF {
 		return &object.Float{V: toFloat(ai, af, aF) * toFloat(bi, bf, bF)}, nil
 	}
-	return &object.Int{V: new(big.Int).Mul(ai, bi)}, nil
+	return object.IntFromBig(new(big.Int).Mul(ai, bi)), nil
 }
 
 func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
@@ -413,7 +413,7 @@ func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
 	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
 		q.Sub(q, big.NewInt(1))
 	}
-	return &object.Int{V: q}, nil
+	return object.IntFromBig(q), nil
 }
 
 func (i *Interp) mod(a, b object.Object) (object.Object, error) {
@@ -442,7 +442,7 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
 		r.Add(r, bi)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 func (i *Interp) pow(a, b object.Object) (object.Object, error) {
@@ -468,7 +468,7 @@ func (i *Interp) pow(a, b object.Object) (object.Object, error) {
 	if aF || bF || (bi != nil && bi.Sign() < 0) {
 		return &object.Float{V: math.Pow(toFloat(ai, af, aF), toFloat(bi, bf, bF))}, nil
 	}
-	return &object.Int{V: new(big.Int).Exp(ai, bi, nil)}, nil
+	return object.IntFromBig(new(big.Int).Exp(ai, bi, nil)), nil
 }
 
 // complexPow is a|b for complex numbers using the standard polar
@@ -515,7 +515,7 @@ func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
 	} else {
 		r.Rsh(n, nk)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 // hasInstance reports whether either operand is a user class instance.
@@ -644,7 +644,7 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 	case "^":
 		r.Xor(ni, nj)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 // --- subscript / slicing ---
@@ -1014,7 +1014,7 @@ func toBigInt(o object.Object) (*big.Int, bool) {
 		}
 		return big.NewInt(0), true
 	case *object.Int:
-		return v.V, true
+		return &v.V, true
 	}
 	return nil, false
 }

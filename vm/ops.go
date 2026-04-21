@@ -309,7 +309,7 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 		}
 		return object.NewInt(r), nil
 	case *object.Int:
-		return &object.Int{V: new(big.Int).Neg(x.V)}, nil
+		return object.IntFromBig(new(big.Int).Neg(&x.V)), nil
 	case *object.Float:
 		return &object.Float{V: -x.V}, nil
 	case *object.Complex:
@@ -1279,7 +1279,7 @@ func formatValue(v object.Object, spec string) (string, error) {
 		if it == 'n' {
 			it = 'd'
 		}
-		absV := new(big.Int).Abs(x.V)
+		absV := new(big.Int).Abs(&x.V)
 		var prefix, digits string
 		switch it {
 		case 'b':
@@ -1308,14 +1308,14 @@ func formatValue(v object.Object, spec string) (string, error) {
 		case 'd', 0:
 			digits = absV.String()
 		case 'f', 'F':
-			fv, _ := new(big.Float).SetInt(x.V).Float64()
+			fv, _ := new(big.Float).SetInt(&x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6
 			}
 			digits = strconv.FormatFloat(fv, 'f', p, 64)
 		case 'e', 'E':
-			fv, _ := new(big.Float).SetInt(x.V).Float64()
+			fv, _ := new(big.Float).SetInt(&x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6

@@ -18,7 +18,7 @@ func toFloat64Any(o object.Object) (float64, bool) {
 		}
 		return 0, true
 	case *object.Int:
-		f, _ := new(big.Float).SetInt(v.V).Float64()
+		f, _ := new(big.Float).SetInt(&v.V).Float64()
 		return f, true
 	case *object.Float:
 		return v.V, true
@@ -281,7 +281,7 @@ func (i *Interp) buildMath() *object.Module {
 			}
 			acc = new(big.Int).GCD(nil, nil, acc, new(big.Int).Abs(n))
 		}
-		return &object.Int{V: acc}, nil
+		return object.IntFromBig(acc), nil
 	}})
 
 	// lcm(*ints).
@@ -307,7 +307,7 @@ func (i *Interp) buildMath() *object.Module {
 			g := new(big.Int).GCD(nil, nil, acc, n)
 			acc = new(big.Int).Mul(new(big.Int).Quo(acc, g), n)
 		}
-		return &object.Int{V: acc}, nil
+		return object.IntFromBig(acc), nil
 	}})
 
 	// factorial(n).
@@ -320,7 +320,7 @@ func (i *Interp) buildMath() *object.Module {
 		for k := int64(2); k <= n; k++ {
 			r.Mul(r, big.NewInt(k))
 		}
-		return &object.Int{V: r}, nil
+		return object.IntFromBig(r), nil
 	}})
 
 	// comb(n, k) — "n choose k".
@@ -341,7 +341,7 @@ func (i *Interp) buildMath() *object.Module {
 			r.Mul(r, big.NewInt(n-j))
 			r.Quo(r, big.NewInt(j+1))
 		}
-		return &object.Int{V: r}, nil
+		return object.IntFromBig(r), nil
 	}})
 
 	// perm(n[, k]).
@@ -365,7 +365,7 @@ func (i *Interp) buildMath() *object.Module {
 		for j := int64(0); j < k; j++ {
 			r.Mul(r, big.NewInt(n-j))
 		}
-		return &object.Int{V: r}, nil
+		return object.IntFromBig(r), nil
 	}})
 
 	// prod(iterable[, start=1]).

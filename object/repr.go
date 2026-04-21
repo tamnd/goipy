@@ -424,4 +424,4 @@ func pyStrRepr(s string) string {
 }
 
 // AsBig returns a big.Int copy of an Int.
-func AsBig(i *Int) *big.Int { return new(big.Int).Set(i.V) }
+func AsBig(i *Int) *big.Int { return new(big.Int).Set(&i.V) }
