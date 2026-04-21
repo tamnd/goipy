@@ -57,8 +57,8 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
 	var frame *Frame
 	if !isGen {
-		if f, ok := i.framePool[code]; ok {
-			delete(i.framePool, code)
+		if f, ok := code.FramePool.(*Frame); ok && f != nil {
+			code.FramePool = nil
 			frame = f
 			frame.Globals = fn.Globals
 			frame.Builtins = i.Builtins
@@ -109,10 +109,8 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 	// Return frame to pool unless something kept a reference (generator
 	// branch above returned early; tracebacks can retain frames via
 	// exception info — skip pooling when err != nil to be safe).
-	if err == nil {
-		if _, exists := i.framePool[code]; !exists {
-			i.framePool[code] = frame
-		}
+	if err == nil && code.FramePool == nil {
+		code.FramePool = frame
 	}
 	return r, err
 }

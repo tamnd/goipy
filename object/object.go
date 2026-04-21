@@ -265,6 +265,12 @@ type Code struct {
 	CellVars []string
 	FreeVars []string
 
+	// FramePool holds a single reusable *vm.Frame (stored as any to avoid
+	// a cycle between vm and object). The VM grabs it on call and returns
+	// it on successful return; reentrant calls simply bypass the pool and
+	// allocate a fresh frame. Replacing the old map[*Code]*Frame lookup
+	// with a direct field removes a hashmap probe from every Python call.
+	FramePool any
 	// AttrCache is populated lazily by LOAD_ATTR dispatch. Indexed by the
 	// bytecode IP of the LOAD_ATTR op (startIP). Zero entry means not yet
 	// specialized; a non-zero Cls is a guard — if the instance's class
