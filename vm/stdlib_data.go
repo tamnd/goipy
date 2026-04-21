@@ -287,7 +287,7 @@ func jsonToPy(v any) object.Object {
 			return object.NewInt(n)
 		}
 		if bi, ok := new(big.Int).SetString(string(x), 10); ok {
-			return &object.Int{V: bi}
+			return object.IntFromBig(bi)
 		}
 		f, _ := x.Float64()
 		return &object.Float{V: f}

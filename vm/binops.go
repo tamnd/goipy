@@ -109,7 +109,7 @@ func asComplex(o object.Object) (re, im float64, ok bool) {
 		}
 		return 0, 0, true
 	case *object.Int:
-		f, _ := new(big.Float).SetInt(v.V).Float64()
+		f, _ := new(big.Float).SetInt(&v.V).Float64()
 		return f, 0, true
 	case *object.Float:
 		return v.V, 0, true
@@ -127,6 +127,42 @@ func isComplex(o object.Object) bool {
 	return ok
 }
 
+// floatFast covers "float OP operand" where the LHS is already known to be a
+// float's value. Returns the typed result and true if handled; callers must
+// fall back to generic dispatch otherwise.
+func floatFast(av float64, b object.Object, nb uint32) (object.Object, bool) {
+	var bv float64
+	switch x := b.(type) {
+	case *object.Float:
+		bv = x.V
+	case *object.Int:
+		if !x.IsInt64() {
+			return nil, false
+		}
+		bv = float64(x.Int64())
+	case *object.Bool:
+		if x.V {
+			bv = 1
+		}
+	default:
+		return nil, false
+	}
+	switch nb {
+	case op.NB_ADD, op.NB_INPLACE_ADD:
+		return &object.Float{V: av + bv}, true
+	case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
+		return &object.Float{V: av - bv}, true
+	case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
+		return &object.Float{V: av * bv}, true
+	case op.NB_TRUE_DIVIDE, op.NB_INPLACE_TRUE_DIVIDE:
+		if bv == 0 {
+			return nil, false
+		}
+		return &object.Float{V: av / bv}, true
+	}
+	return nil, false
+}
+
 func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok bool) {
 	switch v := o.(type) {
 	case *object.Bool:
@@ -135,7 +171,7 @@ func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok b
 		}
 		return big.NewInt(0), 0, false, true
 	case *object.Int:
-		return v.V, 0, false, true
+		return &v.V, 0, false, true
 	case *object.Float:
 		return nil, v.V, true, true
 	}
@@ -227,7 +263,7 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 		return &object.Float{V: toFloat(ai, af, aF) + toFloat(bi, bf, bF)}, nil
 	}
 	r := new(big.Int).Add(ai, bi)
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 func (i *Interp) sub(a, b object.Object) (object.Object, error) {
@@ -255,7 +291,7 @@ func (i *Interp) sub(a, b object.Object) (object.Object, error) {
 	if aF || bF {
 		return &object.Float{V: toFloat(ai, af, aF) - toFloat(bi, bf, bF)}, nil
 	}
-	return &object.Int{V: new(big.Int).Sub(ai, bi)}, nil
+	return object.IntFromBig(new(big.Int).Sub(ai, bi)), nil
 }
 
 func (i *Interp) mul(a, b object.Object) (object.Object, error) {
@@ -314,7 +350,7 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 	if aF || bF {
 		return &object.Float{V: toFloat(ai, af, aF) * toFloat(bi, bf, bF)}, nil
 	}
-	return &object.Int{V: new(big.Int).Mul(ai, bi)}, nil
+	return object.IntFromBig(new(big.Int).Mul(ai, bi)), nil
 }
 
 func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
@@ -377,7 +413,7 @@ func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
 	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
 		q.Sub(q, big.NewInt(1))
 	}
-	return &object.Int{V: q}, nil
+	return object.IntFromBig(q), nil
 }
 
 func (i *Interp) mod(a, b object.Object) (object.Object, error) {
@@ -406,7 +442,7 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 	if r.Sign() != 0 && (r.Sign() != bi.Sign()) {
 		r.Add(r, bi)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 func (i *Interp) pow(a, b object.Object) (object.Object, error) {
@@ -432,7 +468,7 @@ func (i *Interp) pow(a, b object.Object) (object.Object, error) {
 	if aF || bF || (bi != nil && bi.Sign() < 0) {
 		return &object.Float{V: math.Pow(toFloat(ai, af, aF), toFloat(bi, bf, bF))}, nil
 	}
-	return &object.Int{V: new(big.Int).Exp(ai, bi, nil)}, nil
+	return object.IntFromBig(new(big.Int).Exp(ai, bi, nil)), nil
 }
 
 // complexPow is a|b for complex numbers using the standard polar
@@ -479,7 +515,7 @@ func (i *Interp) shift(a, b object.Object, left bool) (object.Object, error) {
 	} else {
 		r.Rsh(n, nk)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 // hasInstance reports whether either operand is a user class instance.
@@ -608,7 +644,7 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 	case "^":
 		r.Xor(ni, nj)
 	}
-	return &object.Int{V: r}, nil
+	return object.IntFromBig(r), nil
 }
 
 // --- subscript / slicing ---
@@ -962,8 +998,8 @@ func toInt64(o object.Object) (int64, bool) {
 		}
 		return 0, true
 	case *object.Int:
-		if v.V.IsInt64() {
-			return v.V.Int64(), true
+		if v.IsInt64() {
+			return v.Int64(), true
 		}
 	}
 	return 0, false
@@ -978,7 +1014,7 @@ func toBigInt(o object.Object) (*big.Int, bool) {
 		}
 		return big.NewInt(0), true
 	case *object.Int:
-		return v.V, true
+		return &v.V, true
 	}
 	return nil, false
 }

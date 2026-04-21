@@ -45,10 +45,73 @@ func BoolOf(b bool) *Bool {
 	return False
 }
 
-// Int wraps arbitrary-precision integer.
-type Int struct{ V *big.Int }
+// Int holds a Python integer. V is a value-embedded big.Int so creating an
+// Int is one heap allocation containing both the object header and the
+// big.Int body, instead of three (Int header + big.Int header + nat slice).
+// Callers passing *big.Int to the big API should use &ai.V.
+type Int struct {
+	V big.Int
+	I int64
+}
 
-func NewInt(n int64) *Int { return &Int{V: big.NewInt(n)} }
+// Big returns a pointer to the embedded big.Int for APIs that need one.
+func (n *Int) Big() *big.Int { return &n.V }
+
+// IsInt64 reports whether n fits in an int64.
+func (n *Int) IsInt64() bool { return n.V.IsInt64() }
+
+// Int64 returns n as an int64. Caller must have verified IsInt64.
+func (n *Int) Int64() int64 { return n.V.Int64() }
+
+// smallIntCache covers the range Python's CPython caches internally. Hot
+// loops like `for i in range(...)` and boolean int promotion hit this path
+// heavily; pre-building the values makes those zero-allocation.
+const (
+	smallIntMin = -5
+	smallIntMax = 256
+)
+
+var smallIntCache [smallIntMax - smallIntMin + 1]*Int
+
+func init() {
+	for i := range smallIntCache {
+		n := int64(smallIntMin + i)
+		x := &Int{I: n}
+		x.V.SetInt64(n)
+		smallIntCache[i] = x
+	}
+}
+
+// IntFromInt64 returns a cached *Int for values in [-5, 256] and a freshly
+// allocated one otherwise.
+func IntFromInt64(n int64) *Int {
+	if n >= smallIntMin && n <= smallIntMax {
+		return smallIntCache[n-smallIntMin]
+	}
+	x := &Int{I: n}
+	x.V.SetInt64(n)
+	return x
+}
+
+// IntFromBig wraps a *big.Int into an *Int, hitting the small-int cache when
+// the value fits so callers do not accidentally hold two copies of e.g. 0 or
+// 1 that share a representation.
+func IntFromBig(b *big.Int) *Int {
+	if b.IsInt64() {
+		n := b.Int64()
+		if n >= smallIntMin && n <= smallIntMax {
+			return smallIntCache[n-smallIntMin]
+		}
+		x := &Int{I: n}
+		x.V.Set(b)
+		return x
+	}
+	x := &Int{}
+	x.V.Set(b)
+	return x
+}
+
+func NewInt(n int64) *Int { return IntFromInt64(n) }
 
 // Float.
 type Float struct{ V float64 }
@@ -136,23 +199,45 @@ type Frozenset struct {
 
 func NewFrozenset() *Frozenset { return &Frozenset{index: map[uint64][]int{}} }
 
-// Dict: insertion-ordered.
+// Dict: insertion-ordered. Deletes leave tombstones in keys/vals and are
+// compacted when >50% of slots are dead; this keeps Delete O(1) amortized
+// instead of O(n) per call.
 type Dict struct {
 	keys  []Object
 	vals  []Object
 	index map[string]int // fast path for str keys
 	oHash map[uint64][]int
+	dead  int // count of tombstones in keys/vals
 }
+
+// deletedEntry marks a tombstone slot in Dict.keys after a deletion.
+type deletedEntry struct{}
+
+var deletedKey Object = &deletedEntry{}
 
 func NewDict() *Dict {
-	return &Dict{index: map[string]int{}, oHash: map[uint64][]int{}}
+	return &Dict{}
 }
 
-// Len returns the number of entries.
-func (d *Dict) Len() int { return len(d.keys) }
+// Len returns the number of live entries.
+func (d *Dict) Len() int { return len(d.keys) - d.dead }
 
-// Items returns key and value slices (caller must not mutate).
-func (d *Dict) Items() ([]Object, []Object) { return d.keys, d.vals }
+// Items returns key and value slices of live entries (caller must not mutate).
+func (d *Dict) Items() ([]Object, []Object) {
+	if d.dead == 0 {
+		return d.keys, d.vals
+	}
+	ks := make([]Object, 0, len(d.keys)-d.dead)
+	vs := make([]Object, 0, len(d.vals)-d.dead)
+	for i, k := range d.keys {
+		if k == deletedKey {
+			continue
+		}
+		ks = append(ks, k)
+		vs = append(vs, d.vals[i])
+	}
+	return ks, vs
+}
 
 // Code mirrors CPython co_* fields we need.
 type Code struct {
@@ -179,7 +264,36 @@ type Code struct {
 	NFrees   int // free slots (CO_FAST_FREE = 0x80)
 	CellVars []string
 	FreeVars []string
+
+	// FramePool holds a single reusable *vm.Frame (stored as any to avoid
+	// a cycle between vm and object). The VM grabs it on call and returns
+	// it on successful return; reentrant calls simply bypass the pool and
+	// allocate a fresh frame. Replacing the old map[*Code]*Frame lookup
+	// with a direct field removes a hashmap probe from every Python call.
+	FramePool any
+	// KwSlot caches kwname → Fast[] slot index for bindArgs. Built on
+	// first keyword call; stable for the lifetime of the Code.
+	KwSlot map[string]int
+	// AttrCache is populated lazily by LOAD_ATTR dispatch. Indexed by the
+	// bytecode IP of the LOAD_ATTR op (startIP). Zero entry means not yet
+	// specialized; a non-zero Cls is a guard — if the instance's class
+	// changed, the entry is invalid and the slow path runs + repopulates.
+	AttrCache []AttrCacheEntry
 }
+
+// AttrCacheEntry is a one-shot inline cache for LOAD_ATTR on instances.
+type AttrCacheEntry struct {
+	Cls  *Class
+	Val  Object // for KindClassVal / KindClassMethod (raw Function to bind)
+	Kind uint8  // 0 empty, 1 inst-dict hit, 2 class value (non-descriptor), 3 unbound method
+}
+
+const (
+	AttrCacheEmpty       uint8 = 0
+	AttrCacheInstDict    uint8 = 1
+	AttrCacheClassValue  uint8 = 2
+	AttrCacheClassMethod uint8 = 3
+)
 
 const (
 	FastLocal  = 0x20
@@ -244,7 +358,29 @@ type Class struct {
 	Dict  *Dict
 	// MRO computed lazily
 	mro []*Class
+
+	// MethodCache memoises classLookup(name) walks. A single global epoch
+	// is bumped whenever any class is mutated (ClassEpoch()); stale entries
+	// are ignored. Populated by the VM; safe to leave nil.
+	MethodCache map[string]MethodCacheEntry
 }
+
+// MethodCacheEntry stores one cached classLookup result.
+type MethodCacheEntry struct {
+	Val   Object
+	Found bool
+	Epoch uint64
+}
+
+// classEpoch is bumped on any class dict mutation; MethodCache entries
+// carry the epoch at which they were computed.
+var classEpoch uint64 = 1
+
+// ClassEpoch returns the current epoch.
+func ClassEpoch() uint64 { return classEpoch }
+
+// BumpClassEpoch invalidates every class method cache.
+func BumpClassEpoch() { classEpoch++ }
 
 // Instance of a user class.
 type Instance struct {

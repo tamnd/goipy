@@ -309,7 +309,7 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 		}
 		return object.NewInt(r), nil
 	case *object.Int:
-		return &object.Int{V: new(big.Int).Neg(x.V)}, nil
+		return object.IntFromBig(new(big.Int).Neg(&x.V)), nil
 	case *object.Float:
 		return &object.Float{V: -x.V}, nil
 	case *object.Complex:
@@ -683,6 +683,7 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 	}
 	if cls, ok := o.(*object.Class); ok {
 		cls.Dict.SetStr(name, val)
+		object.BumpClassEpoch()
 		return nil
 	}
 	if m, ok := o.(*object.Module); ok {
@@ -968,6 +969,21 @@ func computeMRO(c *object.Class) []*object.Class {
 }
 
 func classLookup(c *object.Class, name string) (object.Object, bool) {
+	epoch := object.ClassEpoch()
+	if c.MethodCache != nil {
+		if e, ok := c.MethodCache[name]; ok && e.Epoch == epoch {
+			return e.Val, e.Found
+		}
+	}
+	v, found := classLookupSlow(c, name)
+	if c.MethodCache == nil {
+		c.MethodCache = make(map[string]object.MethodCacheEntry, 8)
+	}
+	c.MethodCache[name] = object.MethodCacheEntry{Val: v, Found: found, Epoch: epoch}
+	return v, found
+}
+
+func classLookupSlow(c *object.Class, name string) (object.Object, bool) {
 	if v, ok := c.Dict.GetStr(name); ok {
 		return v, true
 	}
@@ -1279,7 +1295,7 @@ func formatValue(v object.Object, spec string) (string, error) {
 		if it == 'n' {
 			it = 'd'
 		}
-		absV := new(big.Int).Abs(x.V)
+		absV := new(big.Int).Abs(&x.V)
 		var prefix, digits string
 		switch it {
 		case 'b':
@@ -1308,14 +1324,14 @@ func formatValue(v object.Object, spec string) (string, error) {
 		case 'd', 0:
 			digits = absV.String()
 		case 'f', 'F':
-			fv, _ := new(big.Float).SetInt(x.V).Float64()
+			fv, _ := new(big.Float).SetInt(&x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6
 			}
 			digits = strconv.FormatFloat(fv, 'f', p, 64)
 		case 'e', 'E':
-			fv, _ := new(big.Float).SetInt(x.V).Float64()
+			fv, _ := new(big.Float).SetInt(&x.V).Float64()
 			p := precision
 			if p < 0 {
 				p = 6

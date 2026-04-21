@@ -209,7 +209,7 @@ func argAsUint64(o object.Object) (uint64, bool) {
 		return 0, true
 	}
 	if i, ok := o.(*object.Int); ok {
-		return new(big.Int).And(i.V, new(big.Int).SetUint64(^uint64(0))).Uint64(), true
+		return new(big.Int).And(&i.V, new(big.Int).SetUint64(^uint64(0))).Uint64(), true
 	}
 	return 0, false
 }
@@ -389,7 +389,7 @@ func toFloat64(o object.Object) (float64, bool) {
 	case *object.Float:
 		return v.V, true
 	case *object.Int:
-		f, _ := new(big.Float).SetInt(v.V).Float64()
+		f, _ := new(big.Float).SetInt(&v.V).Float64()
 		return f, true
 	case *object.Bool:
 		if v.V {
@@ -1468,5 +1468,5 @@ func (i *Interp) buildZlib() *object.Module {
 
 // newIntU64 wraps a uint64 as *object.Int, preserving values above MaxInt64.
 func newIntU64(u uint64) *object.Int {
-	return &object.Int{V: new(big.Int).SetUint64(u)}
+	return object.IntFromBig(new(big.Int).SetUint64(u))
 }

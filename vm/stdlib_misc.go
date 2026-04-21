@@ -33,7 +33,7 @@ func (i *Interp) buildStatistics() *object.Module {
 		}
 		avg := sum / float64(len(xs))
 		if allInt && avg == math.Trunc(avg) && !math.IsInf(avg, 0) {
-			return &object.Int{V: big.NewInt(int64(avg))}, nil
+			return object.IntFromBig(big.NewInt(int64(avg))), nil
 		}
 		return &object.Float{V: avg}, nil
 	}})
@@ -102,7 +102,7 @@ func (i *Interp) buildStatistics() *object.Module {
 		if n%2 == 1 {
 			v := xs[n/2]
 			if allInt {
-				return &object.Int{V: big.NewInt(int64(v))}, nil
+				return object.IntFromBig(big.NewInt(int64(v))), nil
 			}
 			return &object.Float{V: v}, nil
 		}
@@ -128,7 +128,7 @@ func (i *Interp) buildStatistics() *object.Module {
 			v = xs[n/2-1]
 		}
 		if allInt {
-			return &object.Int{V: big.NewInt(int64(v))}, nil
+			return object.IntFromBig(big.NewInt(int64(v))), nil
 		}
 		return &object.Float{V: v}, nil
 	}})
@@ -145,7 +145,7 @@ func (i *Interp) buildStatistics() *object.Module {
 		n := len(xs)
 		v := xs[n/2]
 		if allInt {
-			return &object.Int{V: big.NewInt(int64(v))}, nil
+			return object.IntFromBig(big.NewInt(int64(v))), nil
 		}
 		return &object.Float{V: v}, nil
 	}})
@@ -221,7 +221,7 @@ func (i *Interp) buildStatistics() *object.Module {
 			return nil, err
 		}
 		if allInt && v == math.Trunc(v) && !math.IsInf(v, 0) {
-			return &object.Int{V: big.NewInt(int64(v))}, nil
+			return object.IntFromBig(big.NewInt(int64(v))), nil
 		}
 		return &object.Float{V: v}, nil
 	}})
@@ -232,7 +232,7 @@ func (i *Interp) buildStatistics() *object.Module {
 			return nil, err
 		}
 		if allInt && v == math.Trunc(v) && !math.IsInf(v, 0) {
-			return &object.Int{V: big.NewInt(int64(v))}, nil
+			return object.IntFromBig(big.NewInt(int64(v))), nil
 		}
 		return &object.Float{V: v}, nil
 	}})
@@ -403,7 +403,7 @@ func rangeToList(r *object.Range) []object.Object {
 		return out
 	}
 	for v := r.Start; (r.Step > 0 && v < r.Stop) || (r.Step < 0 && v > r.Stop); v += r.Step {
-		out = append(out, &object.Int{V: big.NewInt(v)})
+		out = append(out, object.IntFromBig(big.NewInt(v)))
 	}
 	return out
 }
@@ -419,13 +419,13 @@ func (i *Interp) buildCalendar() *object.Module {
 	m := &object.Module{Name: "calendar", Dict: object.NewDict()}
 
 	// Constants for weekday names.
-	m.Dict.SetStr("MONDAY", &object.Int{V: big.NewInt(0)})
-	m.Dict.SetStr("TUESDAY", &object.Int{V: big.NewInt(1)})
-	m.Dict.SetStr("WEDNESDAY", &object.Int{V: big.NewInt(2)})
-	m.Dict.SetStr("THURSDAY", &object.Int{V: big.NewInt(3)})
-	m.Dict.SetStr("FRIDAY", &object.Int{V: big.NewInt(4)})
-	m.Dict.SetStr("SATURDAY", &object.Int{V: big.NewInt(5)})
-	m.Dict.SetStr("SUNDAY", &object.Int{V: big.NewInt(6)})
+	m.Dict.SetStr("MONDAY", object.IntFromBig(big.NewInt(0)))
+	m.Dict.SetStr("TUESDAY", object.IntFromBig(big.NewInt(1)))
+	m.Dict.SetStr("WEDNESDAY", object.IntFromBig(big.NewInt(2)))
+	m.Dict.SetStr("THURSDAY", object.IntFromBig(big.NewInt(3)))
+	m.Dict.SetStr("FRIDAY", object.IntFromBig(big.NewInt(4)))
+	m.Dict.SetStr("SATURDAY", object.IntFromBig(big.NewInt(5)))
+	m.Dict.SetStr("SUNDAY", object.IntFromBig(big.NewInt(6)))
 
 	m.Dict.SetStr("month_name", strList(calMonthName))
 	m.Dict.SetStr("month_abbr", strList(calMonthAbbr))
@@ -455,7 +455,7 @@ func (i *Interp) buildCalendar() *object.Module {
 		d := func(y int) int {
 			return y/4 - y/100 + y/400
 		}
-		return &object.Int{V: big.NewInt(int64(d(y2) - d(y1)))}, nil
+		return object.IntFromBig(big.NewInt(int64(d(y2) - d(y1)))), nil
 	}})
 
 	m.Dict.SetStr("weekday", &object.BuiltinFunc{Name: "weekday", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -468,7 +468,7 @@ func (i *Interp) buildCalendar() *object.Module {
 		t := time.Date(int(y), time.Month(mo), int(d), 0, 0, 0, 0, time.UTC)
 		// Go: Sunday=0..Saturday=6. Python: Monday=0..Sunday=6.
 		w := (int(t.Weekday()) + 6) % 7
-		return &object.Int{V: big.NewInt(int64(w))}, nil
+		return object.IntFromBig(big.NewInt(int64(w))), nil
 	}})
 
 	m.Dict.SetStr("monthrange", &object.BuiltinFunc{Name: "monthrange", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -484,8 +484,8 @@ func (i *Interp) buildCalendar() *object.Module {
 		w := (int(first.Weekday()) + 6) % 7
 		days := daysInMonth(int(y), int(mo))
 		return &object.Tuple{V: []object.Object{
-			&object.Int{V: big.NewInt(int64(w))},
-			&object.Int{V: big.NewInt(int64(days))},
+			object.IntFromBig(big.NewInt(int64(w))),
+			object.IntFromBig(big.NewInt(int64(days))),
 		}}, nil
 	}})
 
@@ -525,7 +525,7 @@ func (i *Interp) buildCalendar() *object.Module {
 		for i, w := range weeks {
 			lst := make([]object.Object, 7)
 			for j, d := range w {
-				lst[j] = &object.Int{V: big.NewInt(int64(d))}
+				lst[j] = object.IntFromBig(big.NewInt(int64(d)))
 			}
 			out[i] = &object.List{V: lst}
 		}
@@ -555,7 +555,7 @@ func (i *Interp) buildCalendar() *object.Module {
 		mi, _ := toInt64(parts[4])
 		se, _ := toInt64(parts[5])
 		t := time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(se), 0, time.UTC)
-		return &object.Int{V: big.NewInt(t.Unix())}, nil
+		return object.IntFromBig(big.NewInt(t.Unix())), nil
 	}})
 
 	return m

@@ -8,9 +8,13 @@ import (
 // Set inserts or replaces a value for key in the dict.
 func (d *Dict) Set(key, val Object) error {
 	if s, ok := key.(*Str); ok {
-		if i, ok := d.index[s.V]; ok {
-			d.vals[i] = val
-			return nil
+		if d.index != nil {
+			if i, ok := d.index[s.V]; ok {
+				d.vals[i] = val
+				return nil
+			}
+		} else {
+			d.index = make(map[string]int)
 		}
 		d.index[s.V] = len(d.keys)
 		d.keys = append(d.keys, key)
@@ -21,15 +25,19 @@ func (d *Dict) Set(key, val Object) error {
 	if err != nil {
 		return err
 	}
-	for _, idx := range d.oHash[h] {
-		eq, err := Eq(d.keys[idx], key)
-		if err != nil {
-			return err
+	if d.oHash != nil {
+		for _, idx := range d.oHash[h] {
+			eq, err := Eq(d.keys[idx], key)
+			if err != nil {
+				return err
+			}
+			if eq {
+				d.vals[idx] = val
+				return nil
+			}
 		}
-		if eq {
-			d.vals[idx] = val
-			return nil
-		}
+	} else {
+		d.oHash = make(map[uint64][]int)
 	}
 	d.oHash[h] = append(d.oHash[h], len(d.keys))
 	d.keys = append(d.keys, key)
@@ -40,9 +48,14 @@ func (d *Dict) Set(key, val Object) error {
 // Get returns the value for key (or nil, false).
 func (d *Dict) Get(key Object) (Object, bool, error) {
 	if s, ok := key.(*Str); ok {
-		if i, ok := d.index[s.V]; ok {
-			return d.vals[i], true, nil
+		if d.index != nil {
+			if i, ok := d.index[s.V]; ok {
+				return d.vals[i], true, nil
+			}
 		}
+		return nil, false, nil
+	}
+	if d.oHash == nil {
 		return nil, false, nil
 	}
 	h, err := Hash(key)
@@ -63,6 +76,9 @@ func (d *Dict) Get(key Object) (Object, bool, error) {
 
 // GetStr is a fast-path for string keys.
 func (d *Dict) GetStr(key string) (Object, bool) {
+	if d.index == nil {
+		return nil, false
+	}
 	if i, ok := d.index[key]; ok {
 		return d.vals[i], true
 	}
@@ -71,9 +87,13 @@ func (d *Dict) GetStr(key string) (Object, bool) {
 
 // SetStr stores a value under a string key.
 func (d *Dict) SetStr(key string, val Object) {
-	if i, ok := d.index[key]; ok {
-		d.vals[i] = val
-		return
+	if d.index != nil {
+		if i, ok := d.index[key]; ok {
+			d.vals[i] = val
+			return
+		}
+	} else {
+		d.index = make(map[string]int)
 	}
 	d.index[key] = len(d.keys)
 	d.keys = append(d.keys, &Str{V: key})
@@ -84,6 +104,9 @@ func (d *Dict) SetStr(key string, val Object) {
 func (d *Dict) Delete(key Object) (bool, error) {
 	idx := -1
 	if s, ok := key.(*Str); ok {
+		if d.index == nil {
+			return false, nil
+		}
 		i, ok := d.index[s.V]
 		if !ok {
 			return false, nil
@@ -91,6 +114,9 @@ func (d *Dict) Delete(key Object) (bool, error) {
 		idx = i
 		delete(d.index, s.V)
 	} else {
+		if d.oHash == nil {
+			return false, nil
+		}
 		h, err := Hash(key)
 		if err != nil {
 			return false, err
@@ -111,25 +137,49 @@ func (d *Dict) Delete(key Object) (bool, error) {
 		if idx == -1 {
 			return false, nil
 		}
-		d.oHash[h] = append(bucket[:found], bucket[found+1:]...)
-	}
-	// Remove key/val and reindex everything after idx
-	d.keys = append(d.keys[:idx], d.keys[idx+1:]...)
-	d.vals = append(d.vals[:idx], d.vals[idx+1:]...)
-	// Shift indices
-	for k, i := range d.index {
-		if i > idx {
-			d.index[k] = i - 1
+		if len(bucket) == 1 {
+			delete(d.oHash, h)
+		} else {
+			d.oHash[h] = append(bucket[:found], bucket[found+1:]...)
 		}
 	}
-	for h, bucket := range d.oHash {
-		for bi, j := range bucket {
-			if j > idx {
-				d.oHash[h][bi] = j - 1
-			}
-		}
+	d.keys[idx] = deletedKey
+	d.vals[idx] = nil
+	d.dead++
+	if d.dead > 8 && d.dead*2 > len(d.keys) {
+		d.compact()
 	}
 	return true, nil
+}
+
+// compact rebuilds keys/vals without tombstones and reindexes. Called when
+// tombstones exceed half the slot count so lookups don't drift unbounded.
+func (d *Dict) compact() {
+	live := len(d.keys) - d.dead
+	newKeys := make([]Object, 0, live)
+	newVals := make([]Object, 0, live)
+	d.index = make(map[string]int, live)
+	d.oHash = make(map[uint64][]int)
+	for i, k := range d.keys {
+		if k == deletedKey {
+			continue
+		}
+		ni := len(newKeys)
+		newKeys = append(newKeys, k)
+		newVals = append(newVals, d.vals[i])
+		if s, ok := k.(*Str); ok {
+			d.index[s.V] = ni
+			continue
+		}
+		h, err := Hash(k)
+		if err != nil {
+			continue
+		}
+		d.oHash[h] = append(d.oHash[h], ni)
+	}
+	d.keys = newKeys
+	d.vals = newVals
+	d.dead = 0
 }
 
 // --- equality and hashing ---
@@ -170,16 +220,16 @@ func Eq(a, b Object) (bool, error) {
 		case *Bool:
 			return Eq(a, boolToInt(bv))
 		case *Int:
-			return av.V.Cmp(bv.V) == 0, nil
+			return av.V.Cmp(&bv.V) == 0, nil
 		case *Float:
-			return bigIntEqFloat(av.V, bv.V), nil
+			return bigIntEqFloat(&av.V, bv.V), nil
 		}
 	case *Float:
 		switch bv := b.(type) {
 		case *Bool:
 			return av.V == float64(btoi(bv.V)), nil
 		case *Int:
-			return bigIntEqFloat(bv.V, av.V), nil
+			return bigIntEqFloat(&bv.V, av.V), nil
 		case *Float:
 			return av.V == bv.V, nil
 		case *Complex:
@@ -190,7 +240,7 @@ func Eq(a, b Object) (bool, error) {
 		case *Bool:
 			return av.Imag == 0 && av.Real == float64(btoi(bv.V)), nil
 		case *Int:
-			return av.Imag == 0 && bigIntEqFloat(bv.V, av.Real), nil
+			return av.Imag == 0 && bigIntEqFloat(&bv.V, av.Real), nil
 		case *Float:
 			return av.Imag == 0 && av.Real == bv.V, nil
 		case *Complex:

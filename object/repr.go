@@ -317,18 +317,72 @@ func formatFloat(f float64) string {
 	if math.IsNaN(f) {
 		return "nan"
 	}
-	// Python prints floats with minimum digits to round-trip, and at least
-	// one decimal (e.g. "1.0" not "1").
-	s := strconv.FormatFloat(f, 'g', 17, 64)
-	// Round-trip minimal.
-	s2 := strconv.FormatFloat(f, 'g', -1, 64)
-	if p, err := strconv.ParseFloat(s2, 64); err == nil && p == f {
-		s = s2
+	if f == 0 {
+		if math.Signbit(f) {
+			return "-0.0"
+		}
+		return "0.0"
 	}
-	if !strings.ContainsAny(s, ".eE") {
-		s += ".0"
+	// Python's float repr: shortest round-trip digits, scientific notation
+	// only when decimal-point position <= -4 or > 16. Go's 'g' switches at
+	// exponent >= 6 with prec=-1, so do the conversion ourselves.
+	shortest := strconv.FormatFloat(f, 'e', -1, 64)
+	mant, exp := splitSciParts(shortest)
+	digits := strings.Replace(mant, ".", "", 1)
+	dp := exp + 1 // position of decimal point after the first digit shift
+	if dp <= -4 || dp > 16 {
+		// Scientific: format "d.ddde±NN" with min 2-digit exponent.
+		s := strconv.FormatFloat(f, 'e', -1, 64)
+		return fixupSciExp(s)
 	}
-	return s
+	// Fixed: render digits with decimal point at dp.
+	neg := ""
+	if digits[0] == '-' {
+		neg = "-"
+		digits = digits[1:]
+	}
+	var out string
+	switch {
+	case dp <= 0:
+		out = "0." + strings.Repeat("0", -dp) + digits
+	case dp >= len(digits):
+		out = digits + strings.Repeat("0", dp-len(digits)) + ".0"
+	default:
+		out = digits[:dp] + "." + digits[dp:]
+	}
+	return neg + out
+}
+
+// splitSciParts splits "m.mmme±NN" into mantissa and integer exponent.
+func splitSciParts(s string) (string, int) {
+	i := strings.IndexAny(s, "eE")
+	if i < 0 {
+		return s, 0
+	}
+	e, _ := strconv.Atoi(s[i+1:])
+	return s[:i], e
+}
+
+// fixupSciExp rewrites Go's "1e+09" to Python's "1e+09" (same) but ensures
+// at least 2 exponent digits and adds ".0" to bare integer mantissa.
+func fixupSciExp(s string) string {
+	i := strings.IndexAny(s, "eE")
+	if i < 0 {
+		return s
+	}
+	mant, exp := s[:i], s[i+1:]
+	if !strings.Contains(mant, ".") {
+		mant += ".0"
+	}
+	sign := "+"
+	if exp[0] == '+' || exp[0] == '-' {
+		sign = string(exp[0])
+		exp = exp[1:]
+	}
+	if len(exp) < 2 {
+		exp = "0" + exp
+	}
+	return mant + "e" + sign + exp
 }
 
 // pyStrRepr formats a string using Python repr() rules: single quotes
@@ -370,4 +424,4 @@ func pyStrRepr(s string) string {
 }
 
 // AsBig returns a big.Int copy of an Int.
-func AsBig(i *Int) *big.Int { return new(big.Int).Set(i.V) }
+func AsBig(i *Int) *big.Int { return new(big.Int).Set(&i.V) }

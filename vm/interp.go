@@ -90,11 +90,10 @@ func (i *Interp) runFrame(f *Frame) (object.Object, error) {
 	i.callDepth++
 	f.Back = i.curFrame
 	i.curFrame = f
-	defer func() {
-		i.callDepth--
-		i.curFrame = f.Back
-	}()
-	return i.dispatch(f)
+	r, err := i.dispatch(f)
+	i.callDepth--
+	i.curFrame = f.Back
+	return r, err
 }
 
 // extendTraceback prepends a new traceback node for the frame f. The

@@ -2,6 +2,11 @@ package vm
 
 import "github.com/tamnd/goipy/object"
 
+const (
+	inlineFastCap  = 8
+	inlineStackCap = 16
+)
+
 // Frame is a single Python call frame.
 type Frame struct {
 	Code     *object.Code
@@ -25,6 +30,13 @@ type Frame struct {
 	// Yielded carries the value produced by the most recent YIELD_VALUE;
 	// consumed by the generator driver on resume.
 	Yielded object.Object
+
+	// Inline buffers avoid a separate heap allocation for Fast/Stack on
+	// small frames (most Python functions fit). Fast/Stack reference
+	// these when the required size fits; otherwise they point at a
+	// freshly allocated slice.
+	fastInline  [inlineFastCap]object.Object
+	stackInline [inlineStackCap]object.Object
 }
 
 // NewFrame builds a fresh frame for code.
@@ -34,8 +46,18 @@ func NewFrame(code *object.Code, globals, builtins, locals *object.Dict) *Frame 
 		Globals:  globals,
 		Builtins: builtins,
 		Locals:   locals,
-		Fast:     make([]object.Object, len(code.LocalsPlusNames)),
-		Stack:    make([]object.Object, code.Stacksize+8),
+	}
+	nFast := len(code.LocalsPlusNames)
+	if nFast <= inlineFastCap {
+		f.Fast = f.fastInline[:nFast]
+	} else {
+		f.Fast = make([]object.Object, nFast)
+	}
+	nStack := code.Stacksize + 8
+	if nStack <= inlineStackCap {
+		f.Stack = f.stackInline[:nStack]
+	} else {
+		f.Stack = make([]object.Object, nStack)
 	}
 	// Pre-allocate cell slots for MAKE_CELL.
 	if code.NCells+code.NFrees > 0 {
@@ -45,6 +67,8 @@ func NewFrame(code *object.Code, globals, builtins, locals *object.Dict) *Frame 
 }
 
 func (f *Frame) push(o object.Object) {
+	// Stack is preallocated to code.Stacksize+8 in NewFrame, but defensive
+	// growth is kept for pathological compilers that under-report depth.
 	if f.SP >= len(f.Stack) {
 		f.Stack = append(f.Stack, o)
 	} else {
@@ -55,9 +79,7 @@ func (f *Frame) push(o object.Object) {
 
 func (f *Frame) pop() object.Object {
 	f.SP--
-	o := f.Stack[f.SP]
-	f.Stack[f.SP] = nil
-	return o
+	return f.Stack[f.SP]
 }
 
 func (f *Frame) top() object.Object        { return f.Stack[f.SP-1] }
