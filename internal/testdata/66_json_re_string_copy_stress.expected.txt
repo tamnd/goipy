@@ -1,0 +1,88 @@
+[]
+{}
+[]
+{}
+[[[[[1]]]]]
+True
+True
+3.0
+100.0
+True
+"\ud83d\ude00"
+True
+{"a": 2, "b": 1, "c": {"x": 2, "y": 1}}
+[
+1,
+2
+]
+{
+    "a": [
+        1,
+        2
+    ]
+}
+"\u03b1"
+"\u00e9"
+{"1": "a", "2": "b"}
+int
+float
+loads-bad: ValueError
+42
+[1,2,3]
+
+(0, 0)
+True
+True
+
+1-2 1 2
+('42', None)
+('42', 'MISSING')
+3
+[]
+[('a', 'b'), ('c', 'd'), ('e', 'f')]
+[(0, 1), (2, 4), (5, 8)]
+['a', 'b', 'c,d']
+['', '', 'a', '', '']
+XX34
+a\
+'\n\t'
+a[1]b[22]
+ABC 123 DEF
+('abc', 0)
+['A', 'b', 'C']
+['a\nb']
+a\.b\*c\?
+['hello', 'world']
+['foo', 'bar', 'baz']
+aXbX
+('aXbX', 2)
+re-bad: True
+9:k
+(0, 3)
+(4, 7)
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+[1, 2, 3]
+[1, 2]
+True
+True
+True
+[]
+{}
+True
+True
+True
+True

@@ -244,8 +244,35 @@ func Eq(a, b Object) (bool, error) {
 		return setEq(av.items, b)
 	case *Frozenset:
 		return setEq(av.items, b)
+	case *Dict:
+		if bv, ok := b.(*Dict); ok {
+			return dictEq(av, bv)
+		}
 	}
 	return false, nil
+}
+
+// dictEq compares two dicts for Python == semantics: same length, and every
+// key/value pair in a appears (by Eq) in b. Insertion order is irrelevant.
+func dictEq(a, b *Dict) (bool, error) {
+	if a.Len() != b.Len() {
+		return false, nil
+	}
+	keys, vals := a.Items()
+	for k, key := range keys {
+		bv, ok, err := b.Get(key)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, nil
+		}
+		eq, err := Eq(vals[k], bv)
+		if err != nil || !eq {
+			return eq, err
+		}
+	}
+	return true, nil
 }
 
 // setEq is true when every element of a's items is in b (a Set or Frozenset)

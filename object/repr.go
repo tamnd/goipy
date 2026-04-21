@@ -1,6 +1,7 @@
 package object
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"strconv"
@@ -134,6 +135,18 @@ func Repr(o Object) string {
 			parts = append(parts, "("+Repr(k)+", "+Repr(v.D.vals[i])+")")
 		}
 		return "OrderedDict([" + strings.Join(parts, ", ") + "])"
+	case *Pattern:
+		return "re.compile(" + Repr(&Str{V: v.Pattern}) + ")"
+	case *Match:
+		s, e := -1, -1
+		if len(v.Offsets) >= 2 {
+			s, e = v.Offsets[0], v.Offsets[1]
+		}
+		val := ""
+		if s >= 0 && e >= 0 && e <= len(v.String) {
+			val = v.String[s:e]
+		}
+		return fmt.Sprintf("<re.Match object; span=(%d, %d), match=%s>", s, e, Repr(&Str{V: val}))
 	case *Exception:
 		name := "Exception"
 		if v.Class != nil {
