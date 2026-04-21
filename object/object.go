@@ -331,6 +331,12 @@ func TypeName(o Object) string {
 		return "_io.StringIO"
 	case *BytesIO:
 		return "_io.BytesIO"
+	case *TextStream:
+		return "_io.TextIOWrapper"
+	case *Traceback:
+		return "traceback"
+	case *TracebackFrame:
+		return "frame"
 	case *Hasher:
 		return v.Name
 	case *CSVReader:

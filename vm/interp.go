@@ -46,6 +46,14 @@ type Interp struct {
 	// with the directory of the script being executed. Built-in modules
 	// (e.g. asyncio) resolve before the search path is consulted.
 	SearchPath []string
+
+	// Argv is exposed as sys.argv. The main entry point seeds it with the
+	// script path followed by remaining command-line arguments.
+	Argv []string
+
+	// curFrame is the innermost executing frame; sys.exc_info walks this
+	// chain via Frame.Back to find the active exception.
+	curFrame *Frame
 }
 
 // New builds a fresh interpreter.
@@ -80,8 +88,27 @@ func (i *Interp) runFrame(f *Frame) (object.Object, error) {
 		return nil, object.Errorf(i.recursionErr, "maximum recursion depth exceeded")
 	}
 	i.callDepth++
-	defer func() { i.callDepth-- }()
+	f.Back = i.curFrame
+	i.curFrame = f
+	defer func() {
+		i.callDepth--
+		i.curFrame = f.Back
+	}()
 	return i.dispatch(f)
+}
+
+// extendTraceback prepends a new traceback node for the frame f. The
+// innermost frame is the head of the linked list; each frame the
+// exception unwinds through adds a node.
+func extendTraceback(e *object.Exception, f *Frame) {
+	tb := &object.Traceback{
+		Code:     f.Code,
+		Lasti:    f.LastIP,
+		Lineno:   f.Code.LineForOffset(f.LastIP),
+		FuncName: f.Code.Name,
+		Next:     e.Traceback,
+	}
+	e.Traceback = tb
 }
 
 // errUnsupported returns a NotImplementedError for a given opcode number.

@@ -27,3 +27,11 @@ type Hasher struct {
 	// the object package's import graph. The stdlib module type-asserts.
 	State any
 }
+
+// TextStream is a thin wrapper around an io.Writer for sys.stdout /
+// sys.stderr. W is kept as `any` to avoid pulling `io` into the object
+// package's import graph; the stdlib module type-asserts to io.Writer.
+type TextStream struct {
+	Name string // "stdout" / "stderr"
+	W    any
+}

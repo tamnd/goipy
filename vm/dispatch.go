@@ -988,13 +988,37 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 
 		// --- async ---
 		case op.GET_AWAITABLE:
-			// For our purposes, Generator/Coroutine/Iter are already
-			// awaitable; pass them through. Anything else must expose
-			// __await__() (not implemented).
+			// Generators/iterators are already awaitable. User classes
+			// expose `__await__`, which must return an iterator; we
+			// swap the instance for the iterator on the stack. Pass
+			// a generator through unwrapped so SEND preserves its
+			// StopIteration(value) — wrapping via getIter would turn
+			// that into "exhausted" and lose the awaited return value.
 			v := f.top()
-			switch v.(type) {
+			switch x := v.(type) {
 			case *object.Generator, *object.Iter:
 				// already awaitable
+			case *object.Instance:
+				r, ok, cerr := i.callInstanceDunder(x, "__await__")
+				if cerr != nil {
+					err = cerr
+					goto handleErr
+				}
+				if !ok {
+					err = object.Errorf(i.typeErr, "object %s can't be used in 'await' expression", object.TypeName(v))
+					goto handleErr
+				}
+				switch r.(type) {
+				case *object.Generator, *object.Iter:
+					f.setTop(r)
+				default:
+					it, ierr := i.getIter(r)
+					if ierr != nil {
+						err = ierr
+						goto handleErr
+					}
+					f.setTop(it)
+				}
 			default:
 				err = object.Errorf(i.typeErr, "object %s can't be used in 'await' expression", object.TypeName(v))
 				goto handleErr
@@ -1023,6 +1047,12 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				}
 				err = e
 			}
+			// Implicit context: if a new exception is raised while handling
+			// another, link the old one into .Ctx so traceback formatting
+			// can print "During handling of the above exception...".
+			if e, ok := err.(*object.Exception); ok && f.ExcInfo != nil && e.Ctx == nil && e != f.ExcInfo {
+				e.Ctx = f.ExcInfo
+			}
 			goto handleErr
 		case op.RERAISE:
 			v := f.pop()
@@ -1043,6 +1073,11 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				f.setTop(object.None)
 			}
 			f.push(cur)
+			// Make the newly caught exception the frame's current exc_info
+			// so sys.exc_info() reads it during the handler body.
+			if e, ok := cur.(*object.Exception); ok {
+				f.ExcInfo = e
+			}
 		case op.POP_EXCEPT:
 			v := f.pop()
 			if e, ok := v.(*object.Exception); ok {
@@ -1170,6 +1205,11 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		if !eok {
 			return nil, err
 		}
+		// Record the frame's position at the point of the raise, for both
+		// caught and uncaught paths — CPython's traceback includes every
+		// frame the exception passes through, including the catching one.
+		f.LastIP = startIP
+		extendTraceback(e, f)
 		handler := findHandler(excTable, startIP)
 		if handler == nil {
 			return nil, err

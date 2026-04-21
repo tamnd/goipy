@@ -1,0 +1,23 @@
+3 14
+True
+little
+True
+True
+True
+True
+True
+True
+hello via sys.stdout
+wrote 21 bytes
+True
+boom
+True True
+['<module>', 'outer', 'inner']
+True
+True
+True
+KeyError
+True
+TypeError
+30
+60
