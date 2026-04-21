@@ -370,6 +370,15 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			f.push(object.BoolOf(!object.Truthy(v)))
 		case op.UNARY_INVERT:
 			v := f.pop()
+			if inst, ok := v.(*object.Instance); ok {
+				if r, ok, err := i.callInstanceDunder(inst, "__invert__"); ok {
+					if err != nil {
+						goto handleErr
+					}
+					f.push(r)
+					break
+				}
+			}
 			bi, ok := toBigInt(v)
 			if !ok {
 				return nil, object.Errorf(i.typeErr, "bad operand for ~")
@@ -905,16 +914,32 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			v := f.pop()
 			if _, ok := v.(*object.Str); ok {
 				f.push(v)
-			} else {
-				f.push(&object.Str{V: object.Str_(v)})
+				break
 			}
+			if r, ok, ferr := i.instanceFormat(v, ""); ok {
+				if ferr != nil {
+					err = ferr
+					goto handleErr
+				}
+				f.push(&object.Str{V: r})
+				break
+			}
+			f.push(&object.Str{V: object.Str_(v)})
 		case op.FORMAT_WITH_SPEC:
 			spec := f.pop().(*object.Str)
 			v := f.pop()
 			var s string
-			s, err = formatValue(v, spec.V)
-			if err != nil {
-				goto handleErr
+			if r, ok, ferr := i.instanceFormat(v, spec.V); ok {
+				if ferr != nil {
+					err = ferr
+					goto handleErr
+				}
+				s = r
+			} else {
+				s, err = formatValue(v, spec.V)
+				if err != nil {
+					goto handleErr
+				}
 			}
 			f.push(&object.Str{V: s})
 

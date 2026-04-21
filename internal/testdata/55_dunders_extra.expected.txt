@@ -1,0 +1,24 @@
+Bits(8)
+Bits(14)
+Bits(6)
+Bits(48)
+Bits(6)
+Bits(-13)
+Bits(12)
+Bits(5)
+Bits(-12)
+('matmul', 'a', 3)
+Box(15)
+Box(12)
+Box(24)
+Box(25)
+Add(10)
+42
+8.25
+7
+(3, 2)
+3
+3.14
+<Tag spec=''>
+<Tag spec='hex'>
+<Tag spec='>5'>

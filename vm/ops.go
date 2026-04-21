@@ -794,6 +794,27 @@ func iterate(i *Interp, v object.Object) ([]object.Object, error) {
 
 // --- format ---
 
+// instanceFormat tries o.__format__(spec) for a user Instance. Returns
+// (string, handled, err).
+func (i *Interp) instanceFormat(o object.Object, spec string) (string, bool, error) {
+	inst, ok := o.(*object.Instance)
+	if !ok {
+		return "", false, nil
+	}
+	r, ok, err := i.callInstanceDunder(inst, "__format__", &object.Str{V: spec})
+	if !ok {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", true, err
+	}
+	s, ok := r.(*object.Str)
+	if !ok {
+		return "", true, object.Errorf(i.typeErr, "__format__ must return a str")
+	}
+	return s.V, true, nil
+}
+
 func formatValue(v object.Object, spec string) (string, error) {
 	if spec == "" {
 		return object.Str_(v), nil
