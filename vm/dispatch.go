@@ -670,6 +670,58 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			b := f.pop()
 			a := f.pop()
 			kind := int(oparg >> 5)
+			// Inline int64/float64 compares. CPython's PyCompare_IntInt is
+			// the equivalent fast path; avoids the interface-method dispatch
+			// through i.compare plus the BoolOf lookup.
+			if ai, ok := a.(*object.Int); ok {
+				if bi, ok := b.(*object.Int); ok && ai.V.IsInt64() && bi.V.IsInt64() {
+					av, bv := ai.V.Int64(), bi.V.Int64()
+					var r bool
+					switch kind {
+					case 0: // <
+						r = av < bv
+					case 1: // <=
+						r = av <= bv
+					case 2: // ==
+						r = av == bv
+					case 3: // !=
+						r = av != bv
+					case 4: // >
+						r = av > bv
+					case 5: // >=
+						r = av >= bv
+					default:
+						goto compareSlow
+					}
+					f.push(object.BoolOf(r))
+					continue
+				}
+			}
+			if af, ok := a.(*object.Float); ok {
+				if bf, ok := b.(*object.Float); ok {
+					av, bv := af.V, bf.V
+					var r bool
+					switch kind {
+					case 0:
+						r = av < bv
+					case 1:
+						r = av <= bv
+					case 2:
+						r = av == bv
+					case 3:
+						r = av != bv
+					case 4:
+						r = av > bv
+					case 5:
+						r = av >= bv
+					default:
+						goto compareSlow
+					}
+					f.push(object.BoolOf(r))
+					continue
+				}
+			}
+		compareSlow:
 			result, err = i.compare(a, b, kind)
 			if err != nil {
 				goto handleErr
