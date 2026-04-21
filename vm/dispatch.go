@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"math"
 	"math/big"
 	"strings"
 
@@ -257,6 +258,110 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			pushSelf := oparg&1 != 0
 			name := f.Code.Names[oparg>>1]
 			obj := f.pop()
+			// Inline cache: for instances, specialize on the class identity
+			// and the kind of attribute (inst-dict hit vs. unbound method on
+			// class). This avoids the full getAttr type-switch + classLookup
+			// walk on every dispatch.
+			if inst, ok := obj.(*object.Instance); ok {
+				if f.Code.AttrCache == nil {
+					f.Code.AttrCache = make([]object.AttrCacheEntry, len(f.Code.Bytecode))
+				}
+				entry := &f.Code.AttrCache[startIP]
+				if entry.Cls == inst.Class {
+					switch entry.Kind {
+					case object.AttrCacheInstDict:
+						if v, ok := inst.Dict.GetStr(name); ok {
+							if pushSelf {
+								f.push(v)
+								f.push(nil)
+							} else {
+								f.push(v)
+							}
+							continue
+						}
+						// miss — attribute was deleted; fall through to slow path
+					case object.AttrCacheClassMethod:
+						// Prefer instance override when present, else bind the
+						// cached class-level function.
+						if v, ok := inst.Dict.GetStr(name); ok {
+							if pushSelf {
+								f.push(v)
+								f.push(nil)
+							} else {
+								f.push(v)
+							}
+							continue
+						}
+						v := &object.BoundMethod{Self: inst, Fn: entry.Val}
+						if pushSelf {
+							f.push(v)
+							f.push(nil)
+						} else {
+							f.push(v)
+						}
+						continue
+					case object.AttrCacheClassValue:
+						if v, ok := inst.Dict.GetStr(name); ok {
+							if pushSelf {
+								f.push(v)
+								f.push(nil)
+							} else {
+								f.push(v)
+							}
+							continue
+						}
+						v := entry.Val
+						if pushSelf {
+							f.push(v)
+							f.push(nil)
+						} else {
+							f.push(v)
+						}
+						continue
+					}
+				}
+				// slow path — compute, then fill cache.
+				var val object.Object
+				val, err = i.getAttr(inst, name)
+				if err != nil {
+					goto handleErr
+				}
+				// Populate cache: pick the best kind we can guarantee.
+				if _, inInst := inst.Dict.GetStr(name); inInst {
+					// But only if no data descriptor on class would override
+					// next time. Cheap check.
+					if raw, ok := classLookup(inst.Class, name); !ok || !isDataDescriptor(raw) {
+						entry.Cls = inst.Class
+						entry.Kind = object.AttrCacheInstDict
+					}
+				} else if raw, ok := classLookup(inst.Class, name); ok {
+					switch fn := raw.(type) {
+					case *object.Function:
+						entry.Cls = inst.Class
+						entry.Kind = object.AttrCacheClassMethod
+						entry.Val = fn
+					default:
+						// Only cache when the descriptor protocol would not
+						// produce a different value for other instances.
+						if !isDataDescriptor(raw) {
+							switch raw.(type) {
+							case *object.Int, *object.Str, *object.Float, *object.Bool,
+								*object.Tuple, *object.NoneType, *object.BuiltinFunc:
+								entry.Cls = inst.Class
+								entry.Kind = object.AttrCacheClassValue
+								entry.Val = raw
+							}
+						}
+					}
+				}
+				if pushSelf {
+					f.push(val)
+					f.push(nil)
+				} else {
+					f.push(val)
+				}
+				continue
+			}
 			var val object.Object
 			val, err = i.getAttr(obj, name)
 			if err != nil {
@@ -286,14 +391,119 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.BINARY_OP:
 			b := f.pop()
 			a := f.pop()
+			// Inline Int+Int / Int-Int / Int*Int / Int%Int fast paths: for the
+			// vast majority of integer math the values fit in int64 and the
+			// generic dispatch just adds interface call + allocation overhead.
+			if ai, ok := a.(*object.Int); ok {
+				if bi, ok := b.(*object.Int); ok {
+					if ai.V.IsInt64() && bi.V.IsInt64() {
+						av, bv := ai.V.Int64(), bi.V.Int64()
+						switch oparg {
+						case op.NB_ADD, op.NB_INPLACE_ADD:
+							sum := av + bv
+							if (av >= 0) == (bv >= 0) && (sum >= 0) != (av >= 0) {
+								break
+							}
+							f.push(object.IntFromInt64(sum))
+							continue
+						case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
+							diff := av - bv
+							if (av >= 0) != (bv >= 0) && (diff >= 0) != (av >= 0) {
+								break
+							}
+							f.push(object.IntFromInt64(diff))
+							continue
+						case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
+							if av >= math.MinInt32 && av <= math.MaxInt32 &&
+								bv >= math.MinInt32 && bv <= math.MaxInt32 {
+								f.push(object.IntFromInt64(av * bv))
+								continue
+							}
+						case op.NB_REMAINDER, op.NB_INPLACE_REMAINDER:
+							if bv != 0 {
+								// Python remainder has the sign of the divisor.
+								m := av % bv
+								if (m < 0) != (bv < 0) && m != 0 {
+									m += bv
+								}
+								f.push(object.IntFromInt64(m))
+								continue
+							}
+						case op.NB_FLOOR_DIVIDE, op.NB_INPLACE_FLOOR_DIVIDE:
+							if bv != 0 {
+								q := av / bv
+								if (av%bv != 0) && ((av < 0) != (bv < 0)) {
+									q--
+								}
+								f.push(object.IntFromInt64(q))
+								continue
+							}
+						case op.NB_AND, op.NB_INPLACE_AND:
+							f.push(object.IntFromInt64(av & bv))
+							continue
+						case op.NB_OR, op.NB_INPLACE_OR:
+							f.push(object.IntFromInt64(av | bv))
+							continue
+						case op.NB_XOR, op.NB_INPLACE_XOR:
+							f.push(object.IntFromInt64(av ^ bv))
+							continue
+						}
+					}
+				}
+			}
+			// Float+Float / Float+Int likewise: avoid interface thrash.
+			if af, ok := a.(*object.Float); ok {
+				if r, ok := floatFast(af.V, b, oparg); ok {
+					f.push(r)
+					continue
+				}
+			}
+			if bf, ok := b.(*object.Float); ok {
+				if ai, ok := a.(*object.Int); ok && ai.V.IsInt64() {
+					if r, ok := floatFast(float64(ai.V.Int64()), bf, oparg); ok {
+						f.push(r)
+						continue
+					}
+				}
+			}
 			result, err = i.binaryOp(a, b, oparg)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
-		case op.BINARY_OP_ADD_INT, op.BINARY_OP_ADD_FLOAT:
+		case op.BINARY_OP_ADD_INT:
 			b := f.pop()
 			a := f.pop()
+			if ai, ok := a.(*object.Int); ok {
+				if bi, ok := b.(*object.Int); ok {
+					if ai.V.IsInt64() && bi.V.IsInt64() {
+						av, bv := ai.V.Int64(), bi.V.Int64()
+						sum := av + bv
+						if (av >= 0) == (bv >= 0) && (sum >= 0) != (av >= 0) {
+							// overflow — fall through to big-int path
+						} else {
+							f.push(object.IntFromInt64(sum))
+							continue
+						}
+					}
+					f.push(&object.Int{V: new(big.Int).Add(ai.V, bi.V)})
+					continue
+				}
+			}
+			result, err = i.add(a, b)
+			if err != nil {
+				goto handleErr
+			}
+			f.push(result)
+		case op.BINARY_OP_ADD_FLOAT:
+			b := f.pop()
+			a := f.pop()
+			if af, ok := a.(*object.Float); ok {
+				if bf, ok := b.(*object.Float); ok {
+					f.push(&object.Float{V: af.V + bf.V})
+					continue
+				}
+			}
 			result, err = i.add(a, b)
 			if err != nil {
 				goto handleErr
@@ -302,22 +512,87 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.BINARY_OP_ADD_UNICODE:
 			b := f.pop()
 			a := f.pop()
+			if as, ok := a.(*object.Str); ok {
+				if bs, ok := b.(*object.Str); ok {
+					f.push(&object.Str{V: as.V + bs.V})
+					continue
+				}
+			}
 			result, err = i.add(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
-		case op.BINARY_OP_SUBTRACT_INT, op.BINARY_OP_SUBTRACT_FLOAT:
+		case op.BINARY_OP_SUBTRACT_INT:
 			b := f.pop()
 			a := f.pop()
+			if ai, ok := a.(*object.Int); ok {
+				if bi, ok := b.(*object.Int); ok {
+					if ai.V.IsInt64() && bi.V.IsInt64() {
+						av, bv := ai.V.Int64(), bi.V.Int64()
+						diff := av - bv
+						if (av >= 0) != (bv >= 0) && (diff >= 0) != (av >= 0) {
+							// overflow
+						} else {
+							f.push(object.IntFromInt64(diff))
+							continue
+						}
+					}
+					f.push(&object.Int{V: new(big.Int).Sub(ai.V, bi.V)})
+					continue
+				}
+			}
 			result, err = i.sub(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
-		case op.BINARY_OP_MULTIPLY_INT, op.BINARY_OP_MULTIPLY_FLOAT:
+		case op.BINARY_OP_SUBTRACT_FLOAT:
 			b := f.pop()
 			a := f.pop()
+			if af, ok := a.(*object.Float); ok {
+				if bf, ok := b.(*object.Float); ok {
+					f.push(&object.Float{V: af.V - bf.V})
+					continue
+				}
+			}
+			result, err = i.sub(a, b)
+			if err != nil {
+				goto handleErr
+			}
+			f.push(result)
+		case op.BINARY_OP_MULTIPLY_INT:
+			b := f.pop()
+			a := f.pop()
+			if ai, ok := a.(*object.Int); ok {
+				if bi, ok := b.(*object.Int); ok {
+					if ai.V.IsInt64() && bi.V.IsInt64() {
+						av, bv := ai.V.Int64(), bi.V.Int64()
+						// Safe multiplication for values that fit in int32.
+						if av >= math.MinInt32 && av <= math.MaxInt32 &&
+							bv >= math.MinInt32 && bv <= math.MaxInt32 {
+							f.push(object.IntFromInt64(av * bv))
+							continue
+						}
+					}
+					f.push(&object.Int{V: new(big.Int).Mul(ai.V, bi.V)})
+					continue
+				}
+			}
+			result, err = i.mul(a, b)
+			if err != nil {
+				goto handleErr
+			}
+			f.push(result)
+		case op.BINARY_OP_MULTIPLY_FLOAT:
+			b := f.pop()
+			a := f.pop()
+			if af, ok := a.(*object.Float); ok {
+				if bf, ok := b.(*object.Float); ok {
+					f.push(&object.Float{V: af.V * bf.V})
+					continue
+				}
+			}
 			result, err = i.mul(a, b)
 			if err != nil {
 				goto handleErr
@@ -699,6 +974,49 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			callable := f.Stack[base]
 			selfOrNull := f.Stack[base+1]
 			args := f.Stack[base+2 : f.SP]
+			// Fast path: plain Python function, no self injection needed,
+			// arity matches, no *args/**kwargs/kwonly. Skips bindArgs and
+			// the temporary call-slice allocation.
+			if selfOrNull == nil {
+				if fn, ok := callable.(*object.Function); ok && isFastCallable(fn, n) {
+					f.SP = base
+					r, cerr := i.callFunctionFast(fn, nil, args)
+					if cerr != nil {
+						err = cerr
+						goto handleErr
+					}
+					f.push(r)
+					continue
+				}
+				if bm, ok := callable.(*object.BoundMethod); ok {
+					if fn, ok := bm.Fn.(*object.Function); ok && isFastCallable(fn, n+1) {
+						f.SP = base
+						r, cerr := i.callFunctionFast(fn, bm.Self, args)
+						if cerr != nil {
+							err = cerr
+							goto handleErr
+						}
+						f.push(r)
+						continue
+					}
+					// Fast path for BoundMethod{Fn:*BuiltinFunc}: avoid the
+					// temporary [self, ...args] slice allocation by reusing the
+					// stack slot at base+1 (currently nil selfOrNull) as the
+					// self argument in place.
+					if bfn, ok := bm.Fn.(*object.BuiltinFunc); ok {
+						f.Stack[base+1] = bm.Self
+						callArgs := f.Stack[base+1 : f.SP]
+						r, cerr := bfn.Call(i, callArgs, nil)
+						f.SP = base
+						if cerr != nil {
+							err = cerr
+							goto handleErr
+						}
+						f.push(r)
+						continue
+					}
+				}
+			}
 			var call []object.Object
 			if selfOrNull != nil {
 				call = append([]object.Object{selfOrNull}, args...)
