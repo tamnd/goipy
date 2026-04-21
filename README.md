@@ -1,4 +1,4 @@
-# goipy
+## goipy
 
 goipy is a pure-Go interpreter for CPython 3.14 bytecode. Point it
 at a `.pyc` produced by `python3.14 -m py_compile` and it runs the
@@ -6,40 +6,40 @@ program inside a Go process, on Go's garbage collector, as a plain
 Go binary. Pure-Python scripts that avoid native extensions are the
 sweet spot.
 
-If you only want to try it, jump to [Quick start](#3-quick-start).
+If you only want to try it, jump to [Quick start](#quick-start).
 The rest of this file walks through how the interpreter is put
 together and why each piece is shaped the way it is.
 
 ---
 
-## Table of contents
+### Table of contents
 
-1. [Motivation](#1-motivation)
-2. [What goipy covers](#2-what-goipy-covers)
-3. [Quick start](#3-quick-start)
-4. [A worked example](#4-a-worked-example)
-5. [Architecture overview](#5-architecture-overview)
-6. [The pipeline, stage by stage](#6-the-pipeline-stage-by-stage)
-   1. [Stage 1: loading a `.pyc`](#61-stage-1-loading-a-pyc)
-   2. [Stage 2: unmarshalling the code object](#62-stage-2-unmarshalling-the-code-object)
-   3. [Stage 3: the interpreter loop](#63-stage-3-the-interpreter-loop)
-   4. [Stage 4: the built-in modules](#64-stage-4-the-built-in-modules)
-7. [What works today](#7-what-works-today)
-8. [Performance](#8-performance)
-9. [Using goipy from Go](#9-using-goipy-from-go)
-10. [Diagnostics and tracebacks](#10-diagnostics-and-tracebacks)
-11. [Testing philosophy](#11-testing-philosophy)
-12. [Design decisions and trade-offs](#12-design-decisions-and-trade-offs)
-13. [What is missing and why](#13-what-is-missing-and-why)
-14. [Extending goipy](#14-extending-goipy)
-15. [Project layout](#15-project-layout)
-16. [FAQ](#16-faq)
-17. [A short history of the project](#17-a-short-history-of-the-project)
-18. [License](#18-license)
+1. [Motivation](#motivation)
+2. [What goipy covers](#what-goipy-covers)
+3. [Quick start](#quick-start)
+4. [A worked example](#a-worked-example)
+5. [Architecture overview](#architecture-overview)
+6. [The pipeline, stage by stage](#the-pipeline-stage-by-stage)
+   1. [Stage 1: loading a `.pyc`](#stage-1-loading-a-pyc)
+   2. [Stage 2: unmarshalling the code object](#stage-2-unmarshalling-the-code-object)
+   3. [Stage 3: the interpreter loop](#stage-3-the-interpreter-loop)
+   4. [Stage 4: the built-in modules](#stage-4-the-built-in-modules)
+7. [What works today](#what-works-today)
+8. [Performance](#performance)
+9. [Using goipy from Go](#using-goipy-from-go)
+10. [Diagnostics and tracebacks](#diagnostics-and-tracebacks)
+11. [Testing philosophy](#testing-philosophy)
+12. [Design decisions and trade-offs](#design-decisions-and-trade-offs)
+13. [What is missing and why](#what-is-missing-and-why)
+14. [Extending goipy](#extending-goipy)
+15. [Project layout](#project-layout)
+16. [FAQ](#faq)
+17. [A short history of the project](#a-short-history-of-the-project)
+18. [License](#license)
 
 ---
 
-## 1. Motivation
+### Motivation
 
 Embedding Python inside a Go service usually means one of three
 things. You ship CPython alongside the binary and trust that the
@@ -66,7 +66,7 @@ close can pure Go get to CPython on pure-Python workloads". If you
 need numpy, reach for cgo and gopy; if you need peak speed, run
 CPython. Otherwise, keep reading.
 
-## 2. What goipy covers
+### What goipy covers
 
 goipy is three things bolted together. A reader for CPython 3.14's
 `.pyc` format. A Python object model in Go. An interpreter that
@@ -85,7 +85,7 @@ Think of it the way you think of MicroPython or RustPython: a
 from-scratch interpreter aimed at a specific use case, trading
 ecosystem reach for a small, embeddable runtime.
 
-## 3. Quick start
+### Quick start
 
 Requirements: Go 1.26 and Python 3.14 on your `PATH`.
 
@@ -118,7 +118,7 @@ go test ./...        # unit tests against testdata/*.pyc
 bench/run.sh         # full benchmark sweep against python3.14
 ```
 
-## 4. A worked example
+### A worked example
 
 Take a Python program that exercises a handful of features the
 interpreter has to get right at once:
@@ -175,7 +175,7 @@ Under the hood:
 Every value on the stack is a `goipy/object` type. The resulting
 binary links only Go packages; `go build` is the whole toolchain.
 
-## 5. Architecture overview
+### Architecture overview
 
 The project has five Go packages, a CLI, and a benchmark harness.
 
@@ -208,9 +208,9 @@ switch. `vm/interp.go` holds the interpreter; `vm/frame.go` holds
 the call frame; `vm/dispatch.go` is the big switch that implements
 every opcode.
 
-## 6. The pipeline, stage by stage
+### The pipeline, stage by stage
 
-### 6.1 Stage 1: loading a `.pyc`
+#### Stage 1: loading a `.pyc`
 
 A `.pyc` is a short binary header followed by a marshalled code
 object. The header is magic number plus flags plus either a
@@ -220,7 +220,7 @@ bytecode; every other header field is accepted and ignored. If the
 magic differs, `marshal.LoadPyc` returns an error that names the
 offending number.
 
-### 6.2 Stage 2: unmarshalling the code object
+#### Stage 2: unmarshalling the code object
 
 CPython's marshal format is a tagged stream. Each value starts with
 a type byte (sometimes with a REF flag on the top bit) and the
@@ -239,7 +239,7 @@ count, flags, the qualified name, and so on). Nested code objects
 (functions, comprehensions, class bodies) are themselves
 `*object.Code` sitting inside the enclosing one's consts.
 
-### 6.3 Stage 3: the interpreter loop
+#### Stage 3: the interpreter loop
 
 `vm/dispatch.go` is the hot path. The dispatch loop owns:
 
@@ -274,7 +274,7 @@ suspends the guest at `YIELD_VALUE`, and resumes on the next
 `send`. This is the one place goipy uses real concurrency, and it
 costs a goroutine per live generator.
 
-### 6.4 Stage 4: the built-in modules
+#### Stage 4: the built-in modules
 
 Modules that would be written in C in CPython (`math`, `re`,
 `struct`, `json`, `hashlib`, `asyncio`, `sys`, and a long tail of
@@ -290,7 +290,7 @@ User-level `.py` modules work too: `IMPORT_NAME` walks
 `sys.modules`, and binds the module object into the caller's
 globals.
 
-## 7. What works today
+### What works today
 
 | Area                                         | Status  | Notes                                                      |
 |----------------------------------------------|---------|------------------------------------------------------------|
@@ -312,7 +312,7 @@ The stdlib column is the one that moves most often. See
 `vm/stdlib_*.go` for the current coverage, and the per-module test
 files under `vm/*_test.go`.
 
-## 8. Performance
+### Performance
 
 Captured 2026-04-21 on Apple M4, Go 1.26.2 against CPython 3.14.4.
 All 24 cases produce byte-identical output against CPython.
@@ -352,7 +352,7 @@ outperforms CPython's `PyLong` once the values pass a few thousand
 bits. Full methodology and per-case commentary live in
 [`bench/RESULTS.md`](bench/RESULTS.md).
 
-## 9. Using goipy from Go
+### Using goipy from Go
 
 ```go
 package main
@@ -402,7 +402,7 @@ A few points worth knowing:
 - `i.Stdout` and `i.Stderr` are `io.Writer`. Point them at
   `bytes.Buffer` for tests, or at a file, or at a logger.
 
-## 10. Diagnostics and tracebacks
+### Diagnostics and tracebacks
 
 Every uncaught exception in the guest surfaces as a Go error that
 assertion-casts to `*object.Exception`. The exception carries a
@@ -430,7 +430,7 @@ Plain Go errors (a panic in a stdlib shim, a malformed `.pyc`, an
 out-of-memory condition) come back outside the `*object.Exception`
 type. Treat those as bugs in goipy itself and report them.
 
-## 11. Testing philosophy
+### Testing philosophy
 
 Three layers of tests live side by side.
 
@@ -459,7 +459,7 @@ tests, integration bugs are caught by the fixtures, and semantic
 drift relative to CPython is caught by the benchmark harness
 running the same code on both interpreters.
 
-## 12. Design decisions and trade-offs
+### Design decisions and trade-offs
 
 **Bytecode input, not source.** goipy starts from `.pyc`. The
 parser is a pile of work CPython already did, and CPython's output
@@ -496,7 +496,7 @@ Python-flavoured syntax; `json` wraps `encoding/json` with type
 adaptors. Reusing Go's stdlib keeps goipy's surface small and the
 behaviour close to what Go already ships.
 
-## 13. What is missing and why
+### What is missing and why
 
 - **The C extension ABI.** Anything that ships a `PyObject *` stays
   outside goipy by design.
@@ -521,7 +521,7 @@ behaviour close to what Go already ships.
 Treat each item as a candidate future direction rather than a
 commitment.
 
-## 14. Extending goipy
+### Extending goipy
 
 Adding a new opcode:
 
@@ -552,7 +552,7 @@ object method should include benchmark numbers from the full
 `bench/RESULTS.md` sweep. A single microbenchmark in isolation is
 not enough to land a VM change.
 
-## 15. Project layout
+### Project layout
 
 ```
 cmd/goipy/           CLI: load a .pyc and run it.
@@ -575,7 +575,7 @@ testdata/            .pyc fixtures with expected stdout.
 bench/               Benchmark cases, CPython comparison, results table.
 ```
 
-## 16. FAQ
+### FAQ
 
 **Why `.pyc` as input, not `.py`?**
 
@@ -627,7 +627,7 @@ no JIT. It is unaudited, and it has had no hardening pass against
 adversarial bytecode. Treat hostile `.pyc` as capable of exhausting
 memory or CPU even while staying within the guest.
 
-## 17. A short history of the project
+### A short history of the project
 
 goipy started as a learning exercise: read CPython's marshal format
 and pretty-print a `.pyc`. That grew into a partial decoder, then a
@@ -648,7 +648,7 @@ The project is now past the "does it run?" stage and into the "how
 does it behave on real programs?" stage. The direction from here is
 more stdlib coverage and a closer look at the performance gap.
 
-## 18. License
+### License
 
 MIT. `.pyc` input files remain under the PSF license that covers
 CPython bytecode output.
