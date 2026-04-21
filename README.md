@@ -10,8 +10,6 @@ If you only want to try it, jump to [Quick start](#quick-start).
 The rest of this file walks through how the interpreter is put
 together and why each piece is shaped the way it is.
 
----
-
 ### Table of contents
 
 1. [Motivation](#motivation)
@@ -36,8 +34,6 @@ together and why each piece is shaped the way it is.
 16. [FAQ](#faq)
 17. [A short history of the project](#a-short-history-of-the-project)
 18. [License](#license)
-
----
 
 ### Motivation
 
