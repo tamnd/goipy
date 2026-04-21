@@ -1073,16 +1073,33 @@ func tupleMethod(t *object.Tuple, name string) (object.Object, bool) {
 
 // sortList sorts a slice in place using the interpreter's lt.
 func sortList(i *Interp, items []object.Object, reverse bool) error {
-	// Simple insertion sort; O(n^2) but sidesteps Go's sort interface needing
-	// a stable error channel.
+	return sortListKey(i, items, nil, reverse)
+}
+
+// sortListKey sorts items in place, optionally using key(x) for comparisons.
+// Stable (insertion sort) and error-propagating — keeping this hand-rolled
+// avoids the awkwardness of Go's sort package where the less function can't
+// return an error.
+func sortListKey(i *Interp, items []object.Object, key object.Object, reverse bool) error {
+	keys := items
+	if key != nil {
+		keys = make([]object.Object, len(items))
+		for k, v := range items {
+			kv, err := i.callObject(key, []object.Object{v}, nil)
+			if err != nil {
+				return err
+			}
+			keys[k] = kv
+		}
+	}
 	for k := 1; k < len(items); k++ {
 		for j := k; j > 0; j-- {
 			var less bool
 			var err error
 			if reverse {
-				less, err = i.lt(items[j-1], items[j])
+				less, err = i.lt(keys[j-1], keys[j])
 			} else {
-				less, err = i.lt(items[j], items[j-1])
+				less, err = i.lt(keys[j], keys[j-1])
 			}
 			if err != nil {
 				return err
@@ -1091,6 +1108,9 @@ func sortList(i *Interp, items []object.Object, reverse bool) error {
 				break
 			}
 			items[j-1], items[j] = items[j], items[j-1]
+			if key != nil {
+				keys[j-1], keys[j] = keys[j], keys[j-1]
+			}
 		}
 	}
 	return nil

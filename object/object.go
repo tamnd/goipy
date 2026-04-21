@@ -315,6 +315,14 @@ func TypeName(o Object) string {
 		return "module"
 	case *Iter:
 		return "iterator"
+	case *Deque:
+		return "collections.deque"
+	case *Counter:
+		return "Counter"
+	case *DefaultDict:
+		return "collections.defaultdict"
+	case *OrderedDict:
+		return "collections.OrderedDict"
 	}
 	return fmt.Sprintf("%T", o)
 }

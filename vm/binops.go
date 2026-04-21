@@ -646,6 +646,57 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 			return nil, object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
 		return v, nil
+	case *object.Deque:
+		n, ok := toInt64(key)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "deque indices must be integers")
+		}
+		length := int64(len(c.V))
+		if n < 0 {
+			n += length
+		}
+		if n < 0 || n >= length {
+			return nil, object.Errorf(i.indexErr, "deque index out of range")
+		}
+		return c.V[n], nil
+	case *object.Counter:
+		// Missing key returns 0 (Counter's distinguishing feature).
+		v, ok, err := c.D.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return object.NewInt(0), nil
+		}
+		return v, nil
+	case *object.DefaultDict:
+		v, ok, err := c.D.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return v, nil
+		}
+		if _, isNone := c.Factory.(*object.NoneType); c.Factory == nil || isNone {
+			return nil, object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		def, err := i.callObject(c.Factory, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.D.Set(key, def); err != nil {
+			return nil, err
+		}
+		return def, nil
+	case *object.OrderedDict:
+		v, ok, err := c.D.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, object.Errorf(i.keyErr, "%s", object.Repr(key))
+		}
+		return v, nil
 	case *object.Range:
 		n, ok := toInt64(key)
 		if !ok {

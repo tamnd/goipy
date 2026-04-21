@@ -270,6 +270,26 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 	case *object.Dict:
 		_, ok, err := c.Get(needle)
 		return ok, err
+	case *object.Counter:
+		_, ok, err := c.D.Get(needle)
+		return ok, err
+	case *object.DefaultDict:
+		_, ok, err := c.D.Get(needle)
+		return ok, err
+	case *object.OrderedDict:
+		_, ok, err := c.D.Get(needle)
+		return ok, err
+	case *object.Deque:
+		for _, x := range c.V {
+			eq, err := object.Eq(x, needle)
+			if err != nil {
+				return false, err
+			}
+			if eq {
+				return true, nil
+			}
+		}
+		return false, nil
 	case *object.Set:
 		return c.Contains(needle)
 	case *object.Frozenset:

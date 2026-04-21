@@ -15,6 +15,10 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildFunctools(), true
 	case "itertools":
 		return i.buildItertools(), true
+	case "collections":
+		return i.buildCollections(), true
+	case "operator":
+		return i.buildOperator(), true
 	}
 	return nil, false
 }
