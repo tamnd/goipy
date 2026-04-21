@@ -141,6 +141,16 @@ func Repr(o Object) string {
 		return fmt.Sprintf("<_io.BytesIO object at 0x%p>", v)
 	case *Hasher:
 		return fmt.Sprintf("<%s _hashlib.HASH object>", v.Name)
+	case *CSVReader:
+		return fmt.Sprintf("<_csv.reader object at 0x%p>", v)
+	case *CSVWriter:
+		return fmt.Sprintf("<_csv.writer object at 0x%p>", v)
+	case *CSVDictWriter:
+		return fmt.Sprintf("<csv.DictWriter object at 0x%p>", v)
+	case *URLParseResult:
+		return fmt.Sprintf("ParseResult(scheme=%s, netloc=%s, path=%s, params=%s, query=%s, fragment=%s)",
+			Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),
+			Repr(&Str{V: v.Params}), Repr(&Str{V: v.Query}), Repr(&Str{V: v.Fragment}))
 	case *Pattern:
 		return "re.compile(" + Repr(&Str{V: v.Pattern}) + ")"
 	case *Match:

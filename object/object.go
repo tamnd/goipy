@@ -333,6 +333,14 @@ func TypeName(o Object) string {
 		return "_io.BytesIO"
 	case *Hasher:
 		return v.Name
+	case *CSVReader:
+		return "_csv.reader"
+	case *CSVWriter:
+		return "_csv.writer"
+	case *CSVDictWriter:
+		return "csv.DictWriter"
+	case *URLParseResult:
+		return "ParseResult"
 	}
 	return fmt.Sprintf("%T", o)
 }

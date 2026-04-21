@@ -1,0 +1,58 @@
+4
+7
+5
+b'\x85\xff\xff\xff'
+(-123,)
+b'\x00\x01'
+b'\x01\x00'
+b'\xe8\x03\x00\x00\xd6\xff\xff'
+(1000, -42, 255)
+(1.5,)
+(3.14159,)
+b'hello'
+(b'hello',)
+(3735928559,)
+[['a', 'b', 'c'], ['1', '2', '3'], ['x', 'y', 'z']]
+a,b,c
+1,2,3
+
+x,y
+1,2
+3,4
+
+a	b
+
+alice 30
+bob 25
+name,age
+alice,30
+bob,25
+
+0 1 2 3
+https
+user:pw@example.com:8080
+/a/b
+x=1&y=2
+frag
+example.com
+8080
+https /a/b
+https://example.com/p?q=1#f
+https://a.com/b/d
+https://a.com/d
+hello%20world/path
+hello%20world%2Fpath
+hello world
+hello+world%26x%3D1
+hello world
+a=1&b=hi
+a=1&b=2
+{'a': ['1', '3'], 'b': ['2']}
+[('a', '1'), ('b', '2')]
+True
+True
+True
+907060870
+103547413
+True
+1 9 0
