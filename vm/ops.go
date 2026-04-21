@@ -683,6 +683,7 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 	}
 	if cls, ok := o.(*object.Class); ok {
 		cls.Dict.SetStr(name, val)
+		object.BumpClassEpoch()
 		return nil
 	}
 	if m, ok := o.(*object.Module); ok {
@@ -968,6 +969,21 @@ func computeMRO(c *object.Class) []*object.Class {
 }
 
 func classLookup(c *object.Class, name string) (object.Object, bool) {
+	epoch := object.ClassEpoch()
+	if c.MethodCache != nil {
+		if e, ok := c.MethodCache[name]; ok && e.Epoch == epoch {
+			return e.Val, e.Found
+		}
+	}
+	v, found := classLookupSlow(c, name)
+	if c.MethodCache == nil {
+		c.MethodCache = make(map[string]object.MethodCacheEntry, 8)
+	}
+	c.MethodCache[name] = object.MethodCacheEntry{Val: v, Found: found, Epoch: epoch}
+	return v, found
+}
+
+func classLookupSlow(c *object.Class, name string) (object.Object, bool) {
 	if v, ok := c.Dict.GetStr(name); ok {
 		return v, true
 	}

@@ -355,7 +355,29 @@ type Class struct {
 	Dict  *Dict
 	// MRO computed lazily
 	mro []*Class
+
+	// MethodCache memoises classLookup(name) walks. A single global epoch
+	// is bumped whenever any class is mutated (ClassEpoch()); stale entries
+	// are ignored. Populated by the VM; safe to leave nil.
+	MethodCache map[string]MethodCacheEntry
 }
+
+// MethodCacheEntry stores one cached classLookup result.
+type MethodCacheEntry struct {
+	Val   Object
+	Found bool
+	Epoch uint64
+}
+
+// classEpoch is bumped on any class dict mutation; MethodCache entries
+// carry the epoch at which they were computed.
+var classEpoch uint64 = 1
+
+// ClassEpoch returns the current epoch.
+func ClassEpoch() uint64 { return classEpoch }
+
+// BumpClassEpoch invalidates every class method cache.
+func BumpClassEpoch() { classEpoch++ }
 
 // Instance of a user class.
 type Instance struct {
