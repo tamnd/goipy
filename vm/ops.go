@@ -443,6 +443,26 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if r, ok := o.(*object.CSVReader); ok {
+		if m, ok := csvReaderAttr(i, r, name); ok {
+			return m, nil
+		}
+	}
+	if w, ok := o.(*object.CSVWriter); ok {
+		if m, ok := csvWriterAttr(i, w, name); ok {
+			return m, nil
+		}
+	}
+	if dw, ok := o.(*object.CSVDictWriter); ok {
+		if m, ok := csvDictWriterAttr(i, dw, name); ok {
+			return m, nil
+		}
+	}
+	if r, ok := o.(*object.URLParseResult); ok {
+		if m, ok := urlParseResultAttr(r, name); ok {
+			return m, nil
+		}
+	}
 	if mv, ok := o.(*object.Memoryview); ok {
 		if a, ok := memoryviewAttr(mv, name); ok {
 			return a, nil
@@ -958,6 +978,29 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			r := object.NewInt(int64(x.V[idx]))
 			idx++
 			return r, true, nil
+		}}, nil
+	case *object.URLParseResult:
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if v, ok := urlParseResultGetItem(x, idx); ok {
+				idx++
+				return v, true, nil
+			}
+			return nil, false, nil
+		}}, nil
+	case *object.CSVReader:
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if x.Pos >= len(x.Rows) {
+				return nil, false, nil
+			}
+			row := x.Rows[x.Pos]
+			x.Pos++
+			x.LineNo++
+			vs := make([]object.Object, len(row))
+			for k, s := range row {
+				vs[k] = &object.Str{V: s}
+			}
+			return &object.List{V: vs}, true, nil
 		}}, nil
 	case *object.Memoryview:
 		idx := 0

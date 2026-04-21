@@ -637,6 +637,16 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		return i.bytesGetitem(c.V, key, true)
 	case *object.Memoryview:
 		return i.memoryviewGetitem(c, key)
+	case *object.URLParseResult:
+		n, ok := toInt64(key)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "ParseResult indices must be integers")
+		}
+		v, ok := urlParseResultGetItem(c, int(n))
+		if !ok {
+			return nil, object.Errorf(i.indexErr, "ParseResult index out of range")
+		}
+		return v, nil
 	case *object.Dict:
 		v, ok, err := c.Get(key)
 		if err != nil {
