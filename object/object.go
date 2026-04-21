@@ -327,6 +327,12 @@ func TypeName(o Object) string {
 		return "re.Pattern"
 	case *Match:
 		return "re.Match"
+	case *StringIO:
+		return "_io.StringIO"
+	case *BytesIO:
+		return "_io.BytesIO"
+	case *Hasher:
+		return v.Name
 	}
 	return fmt.Sprintf("%T", o)
 }

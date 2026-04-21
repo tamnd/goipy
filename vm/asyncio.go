@@ -35,6 +35,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildStringMod(), true
 	case "copy":
 		return i.buildCopy(), true
+	case "io":
+		return i.buildIO(), true
+	case "hashlib":
+		return i.buildHashlib(), true
+	case "base64":
+		return i.buildBase64(), true
+	case "textwrap":
+		return i.buildTextwrap(), true
 	}
 	return nil, false
 }
