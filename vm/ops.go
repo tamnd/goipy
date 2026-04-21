@@ -418,6 +418,16 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if p, ok := o.(*object.Pattern); ok {
+		if m, ok := patternAttr(i, p, name); ok {
+			return m, nil
+		}
+	}
+	if mt, ok := o.(*object.Match); ok {
+		if m, ok := matchAttr(i, mt, name); ok {
+			return m, nil
+		}
+	}
 	if mv, ok := o.(*object.Memoryview); ok {
 		if a, ok := memoryviewAttr(mv, name); ok {
 			return a, nil

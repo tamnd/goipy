@@ -27,6 +27,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildBisect(), true
 	case "random":
 		return i.buildRandom(), true
+	case "json":
+		return i.buildJSON(), true
+	case "re":
+		return i.buildRe(), true
+	case "string":
+		return i.buildStringMod(), true
+	case "copy":
+		return i.buildCopy(), true
 	}
 	return nil, false
 }

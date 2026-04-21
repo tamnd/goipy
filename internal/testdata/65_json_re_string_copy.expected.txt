@@ -1,0 +1,95 @@
+null
+true
+false
+0
+42
+-7
+3.14
+"hello"
+"tab\tand\nnewline"
+""
+[]
+{}
+[1, 2, 3]
+{"a": 1, "b": 2}
+[1, "two", null, true]
+{"nested": {"x": [1, 2]}}
+"caf\u00e9"
+"\u4e2d\u6587"
+[
+  1,
+  2,
+  3
+]
+{
+  "a": 1,
+  "b": 2
+}
+{"a":1,"b":2}
+{"a": 1, "b": 2, "c": 3}
+True
+True
+False
+42
+3.14
+hello
+[]
+{}
+[1, 2, 3]
+{'a': 1}
+True
+True
+abc123
+123
+True
+123
+True
+count=42
+count
+42
+('count', '42')
+(0, 8)
+0 5
+x
+9
+{'name': 'x', 'val': '9'}
+['1', '2', '30', '400']
+[('a', '1'), ('b', '22')]
+['1', '2', '30']
+['a', 'b', 'c']
+['a', '  ', 'b', ' ', 'c']
+1:x 2:y
+1:x
+a2 b4 c6
+('aXbXcX', 3)
+['Cat', 'CAT', 'cat']
+['a', 'd']
+True
+a
+b
+\d+
+['1', '22', '333']
+42
+1\+2=3
+abcdefghijklmnopqrstuvwxyz
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
+0123456789
+0123456789abcdefABCDEF
+01234567
+!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+{|}~ 	
+
+True
+True
+False
+True
+True
+False
+[3, 4, 5]
+[3, 4]
+[1, 2, 9]
+[1, 2]
+[2, 3]
+True
+True

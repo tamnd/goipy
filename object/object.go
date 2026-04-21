@@ -323,6 +323,10 @@ func TypeName(o Object) string {
 		return "collections.defaultdict"
 	case *OrderedDict:
 		return "collections.OrderedDict"
+	case *Pattern:
+		return "re.Pattern"
+	case *Match:
+		return "re.Match"
 	}
 	return fmt.Sprintf("%T", o)
 }
