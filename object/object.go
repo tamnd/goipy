@@ -214,6 +214,9 @@ type Cell struct {
 type BuiltinFunc struct {
 	Name  string
 	Call  func(interp any, args []Object, kwargs *Dict) (Object, error)
+	// Attrs holds extra attributes set on the builtin (e.g.
+	// functools.lru_cache's wrapper exposes cache_info/cache_clear).
+	Attrs *Dict
 }
 
 // BoundMethod binds self to a function/builtin.

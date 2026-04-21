@@ -392,6 +392,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		if name == "__name__" {
 			return &object.Str{V: bf.Name}, nil
 		}
+		if bf.Attrs != nil {
+			if v, ok := bf.Attrs.GetStr(name); ok {
+				return v, nil
+			}
+		}
 	}
 	if p, ok := o.(*object.Property); ok {
 		switch name {
@@ -427,6 +432,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	if fn, ok := o.(*object.Function); ok {
 		if name == "__name__" {
 			return &object.Str{V: fn.Name}, nil
+		}
+		if fn.Dict != nil {
+			if v, ok := fn.Dict.GetStr(name); ok {
+				return v, nil
+			}
 		}
 	}
 	if cls, ok := o.(*object.Class); ok {
@@ -699,6 +709,18 @@ func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *obj
 			}
 			return i.callObject(getFn, []object.Object{d, self, owner}, nil)
 		}
+	case *cachedProperty:
+		if inst == nil {
+			return d, nil
+		}
+		r, err := i.callObject(d.fn, []object.Object{inst}, nil)
+		if err != nil {
+			return nil, err
+		}
+		if d.name != "" {
+			inst.Dict.SetStr(d.name, r)
+		}
+		return r, nil
 	}
 	return v, nil
 }

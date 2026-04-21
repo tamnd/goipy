@@ -50,7 +50,7 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("NotImplemented", object.NotImplemented)
 
 	// Constructors / types.
-	b.SetStr("int", &object.BuiltinFunc{Name: "int", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("int", &object.BuiltinFunc{Name: "int", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
 		if len(a) == 0 {
 			return object.NewInt(0), nil
@@ -85,6 +85,13 @@ func (i *Interp) initBuiltins() {
 			if len(a) > 1 {
 				if n, ok := toInt64(a[1]); ok {
 					base = int(n)
+				}
+			}
+			if kw != nil {
+				if bv, ok := kw.GetStr("base"); ok {
+					if n, ok := toInt64(bv); ok {
+						base = int(n)
+					}
 				}
 			}
 			n, ok := new(big.Int).SetString(strings.TrimSpace(v.V), base)
@@ -943,6 +950,10 @@ func (i *Interp) initBuiltins() {
 		for idx, k := range keys {
 			kstr, ok := k.(*object.Str)
 			if !ok {
+				continue
+			}
+			if cp, ok := vals[idx].(*cachedProperty); ok {
+				cp.name = kstr.V
 				continue
 			}
 			dinst, ok := vals[idx].(*object.Instance)
