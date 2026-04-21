@@ -387,11 +387,13 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 
 		// --- arithmetic ---
 		case op.BINARY_OP:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			// Inline Int+Int / Int-Int / Int*Int / Int%Int fast paths: for the
 			// vast majority of integer math the values fit in int64 and the
 			// generic dispatch just adds interface call + allocation overhead.
+			// Results land back in Stack[sp-1] and SP drops by one in place.
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
 					if ai.IsInt64() && bi.IsInt64() {
@@ -402,19 +404,22 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							if (av >= 0) == (bv >= 0) && (sum >= 0) != (av >= 0) {
 								break
 							}
-							f.push(object.IntFromInt64(sum))
+							f.Stack[sp-1] = object.IntFromInt64(sum)
+							f.SP = sp
 							continue
 						case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
 							diff := av - bv
 							if (av >= 0) != (bv >= 0) && (diff >= 0) != (av >= 0) {
 								break
 							}
-							f.push(object.IntFromInt64(diff))
+							f.Stack[sp-1] = object.IntFromInt64(diff)
+							f.SP = sp
 							continue
 						case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
 							if av >= math.MinInt32 && av <= math.MaxInt32 &&
 								bv >= math.MinInt32 && bv <= math.MaxInt32 {
-								f.push(object.IntFromInt64(av * bv))
+								f.Stack[sp-1] = object.IntFromInt64(av * bv)
+								f.SP = sp
 								continue
 							}
 						case op.NB_REMAINDER, op.NB_INPLACE_REMAINDER:
@@ -424,7 +429,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 								if (m < 0) != (bv < 0) && m != 0 {
 									m += bv
 								}
-								f.push(object.IntFromInt64(m))
+								f.Stack[sp-1] = object.IntFromInt64(m)
+								f.SP = sp
 								continue
 							}
 						case op.NB_FLOOR_DIVIDE, op.NB_INPLACE_FLOOR_DIVIDE:
@@ -433,17 +439,21 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 								if (av%bv != 0) && ((av < 0) != (bv < 0)) {
 									q--
 								}
-								f.push(object.IntFromInt64(q))
+								f.Stack[sp-1] = object.IntFromInt64(q)
+								f.SP = sp
 								continue
 							}
 						case op.NB_AND, op.NB_INPLACE_AND:
-							f.push(object.IntFromInt64(av & bv))
+							f.Stack[sp-1] = object.IntFromInt64(av & bv)
+							f.SP = sp
 							continue
 						case op.NB_OR, op.NB_INPLACE_OR:
-							f.push(object.IntFromInt64(av | bv))
+							f.Stack[sp-1] = object.IntFromInt64(av | bv)
+							f.SP = sp
 							continue
 						case op.NB_XOR, op.NB_INPLACE_XOR:
-							f.push(object.IntFromInt64(av ^ bv))
+							f.Stack[sp-1] = object.IntFromInt64(av ^ bv)
+							f.SP = sp
 							continue
 						}
 					}
@@ -452,26 +462,30 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			// Float+Float / Float+Int likewise: avoid interface thrash.
 			if af, ok := a.(*object.Float); ok {
 				if r, ok := floatFast(af.V, b, oparg); ok {
-					f.push(r)
+					f.Stack[sp-1] = r
+					f.SP = sp
 					continue
 				}
 			}
 			if bf, ok := b.(*object.Float); ok {
 				if ai, ok := a.(*object.Int); ok && ai.IsInt64() {
 					if r, ok := floatFast(float64(ai.Int64()), bf, oparg); ok {
-						f.push(r)
+						f.Stack[sp-1] = r
+						f.SP = sp
 						continue
 					}
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.binaryOp(a, b, oparg)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_ADD_INT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
 					if ai.IsInt64() && bi.IsInt64() {
@@ -480,50 +494,60 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 						if (av >= 0) == (bv >= 0) && (sum >= 0) != (av >= 0) {
 							// overflow — fall through to big-int path
 						} else {
-							f.push(object.IntFromInt64(sum))
+							f.Stack[sp-1] = object.IntFromInt64(sum)
+							f.SP = sp
 							continue
 						}
 					}
-					f.push(object.IntFromBig(new(big.Int).Add(&ai.V, &bi.V)))
+					f.Stack[sp-1] = object.IntFromBig(new(big.Int).Add(&ai.V, &bi.V))
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.add(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_ADD_FLOAT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if af, ok := a.(*object.Float); ok {
 				if bf, ok := b.(*object.Float); ok {
-					f.push(&object.Float{V: af.V + bf.V})
+					f.Stack[sp-1] = &object.Float{V: af.V + bf.V}
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.add(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_ADD_UNICODE:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if as, ok := a.(*object.Str); ok {
 				if bs, ok := b.(*object.Str); ok {
-					f.push(&object.Str{V: as.V + bs.V})
+					f.Stack[sp-1] = &object.Str{V: as.V + bs.V}
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.add(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_SUBTRACT_INT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
 					if ai.IsInt64() && bi.IsInt64() {
@@ -532,36 +556,43 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 						if (av >= 0) != (bv >= 0) && (diff >= 0) != (av >= 0) {
 							// overflow
 						} else {
-							f.push(object.IntFromInt64(diff))
+							f.Stack[sp-1] = object.IntFromInt64(diff)
+							f.SP = sp
 							continue
 						}
 					}
-					f.push(object.IntFromBig(new(big.Int).Sub(&ai.V, &bi.V)))
+					f.Stack[sp-1] = object.IntFromBig(new(big.Int).Sub(&ai.V, &bi.V))
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.sub(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_SUBTRACT_FLOAT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if af, ok := a.(*object.Float); ok {
 				if bf, ok := b.(*object.Float); ok {
-					f.push(&object.Float{V: af.V - bf.V})
+					f.Stack[sp-1] = &object.Float{V: af.V - bf.V}
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.sub(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_MULTIPLY_INT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
 					if ai.IsInt64() && bi.IsInt64() {
@@ -569,28 +600,34 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 						// Safe multiplication for values that fit in int32.
 						if av >= math.MinInt32 && av <= math.MaxInt32 &&
 							bv >= math.MinInt32 && bv <= math.MaxInt32 {
-							f.push(object.IntFromInt64(av * bv))
+							f.Stack[sp-1] = object.IntFromInt64(av * bv)
+							f.SP = sp
 							continue
 						}
 					}
-					f.push(object.IntFromBig(new(big.Int).Mul(&ai.V, &bi.V)))
+					f.Stack[sp-1] = object.IntFromBig(new(big.Int).Mul(&ai.V, &bi.V))
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.mul(a, b)
 			if err != nil {
 				goto handleErr
 			}
 			f.push(result)
 		case op.BINARY_OP_MULTIPLY_FLOAT:
-			b := f.pop()
-			a := f.pop()
+			sp := f.SP - 1
+			b := f.Stack[sp]
+			a := f.Stack[sp-1]
 			if af, ok := a.(*object.Float); ok {
 				if bf, ok := b.(*object.Float); ok {
-					f.push(&object.Float{V: af.V * bf.V})
+					f.Stack[sp-1] = &object.Float{V: af.V * bf.V}
+					f.SP = sp
 					continue
 				}
 			}
+			f.SP = sp - 1
 			result, err = i.mul(a, b)
 			if err != nil {
 				goto handleErr
