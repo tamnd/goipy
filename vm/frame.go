@@ -13,7 +13,11 @@ type Frame struct {
 	Stack    []object.Object
 	SP       int
 	IP       int
-	Back     *Frame
+	// LastIP is the start offset of the most recently executed opcode;
+	// set by dispatch right before propagating an unhandled exception so
+	// traceback nodes can resolve the right source line.
+	LastIP int
+	Back   *Frame
 	// ExcInfo holds the most recent handled exception for re-raise.
 	ExcInfo *object.Exception
 	// Pending exception used by exception handler dispatch.

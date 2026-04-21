@@ -72,6 +72,11 @@ func (i *Interp) genMethod(gen *object.Generator, name string) (object.Object, b
 		return &object.BuiltinFunc{Name: "__next__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return i.resumeGenerator(gen, object.None)
 		}}, true
+	case "__await__":
+		// A coroutine/generator is its own iterator under __await__.
+		return &object.BuiltinFunc{Name: "__await__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return gen, nil
+		}}, true
 	}
 	return nil, false
 }

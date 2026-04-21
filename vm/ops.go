@@ -438,6 +438,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if ts, ok := o.(*object.TextStream); ok {
+		if m, ok := textStreamAttr(i, ts, name); ok {
+			return m, nil
+		}
+	}
 	if h, ok := o.(*object.Hasher); ok {
 		if m, ok := hasherAttr(i, h, name); ok {
 			return m, nil
@@ -608,6 +613,52 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		switch name {
 		case "args":
 			return e.Args, nil
+		case "__traceback__":
+			if e.Traceback == nil {
+				return object.None, nil
+			}
+			return e.Traceback, nil
+		case "__cause__":
+			if e.Cause == nil {
+				return object.None, nil
+			}
+			return e.Cause, nil
+		case "__context__":
+			if e.Ctx == nil {
+				return object.None, nil
+			}
+			return e.Ctx, nil
+		}
+	}
+	if tb, ok := o.(*object.Traceback); ok {
+		switch name {
+		case "tb_next":
+			if tb.Next == nil {
+				return object.None, nil
+			}
+			return tb.Next, nil
+		case "tb_lineno":
+			return object.NewInt(int64(tb.Lineno)), nil
+		case "tb_lasti":
+			return object.NewInt(int64(tb.Lasti)), nil
+		case "tb_frame":
+			return &object.TracebackFrame{Code: tb.Code}, nil
+		}
+	}
+	if tf, ok := o.(*object.TracebackFrame); ok {
+		switch name {
+		case "f_code":
+			return tf.Code, nil
+		}
+	}
+	if c, ok := o.(*object.Code); ok {
+		switch name {
+		case "co_name":
+			return &object.Str{V: c.Name}, nil
+		case "co_filename":
+			return &object.Str{V: c.Filename}, nil
+		case "co_firstlineno":
+			return object.NewInt(int64(c.FirstLineNo)), nil
 		}
 	}
 	return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", object.TypeName(o), name)
@@ -820,6 +871,9 @@ func matchBuiltinType(o object.Object, name string) bool {
 		return ok
 	case "memoryview":
 		_, ok := o.(*object.Memoryview)
+		return ok
+	case "type":
+		_, ok := o.(*object.Class)
 		return ok
 	}
 	return false

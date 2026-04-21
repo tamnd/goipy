@@ -77,6 +77,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPprint(), true
 	case "html":
 		return i.buildHtml(), true
+	case "sys":
+		return i.buildSys(), true
 	}
 	return nil, false
 }

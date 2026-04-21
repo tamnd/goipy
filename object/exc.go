@@ -9,6 +9,27 @@ type Exception struct {
 	Cause *Exception
 	Ctx   *Exception
 	Msg   string
+	// Traceback is the innermost frame of the stack at raise time; each
+	// frame the exception propagates through prepends another node.
+	Traceback *Traceback
+}
+
+// Traceback records one frame in an exception's backtrace. Matches the
+// surface shape of Python's types.TracebackType: a linked list from
+// innermost to outermost frame.
+type Traceback struct {
+	Code     *Code
+	Lasti    int // bytecode offset at which the frame was executing
+	Lineno   int // source line (0 means "no info")
+	FuncName string
+	Next     *Traceback // outer frame (caller)
+}
+
+// TracebackFrame is the lightweight shape exposed as `traceback.tb_frame`.
+// CPython's frame object is much richer; we only surface `f_code`, which
+// is the shape most traceback consumers rely on.
+type TracebackFrame struct {
+	Code *Code
 }
 
 func (e *Exception) Error() string {
