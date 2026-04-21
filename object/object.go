@@ -216,7 +216,7 @@ type deletedEntry struct{}
 var deletedKey Object = &deletedEntry{}
 
 func NewDict() *Dict {
-	return &Dict{index: map[string]int{}, oHash: map[uint64][]int{}}
+	return &Dict{}
 }
 
 // Len returns the number of live entries.

@@ -8,9 +8,13 @@ import (
 // Set inserts or replaces a value for key in the dict.
 func (d *Dict) Set(key, val Object) error {
 	if s, ok := key.(*Str); ok {
-		if i, ok := d.index[s.V]; ok {
-			d.vals[i] = val
-			return nil
+		if d.index != nil {
+			if i, ok := d.index[s.V]; ok {
+				d.vals[i] = val
+				return nil
+			}
+		} else {
+			d.index = make(map[string]int)
 		}
 		d.index[s.V] = len(d.keys)
 		d.keys = append(d.keys, key)
@@ -21,15 +25,19 @@ func (d *Dict) Set(key, val Object) error {
 	if err != nil {
 		return err
 	}
-	for _, idx := range d.oHash[h] {
-		eq, err := Eq(d.keys[idx], key)
-		if err != nil {
-			return err
+	if d.oHash != nil {
+		for _, idx := range d.oHash[h] {
+			eq, err := Eq(d.keys[idx], key)
+			if err != nil {
+				return err
+			}
+			if eq {
+				d.vals[idx] = val
+				return nil
+			}
 		}
-		if eq {
-			d.vals[idx] = val
-			return nil
-		}
+	} else {
+		d.oHash = make(map[uint64][]int)
 	}
 	d.oHash[h] = append(d.oHash[h], len(d.keys))
 	d.keys = append(d.keys, key)
@@ -40,9 +48,14 @@ func (d *Dict) Set(key, val Object) error {
 // Get returns the value for key (or nil, false).
 func (d *Dict) Get(key Object) (Object, bool, error) {
 	if s, ok := key.(*Str); ok {
-		if i, ok := d.index[s.V]; ok {
-			return d.vals[i], true, nil
+		if d.index != nil {
+			if i, ok := d.index[s.V]; ok {
+				return d.vals[i], true, nil
+			}
 		}
+		return nil, false, nil
+	}
+	if d.oHash == nil {
 		return nil, false, nil
 	}
 	h, err := Hash(key)
@@ -63,6 +76,9 @@ func (d *Dict) Get(key Object) (Object, bool, error) {
 
 // GetStr is a fast-path for string keys.
 func (d *Dict) GetStr(key string) (Object, bool) {
+	if d.index == nil {
+		return nil, false
+	}
 	if i, ok := d.index[key]; ok {
 		return d.vals[i], true
 	}
@@ -71,9 +87,13 @@ func (d *Dict) GetStr(key string) (Object, bool) {
 
 // SetStr stores a value under a string key.
 func (d *Dict) SetStr(key string, val Object) {
-	if i, ok := d.index[key]; ok {
-		d.vals[i] = val
-		return
+	if d.index != nil {
+		if i, ok := d.index[key]; ok {
+			d.vals[i] = val
+			return
+		}
+	} else {
+		d.index = make(map[string]int)
 	}
 	d.index[key] = len(d.keys)
 	d.keys = append(d.keys, &Str{V: key})
@@ -84,6 +104,9 @@ func (d *Dict) SetStr(key string, val Object) {
 func (d *Dict) Delete(key Object) (bool, error) {
 	idx := -1
 	if s, ok := key.(*Str); ok {
+		if d.index == nil {
+			return false, nil
+		}
 		i, ok := d.index[s.V]
 		if !ok {
 			return false, nil
@@ -91,6 +114,9 @@ func (d *Dict) Delete(key Object) (bool, error) {
 		idx = i
 		delete(d.index, s.V)
 	} else {
+		if d.oHash == nil {
+			return false, nil
+		}
 		h, err := Hash(key)
 		if err != nil {
 			return false, err
