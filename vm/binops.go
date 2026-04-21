@@ -127,6 +127,42 @@ func isComplex(o object.Object) bool {
 	return ok
 }
 
+// floatFast covers "float OP operand" where the LHS is already known to be a
+// float's value. Returns the typed result and true if handled; callers must
+// fall back to generic dispatch otherwise.
+func floatFast(av float64, b object.Object, nb uint32) (object.Object, bool) {
+	var bv float64
+	switch x := b.(type) {
+	case *object.Float:
+		bv = x.V
+	case *object.Int:
+		if !x.V.IsInt64() {
+			return nil, false
+		}
+		bv = float64(x.V.Int64())
+	case *object.Bool:
+		if x.V {
+			bv = 1
+		}
+	default:
+		return nil, false
+	}
+	switch nb {
+	case op.NB_ADD, op.NB_INPLACE_ADD:
+		return &object.Float{V: av + bv}, true
+	case op.NB_SUBTRACT, op.NB_INPLACE_SUBTRACT:
+		return &object.Float{V: av - bv}, true
+	case op.NB_MULTIPLY, op.NB_INPLACE_MULTIPLY:
+		return &object.Float{V: av * bv}, true
+	case op.NB_TRUE_DIVIDE, op.NB_INPLACE_TRUE_DIVIDE:
+		if bv == 0 {
+			return nil, false
+		}
+		return &object.Float{V: av / bv}, true
+	}
+	return nil, false
+}
+
 func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok bool) {
 	switch v := o.(type) {
 	case *object.Bool:
