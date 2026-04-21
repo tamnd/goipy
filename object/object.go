@@ -271,6 +271,9 @@ type Code struct {
 	// allocate a fresh frame. Replacing the old map[*Code]*Frame lookup
 	// with a direct field removes a hashmap probe from every Python call.
 	FramePool any
+	// KwSlot caches kwname → Fast[] slot index for bindArgs. Built on
+	// first keyword call; stable for the lifetime of the Code.
+	KwSlot map[string]int
 	// AttrCache is populated lazily by LOAD_ATTR dispatch. Indexed by the
 	// bytecode IP of the LOAD_ATTR op (startIP). Zero entry means not yet
 	// specialized; a non-zero Cls is a guard — if the instance's class

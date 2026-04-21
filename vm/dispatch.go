@@ -1092,6 +1092,29 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			posCount := len(allArgs) - len(kwnames.V)
 			pos := allArgs[:posCount]
 			kwVals := allArgs[posCount:]
+			// Fast path: *Function with no *args/**kwargs, optional bound self.
+			if fn, ok := callable.(*object.Function); ok {
+				nPosTotal := posCount
+				if selfOrNull != nil {
+					nPosTotal++
+				}
+				if isFastKwCallable(fn, nPosTotal) {
+					var posArgs []object.Object
+					if selfOrNull != nil {
+						posArgs = f.Stack[base+1 : base+1+nPosTotal]
+					} else {
+						posArgs = pos
+					}
+					r, callErr := i.callFunctionFastKw(fn, posArgs, kwnames.V, kwVals)
+					f.SP = base
+					if callErr != nil {
+						err = callErr
+						goto handleErr
+					}
+					f.push(r)
+					continue
+				}
+			}
 			var call []object.Object
 			if selfOrNull != nil {
 				call = append([]object.Object{selfOrNull}, pos...)

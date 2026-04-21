@@ -115,6 +115,122 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 	return r, err
 }
 
+// callFunctionFastKw is the hot-path variant for CALL_KW when the callable
+// is a *Function with exactly ArgCount+KwOnlyArgCount slots and no *args
+// / **kwargs. pos holds positional args (self included if bound), and
+// kwnames/kwvals describe keyword args. Skips building a kwargs dict.
+func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kwnames []object.Object, kwvals []object.Object) (object.Object, error) {
+	code := fn.Code
+	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
+	var frame *Frame
+	if !isGen {
+		if f, ok := code.FramePool.(*Frame); ok && f != nil {
+			code.FramePool = nil
+			frame = f
+			frame.Globals = fn.Globals
+			frame.Builtins = i.Builtins
+			clear(frame.Fast)
+			frame.SP = 0
+			frame.IP = 0
+			frame.LastIP = 0
+			frame.Back = nil
+			frame.ExcInfo = nil
+			frame.curExc = nil
+			frame.Yielded = nil
+			if code.NCells+code.NFrees > 0 {
+				frame.Cells = make([]*object.Cell, code.NCells+code.NFrees)
+			} else {
+				frame.Cells = nil
+			}
+		}
+	}
+	if frame == nil {
+		frame = NewFrame(code, fn.Globals, i.Builtins, nil)
+	}
+	if code.Flags&CO_OPTIMIZED != 0 {
+		frame.Locals = nil
+	} else {
+		frame.Locals = object.NewDict()
+	}
+	narg := code.ArgCount
+	nkwonly := code.KwOnlyArgCount
+	if len(pos) > narg {
+		return nil, object.Errorf(i.typeErr, "%s() takes %d positional arguments but %d were given", fn.Name, narg, len(pos))
+	}
+	copy(frame.Fast[:len(pos)], pos)
+	// Populate per-Code kwname→slot map lazily.
+	slotMap := code.KwSlot
+	if slotMap == nil {
+		slotMap = make(map[string]int, narg+nkwonly)
+		for k := 0; k < narg+nkwonly; k++ {
+			slotMap[code.LocalsPlusNames[k]] = k
+		}
+		code.KwSlot = slotMap
+	}
+	for k, nameObj := range kwnames {
+		name := nameObj.(*object.Str).V
+		slot, ok := slotMap[name]
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "%s() got an unexpected keyword argument '%s'", fn.Name, name)
+		}
+		if frame.Fast[slot] != nil {
+			return nil, object.Errorf(i.typeErr, "%s() got multiple values for argument '%s'", fn.Name, name)
+		}
+		frame.Fast[slot] = kwvals[k]
+	}
+	// defaults for positionals
+	if fn.Defaults != nil {
+		defaults := fn.Defaults.V
+		nDef := len(defaults)
+		for k := 0; k < nDef; k++ {
+			slot := narg - nDef + k
+			if frame.Fast[slot] == nil {
+				frame.Fast[slot] = defaults[k]
+			}
+		}
+	}
+	if fn.KwDefaults != nil {
+		for k := narg; k < narg+nkwonly; k++ {
+			if frame.Fast[k] == nil {
+				if v, ok := fn.KwDefaults.GetStr(code.LocalsPlusNames[k]); ok {
+					frame.Fast[k] = v
+				}
+			}
+		}
+	}
+	for k := 0; k < narg+nkwonly; k++ {
+		if frame.Fast[k] == nil {
+			return nil, object.Errorf(i.typeErr, "%s() missing required argument: '%s'", fn.Name, code.LocalsPlusNames[k])
+		}
+	}
+	if fn.Closure != nil {
+		base := code.NLocals + code.NCells
+		for k, cell := range fn.Closure.V {
+			if c, ok := cell.(*object.Cell); ok {
+				frame.Fast[base+k] = c
+			}
+		}
+	}
+	if isGen {
+		return &object.Generator{Name: fn.Name, Frame: frame}, nil
+	}
+	r, err := i.runFrame(frame)
+	if err == nil && code.FramePool == nil {
+		code.FramePool = frame
+	}
+	return r, err
+}
+
+// isFastKwCallable reports whether fn + (nPos, nKw) can be routed through
+// callFunctionFastKw.
+func isFastKwCallable(fn *object.Function, nPos int) bool {
+	code := fn.Code
+	if code.Flags&(CO_VARARGS|CO_VARKWDS) != 0 {
+		return false
+	}
+	return nPos <= code.ArgCount
+}
+
 // isFastCallable reports whether fn can be invoked through callFunctionFast
 // given nArgsTotal (including any bound self): same arity, no *args/**kwargs,
 // no keyword-only args.
