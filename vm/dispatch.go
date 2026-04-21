@@ -26,14 +26,12 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		oparg := uint32(code[f.IP+1]) | extArg
 		extArg = 0
 
-		// Advance IP past opcode + immediate arg; cache adjustment handled
-		// per-branch OR at the end.
+		// Advance IP past opcode + immediate arg + any inline caches in one
+		// shot. op.Cache[opcode] is 0 for most instructions, so the branch
+		// that used to guard the addition was near-useless branch-predictor
+		// churn. Just add unconditionally.
 		startIP := f.IP
-		f.IP += 2
-		cache := int(op.Cache[opcode])
-		if cache > 0 {
-			f.IP += 2 * cache
-		}
+		f.IP += 2 + 2*int(op.Cache[opcode])
 
 		var result object.Object
 		var err error
