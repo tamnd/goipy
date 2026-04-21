@@ -136,10 +136,10 @@ func floatFast(av float64, b object.Object, nb uint32) (object.Object, bool) {
 	case *object.Float:
 		bv = x.V
 	case *object.Int:
-		if !x.V.IsInt64() {
+		if !x.IsInt64() {
 			return nil, false
 		}
-		bv = float64(x.V.Int64())
+		bv = float64(x.Int64())
 	case *object.Bool:
 		if x.V {
 			bv = 1
@@ -998,8 +998,8 @@ func toInt64(o object.Object) (int64, bool) {
 		}
 		return 0, true
 	case *object.Int:
-		if v.V.IsInt64() {
-			return v.V.Int64(), true
+		if v.IsInt64() {
+			return v.Int64(), true
 		}
 	}
 	return 0, false

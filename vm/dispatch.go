@@ -396,8 +396,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			// generic dispatch just adds interface call + allocation overhead.
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
-					if ai.V.IsInt64() && bi.V.IsInt64() {
-						av, bv := ai.V.Int64(), bi.V.Int64()
+					if ai.IsInt64() && bi.IsInt64() {
+						av, bv := ai.Int64(), bi.Int64()
 						switch oparg {
 						case op.NB_ADD, op.NB_INPLACE_ADD:
 							sum := av + bv
@@ -459,8 +459,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				}
 			}
 			if bf, ok := b.(*object.Float); ok {
-				if ai, ok := a.(*object.Int); ok && ai.V.IsInt64() {
-					if r, ok := floatFast(float64(ai.V.Int64()), bf, oparg); ok {
+				if ai, ok := a.(*object.Int); ok && ai.IsInt64() {
+					if r, ok := floatFast(float64(ai.Int64()), bf, oparg); ok {
 						f.push(r)
 						continue
 					}
@@ -476,8 +476,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			a := f.pop()
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
-					if ai.V.IsInt64() && bi.V.IsInt64() {
-						av, bv := ai.V.Int64(), bi.V.Int64()
+					if ai.IsInt64() && bi.IsInt64() {
+						av, bv := ai.Int64(), bi.Int64()
 						sum := av + bv
 						if (av >= 0) == (bv >= 0) && (sum >= 0) != (av >= 0) {
 							// overflow — fall through to big-int path
@@ -528,8 +528,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			a := f.pop()
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
-					if ai.V.IsInt64() && bi.V.IsInt64() {
-						av, bv := ai.V.Int64(), bi.V.Int64()
+					if ai.IsInt64() && bi.IsInt64() {
+						av, bv := ai.Int64(), bi.Int64()
 						diff := av - bv
 						if (av >= 0) != (bv >= 0) && (diff >= 0) != (av >= 0) {
 							// overflow
@@ -566,8 +566,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			a := f.pop()
 			if ai, ok := a.(*object.Int); ok {
 				if bi, ok := b.(*object.Int); ok {
-					if ai.V.IsInt64() && bi.V.IsInt64() {
-						av, bv := ai.V.Int64(), bi.V.Int64()
+					if ai.IsInt64() && bi.IsInt64() {
+						av, bv := ai.Int64(), bi.Int64()
 						// Safe multiplication for values that fit in int32.
 						if av >= math.MinInt32 && av <= math.MaxInt32 &&
 							bv >= math.MinInt32 && bv <= math.MaxInt32 {
@@ -674,8 +674,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			// the equivalent fast path; avoids the interface-method dispatch
 			// through i.compare plus the BoolOf lookup.
 			if ai, ok := a.(*object.Int); ok {
-				if bi, ok := b.(*object.Int); ok && ai.V.IsInt64() && bi.V.IsInt64() {
-					av, bv := ai.V.Int64(), bi.V.Int64()
+				if bi, ok := b.(*object.Int); ok && ai.IsInt64() && bi.IsInt64() {
+					av, bv := ai.Int64(), bi.Int64()
 					var r bool
 					switch kind {
 					case 0: // <
@@ -1321,7 +1321,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			levelObj := f.pop()
 			level := 0
 			if l, ok := levelObj.(*object.Int); ok {
-				level = int(l.V.Int64())
+				level = int(l.Int64())
 			}
 			var fl *object.Tuple
 			if t, ok := fromlist.(*object.Tuple); ok {
