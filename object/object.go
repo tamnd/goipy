@@ -45,10 +45,50 @@ func BoolOf(b bool) *Bool {
 	return False
 }
 
-// Int wraps arbitrary-precision integer.
+// Int wraps arbitrary-precision integer. V is always non-nil; callers may
+// read it directly. Use NewInt / IntFromInt64 / IntFromBig for allocation so
+// the small-int cache can share hot immortals and skip allocation entirely.
 type Int struct{ V *big.Int }
 
-func NewInt(n int64) *Int { return &Int{V: big.NewInt(n)} }
+// smallIntCache covers the range Python's CPython caches internally. Hot
+// loops like `for i in range(...)` and boolean int promotion hit this path
+// heavily; pre-building the values makes those zero-allocation.
+const (
+	smallIntMin = -5
+	smallIntMax = 256
+)
+
+var smallIntCache [smallIntMax - smallIntMin + 1]*Int
+
+func init() {
+	for i := range smallIntCache {
+		smallIntCache[i] = &Int{V: big.NewInt(int64(smallIntMin + i))}
+	}
+}
+
+// IntFromInt64 returns a cached *Int for values in [-5, 256] and a freshly
+// allocated one otherwise.
+func IntFromInt64(n int64) *Int {
+	if n >= smallIntMin && n <= smallIntMax {
+		return smallIntCache[n-smallIntMin]
+	}
+	return &Int{V: big.NewInt(n)}
+}
+
+// IntFromBig wraps a *big.Int into an *Int, hitting the small-int cache when
+// the value fits so callers do not accidentally hold two copies of e.g. 0 or
+// 1 that share a representation.
+func IntFromBig(b *big.Int) *Int {
+	if b.IsInt64() {
+		n := b.Int64()
+		if n >= smallIntMin && n <= smallIntMax {
+			return smallIntCache[n-smallIntMin]
+		}
+	}
+	return &Int{V: b}
+}
+
+func NewInt(n int64) *Int { return IntFromInt64(n) }
 
 // Float.
 type Float struct{ V float64 }
@@ -201,7 +241,27 @@ type Code struct {
 	NFrees   int // free slots (CO_FAST_FREE = 0x80)
 	CellVars []string
 	FreeVars []string
+
+	// AttrCache is populated lazily by LOAD_ATTR dispatch. Indexed by the
+	// bytecode IP of the LOAD_ATTR op (startIP). Zero entry means not yet
+	// specialized; a non-zero Cls is a guard — if the instance's class
+	// changed, the entry is invalid and the slow path runs + repopulates.
+	AttrCache []AttrCacheEntry
 }
+
+// AttrCacheEntry is a one-shot inline cache for LOAD_ATTR on instances.
+type AttrCacheEntry struct {
+	Cls  *Class
+	Val  Object // for KindClassVal / KindClassMethod (raw Function to bind)
+	Kind uint8  // 0 empty, 1 inst-dict hit, 2 class value (non-descriptor), 3 unbound method
+}
+
+const (
+	AttrCacheEmpty       uint8 = 0
+	AttrCacheInstDict    uint8 = 1
+	AttrCacheClassValue  uint8 = 2
+	AttrCacheClassMethod uint8 = 3
+)
 
 const (
 	FastLocal  = 0x20
