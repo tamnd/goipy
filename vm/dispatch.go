@@ -257,9 +257,10 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			pushSelf := oparg&1 != 0
 			name := f.Code.Names[oparg>>1]
 			obj := f.pop()
-			val, err := i.getAttr(obj, name)
+			var val object.Object
+			val, err = i.getAttr(obj, name)
 			if err != nil {
-				return nil, err
+				goto handleErr
 			}
 			if pushSelf {
 				f.push(val)
@@ -271,14 +272,14 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			name := f.Code.Names[oparg]
 			obj := f.pop()
 			val := f.pop()
-			if err := i.setAttr(obj, name, val); err != nil {
-				return nil, err
+			if err = i.setAttr(obj, name, val); err != nil {
+				goto handleErr
 			}
 		case op.DELETE_ATTR:
 			name := f.Code.Names[oparg]
 			obj := f.pop()
-			if err := i.delAttr(obj, name); err != nil {
-				return nil, err
+			if err = i.delAttr(obj, name); err != nil {
+				goto handleErr
 			}
 
 		// --- arithmetic ---

@@ -912,7 +912,7 @@ func (i *Interp) initBuiltins() {
 		}
 		return &object.Tuple{V: []object.Object{q, r}}, nil
 	}})
-	b.SetStr("__build_class__", &object.BuiltinFunc{Name: "__build_class__", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("__build_class__", &object.BuiltinFunc{Name: "__build_class__", Call: func(ii any, a []object.Object, kwds *object.Dict) (object.Object, error) {
 		// args: func, name, *bases, **kwds
 		in := ii.(*Interp)
 		fn := a[0].(*object.Function)
@@ -935,6 +935,36 @@ func (i *Interp) initBuiltins() {
 			if c, ok := v.(*object.Cell); ok {
 				c.V = cls
 				c.Set = true
+			}
+		}
+		// __set_name__: notify descriptors of the attribute name they were
+		// bound to.
+		keys, vals := ns.Items()
+		for idx, k := range keys {
+			kstr, ok := k.(*object.Str)
+			if !ok {
+				continue
+			}
+			dinst, ok := vals[idx].(*object.Instance)
+			if !ok {
+				continue
+			}
+			if fn, ok := classLookup(dinst.Class, "__set_name__"); ok {
+				if _, err := in.callObject(fn, []object.Object{dinst, cls, &object.Str{V: kstr.V}}, nil); err != nil {
+					return nil, err
+				}
+			}
+		}
+		// __init_subclass__: walk MRO of bases (excluding cls itself) and
+		// invoke the first __init_subclass__ found, treated as an implicit
+		// classmethod. Class-definition kwargs (Class Foo(Base, tag=...)) are
+		// forwarded as-is.
+		for _, base := range bases {
+			if fn, ok := classLookup(base, "__init_subclass__"); ok {
+				if _, err := in.callObject(fn, []object.Object{cls}, kwds); err != nil {
+					return nil, err
+				}
+				break
 			}
 		}
 		return cls, nil

@@ -366,15 +366,68 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			}}, nil
 		}
 	}
-	// Class attr lookup on instance
+	// Class attr lookup on instance, honoring the descriptor protocol:
+	// data descriptors take precedence over inst.Dict; non-data descriptors
+	// yield to it.
 	if inst, ok := o.(*object.Instance); ok {
+		switch name {
+		case "__dict__":
+			return inst.Dict, nil
+		case "__class__":
+			return inst.Class, nil
+		}
+		clsAttr, clsFound := classLookup(inst.Class, name)
+		if clsFound && isDataDescriptor(clsAttr) {
+			return i.bindDescriptor(clsAttr, inst, inst.Class)
+		}
 		if v, ok := inst.Dict.GetStr(name); ok {
 			return v, nil
 		}
-		if v, ok := classLookup(inst.Class, name); ok {
-			return i.bindDescriptor(v, inst, inst.Class)
+		if clsFound {
+			return i.bindDescriptor(clsAttr, inst, inst.Class)
 		}
 		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
+	}
+	if bf, ok := o.(*object.BuiltinFunc); ok {
+		if name == "__name__" {
+			return &object.Str{V: bf.Name}, nil
+		}
+	}
+	if p, ok := o.(*object.Property); ok {
+		switch name {
+		case "fget":
+			if p.Fget == nil {
+				return object.None, nil
+			}
+			return p.Fget, nil
+		case "fset":
+			if p.Fset == nil {
+				return object.None, nil
+			}
+			return p.Fset, nil
+		case "fdel":
+			if p.Fdel == nil {
+				return object.None, nil
+			}
+			return p.Fdel, nil
+		case "setter":
+			return &object.BuiltinFunc{Name: "setter", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				return &object.Property{Fget: p.Fget, Fset: a[0], Fdel: p.Fdel}, nil
+			}}, nil
+		case "deleter":
+			return &object.BuiltinFunc{Name: "deleter", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				return &object.Property{Fget: p.Fget, Fset: p.Fset, Fdel: a[0]}, nil
+			}}, nil
+		case "getter":
+			return &object.BuiltinFunc{Name: "getter", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				return &object.Property{Fget: a[0], Fset: p.Fset, Fdel: p.Fdel}, nil
+			}}, nil
+		}
+	}
+	if fn, ok := o.(*object.Function); ok {
+		if name == "__name__" {
+			return &object.Str{V: fn.Name}, nil
+		}
 	}
 	if cls, ok := o.(*object.Class); ok {
 		switch name {
@@ -408,6 +461,18 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 
 func (i *Interp) setAttr(o object.Object, name string, val object.Object) error {
 	if inst, ok := o.(*object.Instance); ok {
+		if desc, ok := classLookup(inst.Class, name); ok {
+			if p, ok := desc.(*object.Property); ok && p.Fset != nil {
+				_, err := i.callObject(p.Fset, []object.Object{inst, val}, nil)
+				return err
+			}
+			if dinst, ok := desc.(*object.Instance); ok {
+				if setFn, ok := classLookup(dinst.Class, "__set__"); ok {
+					_, err := i.callObject(setFn, []object.Object{dinst, inst, val}, nil)
+					return err
+				}
+			}
+		}
 		inst.Dict.SetStr(name, val)
 		return nil
 	}
@@ -424,6 +489,18 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 
 func (i *Interp) delAttr(o object.Object, name string) error {
 	if inst, ok := o.(*object.Instance); ok {
+		if desc, ok := classLookup(inst.Class, name); ok {
+			if p, ok := desc.(*object.Property); ok && p.Fdel != nil {
+				_, err := i.callObject(p.Fdel, []object.Object{inst}, nil)
+				return err
+			}
+			if dinst, ok := desc.(*object.Instance); ok {
+				if delFn, ok := classLookup(dinst.Class, "__delete__"); ok {
+					_, err := i.callObject(delFn, []object.Object{dinst, inst}, nil)
+					return err
+				}
+			}
+		}
 		ok, _ := inst.Dict.Delete(&object.Str{V: name})
 		if !ok {
 			return object.Errorf(i.attrErr, "no attribute '%s'", name)
@@ -431,6 +508,25 @@ func (i *Interp) delAttr(o object.Object, name string) error {
 		return nil
 	}
 	return object.Errorf(i.attrErr, "can't delete attribute")
+}
+
+// isDataDescriptor reports whether v has __set__ or __delete__ on its type,
+// making it take precedence over instance dict in attribute lookup.
+func isDataDescriptor(v object.Object) bool {
+	if _, ok := v.(*object.Property); ok {
+		return true
+	}
+	inst, ok := v.(*object.Instance)
+	if !ok {
+		return false
+	}
+	if _, ok := classLookup(inst.Class, "__set__"); ok {
+		return true
+	}
+	if _, ok := classLookup(inst.Class, "__delete__"); ok {
+		return true
+	}
+	return false
 }
 
 // matchClass implements PEP 634 class-pattern extraction. Returns a tuple of
@@ -593,6 +689,16 @@ func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *obj
 			return &object.BoundMethod{Self: inst, Fn: d}, nil
 		}
 		return d, nil
+	case *object.Instance:
+		// User descriptor: if its class defines __get__, invoke it.
+		if getFn, ok := classLookup(d.Class, "__get__"); ok {
+			owner := object.Object(cls)
+			self := object.Object(object.None)
+			if inst != nil {
+				self = inst
+			}
+			return i.callObject(getFn, []object.Object{d, self, owner}, nil)
+		}
 	}
 	return v, nil
 }

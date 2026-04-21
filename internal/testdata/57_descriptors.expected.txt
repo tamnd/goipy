@@ -1,0 +1,11 @@
+0 0
+3 4
+0 4
+desc names: x y
+True
+from-descriptor
+from-dict
+always-descriptor {'_v': 99}
+Generic[int]
+Generic[str]
+['A', 'B']

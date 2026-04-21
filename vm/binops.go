@@ -619,6 +619,11 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	if cls, ok := container.(*object.Class); ok {
+		if fn, ok := classLookup(cls, "__class_getitem__"); ok {
+			return i.callObject(fn, []object.Object{cls, key}, nil)
+		}
+	}
 	switch c := container.(type) {
 	case *object.List:
 		return i.seqGetitem(c.V, key, "list")
