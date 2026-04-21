@@ -136,23 +136,45 @@ type Frozenset struct {
 
 func NewFrozenset() *Frozenset { return &Frozenset{index: map[uint64][]int{}} }
 
-// Dict: insertion-ordered.
+// Dict: insertion-ordered. Deletes leave tombstones in keys/vals and are
+// compacted when >50% of slots are dead; this keeps Delete O(1) amortized
+// instead of O(n) per call.
 type Dict struct {
 	keys  []Object
 	vals  []Object
 	index map[string]int // fast path for str keys
 	oHash map[uint64][]int
+	dead  int // count of tombstones in keys/vals
 }
+
+// deletedEntry marks a tombstone slot in Dict.keys after a deletion.
+type deletedEntry struct{}
+
+var deletedKey Object = &deletedEntry{}
 
 func NewDict() *Dict {
 	return &Dict{index: map[string]int{}, oHash: map[uint64][]int{}}
 }
 
-// Len returns the number of entries.
-func (d *Dict) Len() int { return len(d.keys) }
+// Len returns the number of live entries.
+func (d *Dict) Len() int { return len(d.keys) - d.dead }
 
-// Items returns key and value slices (caller must not mutate).
-func (d *Dict) Items() ([]Object, []Object) { return d.keys, d.vals }
+// Items returns key and value slices of live entries (caller must not mutate).
+func (d *Dict) Items() ([]Object, []Object) {
+	if d.dead == 0 {
+		return d.keys, d.vals
+	}
+	ks := make([]Object, 0, len(d.keys)-d.dead)
+	vs := make([]Object, 0, len(d.vals)-d.dead)
+	for i, k := range d.keys {
+		if k == deletedKey {
+			continue
+		}
+		ks = append(ks, k)
+		vs = append(vs, d.vals[i])
+	}
+	return ks, vs
+}
 
 // Code mirrors CPython co_* fields we need.
 type Code struct {

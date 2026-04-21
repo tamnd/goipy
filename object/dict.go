@@ -111,25 +111,49 @@ func (d *Dict) Delete(key Object) (bool, error) {
 		if idx == -1 {
 			return false, nil
 		}
-		d.oHash[h] = append(bucket[:found], bucket[found+1:]...)
-	}
-	// Remove key/val and reindex everything after idx
-	d.keys = append(d.keys[:idx], d.keys[idx+1:]...)
-	d.vals = append(d.vals[:idx], d.vals[idx+1:]...)
-	// Shift indices
-	for k, i := range d.index {
-		if i > idx {
-			d.index[k] = i - 1
+		if len(bucket) == 1 {
+			delete(d.oHash, h)
+		} else {
+			d.oHash[h] = append(bucket[:found], bucket[found+1:]...)
 		}
 	}
-	for h, bucket := range d.oHash {
-		for bi, j := range bucket {
-			if j > idx {
-				d.oHash[h][bi] = j - 1
-			}
-		}
+	d.keys[idx] = deletedKey
+	d.vals[idx] = nil
+	d.dead++
+	if d.dead > 8 && d.dead*2 > len(d.keys) {
+		d.compact()
 	}
 	return true, nil
+}
+
+// compact rebuilds keys/vals without tombstones and reindexes. Called when
+// tombstones exceed half the slot count so lookups don't drift unbounded.
+func (d *Dict) compact() {
+	live := len(d.keys) - d.dead
+	newKeys := make([]Object, 0, live)
+	newVals := make([]Object, 0, live)
+	d.index = make(map[string]int, live)
+	d.oHash = make(map[uint64][]int)
+	for i, k := range d.keys {
+		if k == deletedKey {
+			continue
+		}
+		ni := len(newKeys)
+		newKeys = append(newKeys, k)
+		newVals = append(newVals, d.vals[i])
+		if s, ok := k.(*Str); ok {
+			d.index[s.V] = ni
+			continue
+		}
+		h, err := Hash(k)
+		if err != nil {
+			continue
+		}
+		d.oHash[h] = append(d.oHash[h], ni)
+	}
+	d.keys = newKeys
+	d.vals = newVals
+	d.dead = 0
 }
 
 // --- equality and hashing ---
