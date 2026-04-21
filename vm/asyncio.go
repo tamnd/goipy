@@ -61,6 +61,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSecrets(), true
 	case "uuid":
 		return i.buildUUID(), true
+	case "difflib":
+		return i.buildDifflib(), true
+	case "shlex":
+		return i.buildShlex(), true
+	case "gzip":
+		return i.buildGzip(), true
+	case "fnmatch":
+		return i.buildFnmatch(), true
 	}
 	return nil, false
 }

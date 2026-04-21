@@ -1,0 +1,91 @@
+['apple', 'ape']
+['apple']
+[]
+['apple', 'appl']
+[]
+1.0
+0.0
+True
+hi hey
+1.0
+['  x', '  y']
+['  a', '+ b', '  c']
+['  a', '- b', '  c']
+['+ a', '+ b']
+['- a', '- b']
+'--- a\n'
+'+++ b\n'
+'@@ -1,2 +1,2 @@\n'
+' one'
+'-two'
+'+three'
+[]
+1.0
+0.5
+['dog', 'fog', 'dag']
+foo
+''
+'a b'
+'it'"'"'s'
+'a|b&c'
+path/to/file-1.txt
+cmd 'arg with space' x=1
+
+['cmd', 'arg1', 'arg2']
+['cmd', 'a b', 'c']
+['cmd', 'a b', 'c']
+['cmd', 'a b']
+['cmd', 'a', 'b']
+['only']
+[]
+True
+'say "hi"'
+['cmd', "a 'b' c"]
+simple_name
+'has space'
+True
+True
+True
+True
+True
+31 139
+True
+True
+decompress raised
+True
+True
+False
+True
+True
+True
+True
+True
+True
+False
+False
+True
+False
+['a.py', 'c.py']
+[]
+['x1', 'x2']
+True
+True
+True
+True
+False
+True
+False
+True
+['a.py', 'c.py']
+'*.py'
+['alpha']
+True
+True
+True
+''
+True
+True
+True
+['apple']
+True
+False

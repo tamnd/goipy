@@ -1,0 +1,34 @@
+['apple', 'ape']
+[]
+0.6666666666666666
+0.8333
+  a
+- b
+  c
++ d
+--- old.txt
+
++++ new.txt
+
+@@ -1,2 +1,2 @@
+
+ a
+-b
++c
+safe
+'has space'
+'with'"'"'quote'
+''
+echo 'hello world' x=1
+['echo', 'hello world', 'x=1']
+['a', 'b c', 'd']
+True
+True
+True
+True
+False
+False
+['a.py', 'c.py']
+True
+True
+True
