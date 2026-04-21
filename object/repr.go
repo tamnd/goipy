@@ -151,6 +151,8 @@ func Repr(o Object) string {
 		return fmt.Sprintf("ParseResult(scheme=%s, netloc=%s, path=%s, params=%s, query=%s, fragment=%s)",
 			Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),
 			Repr(&Str{V: v.Params}), Repr(&Str{V: v.Query}), Repr(&Str{V: v.Fragment}))
+	case *UUID:
+		return "UUID('" + uuidHyphenated(v.Bytes) + "')"
 	case *Pattern:
 		return "re.compile(" + Repr(&Str{V: v.Pattern}) + ")"
 	case *Match:
@@ -224,6 +226,23 @@ func pyBytesQuote(v []byte) string {
 	return string(buf)
 }
 
+// uuidHyphenated renders a UUID byte array as 8-4-4-4-12 hex.
+func uuidHyphenated(b [16]byte) string {
+	const hex = "0123456789abcdef"
+	out := make([]byte, 36)
+	j := 0
+	for i := 0; i < 16; i++ {
+		if i == 4 || i == 6 || i == 8 || i == 10 {
+			out[j] = '-'
+			j++
+		}
+		out[j] = hex[b[i]>>4]
+		out[j+1] = hex[b[i]&0x0f]
+		j += 2
+	}
+	return string(out)
+}
+
 func Str_(o Object) string {
 	if _, ok := o.(*Instance); ok && InstanceStrHook != nil {
 		if s, handled := InstanceStrHook(o); handled {
@@ -233,6 +252,8 @@ func Str_(o Object) string {
 	switch v := o.(type) {
 	case *Str:
 		return v.V
+	case *UUID:
+		return uuidHyphenated(v.Bytes)
 	case *Bytes:
 		// str(b'...') returns the repr in Python, but we'll be lenient.
 		return "b" + pyBytesQuote(v.V)

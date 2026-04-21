@@ -341,6 +341,8 @@ func TypeName(o Object) string {
 		return "csv.DictWriter"
 	case *URLParseResult:
 		return "ParseResult"
+	case *UUID:
+		return "UUID"
 	}
 	return fmt.Sprintf("%T", o)
 }

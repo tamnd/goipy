@@ -53,6 +53,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildUrllibParse(), true
 	case "zlib":
 		return i.buildZlib(), true
+	case "binascii":
+		return i.buildBinascii(), true
+	case "hmac":
+		return i.buildHmac(), true
+	case "secrets":
+		return i.buildSecrets(), true
+	case "uuid":
+		return i.buildUUID(), true
 	}
 	return nil, false
 }
