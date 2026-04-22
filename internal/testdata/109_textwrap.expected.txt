@@ -1,0 +1,51 @@
+'line1\nline2\n'
+'\nhello\nworld\n'
+'  a\nb\n'
+  hello
+  world
+
+> hello
+
+> world
+
+# hello
+# world
+
+> hello
+
+> world
+
+hello
+> 
+world
+
+['The quick brown', 'fox jumped over', 'the lazy dog']
+['  The quick', 'brown fox', 'jumped over the', 'lazy dog']
+['The quick brown', '  fox jumped', '  over the lazy', '  dog']
+['The quick brown', 'fox [...]']
+['The quick brown', 'fox jumped ...']
+[]
+['hi']
+['super', 'longw', 'ord']
+['    hello world']
+The quick brown fox
+jumped over the lazy
+dog
+  The quick brown
+fox jumped over the
+lazy dog
+
+Hello world
+[...]
+[...]
+Hello world...
+
+['The quick brown', 'fox jumped over', 'the lazy dog']
+The quick brown
+fox jumped over
+the lazy dog
+15
+['  The quick brown', '    fox jumped over', '    the lazy dog']
+  
+    
+['The quick brown', 'fox jumped ...']
