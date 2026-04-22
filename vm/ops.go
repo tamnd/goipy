@@ -301,6 +301,18 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	// -Counter: negate counts, keep only positives of the negated values
+	if c, ok := v.(*object.Counter); ok {
+		out := &object.Counter{D: object.NewDict()}
+		keys, vals := c.D.Items()
+		for k, key := range keys {
+			n, _ := toInt64(vals[k])
+			if n < 0 {
+				_ = out.D.Set(key, object.NewInt(-n))
+			}
+		}
+		return out, nil
+	}
 	switch x := v.(type) {
 	case *object.Bool:
 		r := int64(0)

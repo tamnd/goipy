@@ -461,9 +461,9 @@ func TypeName(o Object) string {
 	case *Counter:
 		return "Counter"
 	case *DefaultDict:
-		return "collections.defaultdict"
+		return "defaultdict"
 	case *OrderedDict:
-		return "collections.OrderedDict"
+		return "OrderedDict"
 	case *Pattern:
 		return "re.Pattern"
 	case *Match:

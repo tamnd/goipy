@@ -171,6 +171,7 @@ func (i *Interp) buildCollections() *object.Module {
 		return i.makeNamedTuple(typeName.V, fieldNames, defaults), nil
 	}})
 
+	i.extendCollections(m)
 	return m
 }
 
@@ -337,6 +338,108 @@ func (i *Interp) makeNamedTuple(typeName string, fields []string, defaults []obj
 			}
 		}
 		return newInst, nil
+	}})
+
+	// _make(iterable) — class method that creates a new instance from iterable.
+	cls.Dict.SetStr("_make", &object.BuiltinFunc{Name: "_make", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		var src object.Object
+		if len(a) >= 1 {
+			src = a[0]
+		} else {
+			return nil, object.Errorf(i.typeErr, "_make() takes 1 argument")
+		}
+		items, err := iterate(i, src)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) != len(fields) {
+			return nil, object.Errorf(i.typeErr, "_make() takes %d-field iterable", len(fields))
+		}
+		inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+		for idx, name := range fields {
+			inst.Dict.SetStr(name, items[idx])
+		}
+		return inst, nil
+	}})
+
+	// _field_defaults — dict of field→default for fields that have defaults.
+	{
+		baseDefaultIdx := len(fields) - len(defaults)
+		fd := object.NewDict()
+		for idx := baseDefaultIdx; idx < len(fields); idx++ {
+			fd.Set(&object.Str{V: fields[idx]}, defaults[idx-baseDefaultIdx])
+		}
+		cls.Dict.SetStr("_field_defaults", fd)
+	}
+
+	cls.Dict.SetStr("count", &object.BuiltinFunc{Name: "count", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "count() takes 1 argument")
+		}
+		inst := a[0].(*object.Instance)
+		target := a[1]
+		c := int64(0)
+		for _, name := range fields {
+			v, _ := inst.Dict.GetStr(name)
+			eq, err := object.Eq(v, target)
+			if err != nil {
+				return nil, err
+			}
+			if eq {
+				c++
+			}
+		}
+		return object.NewInt(c), nil
+	}})
+
+	cls.Dict.SetStr("index", &object.BuiltinFunc{Name: "index", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "index() takes at least 1 argument")
+		}
+		inst := a[0].(*object.Instance)
+		target := a[1]
+		start, stop := 0, len(fields)
+		if len(a) >= 3 {
+			if n, ok := toInt64(a[2]); ok {
+				start = int(n)
+			}
+		}
+		if len(a) >= 4 {
+			if n, ok := toInt64(a[3]); ok {
+				stop = int(n)
+			}
+		}
+		if start < 0 {
+			start = 0
+		}
+		if stop > len(fields) {
+			stop = len(fields)
+		}
+		for idx := start; idx < stop; idx++ {
+			v, _ := inst.Dict.GetStr(fields[idx])
+			eq, err := object.Eq(v, target)
+			if err != nil {
+				return nil, err
+			}
+			if eq {
+				return object.NewInt(int64(idx)), nil
+			}
+		}
+		return nil, object.Errorf(i.valueErr, "tuple.index(x): x not in tuple")
+	}})
+
+	cls.Dict.SetStr("__hash__", &object.BuiltinFunc{Name: "__hash__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		inst := a[0].(*object.Instance)
+		vals := make([]object.Object, len(fields))
+		for idx, name := range fields {
+			v, _ := inst.Dict.GetStr(name)
+			vals[idx] = v
+		}
+		h, err := object.Hash(&object.Tuple{V: vals})
+		if err != nil {
+			return nil, err
+		}
+		return object.NewInt(int64(h)), nil
 	}})
 
 	return cls

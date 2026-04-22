@@ -139,8 +139,25 @@ func dequeMethod(i *Interp, dq *object.Deque, name string) (object.Object, bool)
 			if len(a) < 1 {
 				return nil, object.Errorf(i.typeErr, "index() takes at least 1 argument")
 			}
-			for k, x := range dq.V {
-				eq, err := object.Eq(x, a[0])
+			start, stop := 0, len(dq.V)
+			if len(a) >= 2 {
+				if n, ok := toInt64(a[1]); ok {
+					start = int(n)
+					if start < 0 {
+						start = 0
+					}
+				}
+			}
+			if len(a) >= 3 {
+				if n, ok := toInt64(a[2]); ok {
+					stop = int(n)
+					if stop > len(dq.V) {
+						stop = len(dq.V)
+					}
+				}
+			}
+			for k := start; k < stop; k++ {
+				eq, err := object.Eq(dq.V[k], a[0])
 				if err != nil {
 					return nil, err
 				}
@@ -156,6 +173,53 @@ func dequeMethod(i *Interp, dq *object.Deque, name string) (object.Object, bool)
 				dq.V[lo], dq.V[hi] = dq.V[hi], dq.V[lo]
 			}
 			return object.None, nil
+		}}, true
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := &object.Deque{MaxLen: dq.MaxLen, V: append([]object.Object{}, dq.V...)}
+			return out, nil
+		}}, true
+	case "insert":
+		return &object.BuiltinFunc{Name: "insert", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 2 {
+				return nil, object.Errorf(i.typeErr, "insert() requires index and value")
+			}
+			idx, _ := toInt64(a[0])
+			L := len(dq.V)
+			n := int(idx)
+			if n < 0 {
+				n = L + n
+			}
+			if n < 0 {
+				n = 0
+			}
+			if n > L {
+				n = L
+			}
+			dq.V = append(dq.V, nil)
+			copy(dq.V[n+1:], dq.V[n:])
+			dq.V[n] = a[1]
+			if dq.MaxLen >= 0 && len(dq.V) > dq.MaxLen {
+				dq.V = dq.V[:dq.MaxLen]
+			}
+			return object.None, nil
+		}}, true
+	case "remove":
+		return &object.BuiltinFunc{Name: "remove", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "remove() requires value")
+			}
+			for k, x := range dq.V {
+				eq, err := object.Eq(x, a[0])
+				if err != nil {
+					return nil, err
+				}
+				if eq {
+					dq.V = append(dq.V[:k], dq.V[k+1:]...)
+					return object.None, nil
+				}
+			}
+			return nil, object.Errorf(i.valueErr, "deque.remove(x): x not in deque")
 		}}, true
 	case "maxlen":
 		if dq.MaxLen < 0 {
@@ -248,6 +312,15 @@ func counterMethod(i *Interp, c *object.Counter, name string) (object.Object, bo
 				return v, true, nil
 			}}, nil
 		}}, true
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := &object.Counter{D: object.NewDict()}
+			keys, vals := c.D.Items()
+			for k, key := range keys {
+				out.D.Set(key, vals[k])
+			}
+			return out, nil
+		}}, true
 	}
 	// Fall back to the shared dict protocol (keys/values/items/...).
 	if m, ok := dictMethod(c.D, name); ok {
@@ -298,6 +371,16 @@ func addCounts(dst *object.Dict, src object.Object, sign int64, i *Interp) error
 // --- defaultdict methods ---
 
 func defaultDictMethod(i *Interp, dd *object.DefaultDict, name string) (object.Object, bool) {
+	if name == "copy" {
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := &object.DefaultDict{D: object.NewDict(), Factory: dd.Factory}
+			keys, vals := dd.D.Items()
+			for k, key := range keys {
+				out.D.Set(key, vals[k])
+			}
+			return out, nil
+		}}, true
+	}
 	if m, ok := dictMethod(dd.D, name); ok {
 		return m, ok
 	}
@@ -372,6 +455,15 @@ func orderedDictMethod(i *Interp, od *object.OrderedDict, name string) (object.O
 			k, v := keys[idx], vals[idx]
 			od.D.Delete(k)
 			return &object.Tuple{V: []object.Object{k, v}}, nil
+		}}, true
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := &object.OrderedDict{D: object.NewDict()}
+			keys, vals := od.D.Items()
+			for k, key := range keys {
+				out.D.Set(key, vals[k])
+			}
+			return out, nil
 		}}, true
 	}
 	// Fall back to regular dict methods for everything else.

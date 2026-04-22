@@ -408,6 +408,18 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 				return r, err
 			}
 		}
+		// +Counter: keep only positive counts
+		if c, ok := v.(*object.Counter); ok {
+			out := &object.Counter{D: object.NewDict()}
+			keys, vals := c.D.Items()
+			for k, key := range keys {
+				n, _ := toInt64(vals[k])
+				if n > 0 {
+					_ = out.D.Set(key, object.NewInt(n))
+				}
+			}
+			return out, nil
+		}
 		switch x := v.(type) {
 		case *object.Int, *object.Float:
 			return x, nil
