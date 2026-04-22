@@ -1,0 +1,24 @@
+hello, world
+foo bar
+Alice
+42
+3.14
+       x
+    hi    
+1 + 2 = 3
+99
+42
+3.14
+     hello
+0xff
+test
+'test'
+42
+('hello ', 'name', '', None)
+(' world', None, None, None)
+('', '0', '.2f', None)
+(' and ', '1', '', 'r')
+a
+c
+val
+check_unused_args ok

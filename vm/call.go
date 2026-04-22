@@ -1132,7 +1132,7 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 	// --- format ---
 	case "format":
 		return &object.BuiltinFunc{Name: "format", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
-			result, err := strFormat(ii.(*Interp), s.V, a, kw)
+			result, err := strFormatFull(ii.(*Interp), s.V, a, kw)
 			if err != nil {
 				return nil, err
 			}
@@ -1147,7 +1147,7 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 			if !ok {
 				return str(s.V), nil
 			}
-			result, err := strFormat(ii.(*Interp), s.V, nil, mapping)
+			result, err := strFormatFull(ii.(*Interp), s.V, nil, mapping)
 			if err != nil {
 				return nil, err
 			}
@@ -1235,70 +1235,6 @@ func strSplitLines(s string, keepends bool) []string {
 	return parts
 }
 
-// strFormat is a minimal implementation of str.format() / str.format_map().
-// It handles positional {0}, {1} and keyword {name} fields without format specs.
-func strFormat(i *Interp, tmpl string, args []object.Object, kwargs *object.Dict) (string, error) {
-	var b strings.Builder
-	autoIdx := 0
-	j := 0
-	for j < len(tmpl) {
-		if tmpl[j] == '{' {
-			if j+1 < len(tmpl) && tmpl[j+1] == '{' {
-				b.WriteByte('{')
-				j += 2
-				continue
-			}
-			end := strings.IndexByte(tmpl[j:], '}')
-			if end < 0 {
-				b.WriteByte('{')
-				j++
-				continue
-			}
-			field := tmpl[j+1 : j+end]
-			j += end + 1
-			// strip format spec after ':'
-			if colon := strings.IndexByte(field, ':'); colon >= 0 {
-				field = field[:colon]
-			}
-			// strip conversion after '!'
-			if bang := strings.IndexByte(field, '!'); bang >= 0 {
-				field = field[:bang]
-			}
-			var val object.Object
-			if field == "" {
-				if autoIdx < len(args) {
-					val = args[autoIdx]
-					autoIdx++
-				} else {
-					val = object.None
-				}
-			} else if n, ok2 := parseInt(field); ok2 {
-				if int(n) < len(args) {
-					val = args[n]
-				} else {
-					val = object.None
-				}
-			} else if kwargs != nil {
-				v, ok2 := kwargs.GetStr(field)
-				if ok2 {
-					val = v
-				} else {
-					return "", object.Errorf(i.keyErr, "KeyError: '%s'", field)
-				}
-			} else {
-				return "", object.Errorf(i.keyErr, "KeyError: '%s'", field)
-			}
-			b.WriteString(object.Str_(val))
-		} else if tmpl[j] == '}' && j+1 < len(tmpl) && tmpl[j+1] == '}' {
-			b.WriteByte('}')
-			j += 2
-		} else {
-			b.WriteByte(tmpl[j])
-			j++
-		}
-	}
-	return b.String(), nil
-}
 
 func parseInt(s string) (int64, bool) {
 	n := int64(0)
