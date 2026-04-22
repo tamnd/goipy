@@ -1,0 +1,43 @@
+True
+True
+True
+<class 'NoneType'>
+True
+True
+True
+True
+True
+True
+True
+True
+1
+True
+1
+2
+namespace(x=1, y=2)
+99
+True
+False
+AttributeError
+namespace()
+1
+2
+2
+True
+False
+['a', 'b']
+[1, 2]
+[('a', 1), ('b', 2)]
+1
+0
+{'a': 1, 'b': 2}
+TypeError
+Animal
+True
+Dog
+woof
+mymod
+42
+pkg
+Package docstring
+done

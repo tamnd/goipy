@@ -776,6 +776,12 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		return nil, object.Errorf(i.attrErr, "type object '%s' has no attribute '%s'", cls.Name, name)
 	}
 	if m, ok := o.(*object.Module); ok {
+		if name == "__name__" {
+			return &object.Str{V: m.Name}, nil
+		}
+		if name == "__spec__" || name == "__loader__" || name == "__package__" {
+			return object.None, nil
+		}
 		if v, ok := m.Dict.GetStr(name); ok {
 			return v, nil
 		}
@@ -1063,6 +1069,9 @@ func matchBuiltinType(o object.Object, name string) bool {
 		return ok
 	case "weakref.ref":
 		_, ok := o.(*object.PyWeakRef)
+		return ok
+	case "module":
+		_, ok := o.(*object.Module)
 		return ok
 	}
 	return false
