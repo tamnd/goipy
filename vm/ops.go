@@ -35,6 +35,24 @@ func (i *Interp) setitem(container, key, val object.Object) error {
 		return nil
 	case *object.Dict:
 		return c.Set(key, val)
+	case *object.PyArray:
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "array indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "array index out of range")
+		}
+		v, err := arrayValidate(c.Typecode, val)
+		if err != nil {
+			return err
+		}
+		c.V[n] = v
+		return nil
 	case *object.Deque:
 		n, ok := toInt64(key)
 		if !ok {
@@ -225,6 +243,20 @@ func (i *Interp) delitem(container, key object.Object) error {
 			return object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
 		return nil
+	case *object.PyArray:
+		n, ok := toInt64(key)
+		if !ok {
+			return object.Errorf(i.typeErr, "array indices must be integers")
+		}
+		L := int64(len(c.V))
+		if n < 0 {
+			n += L
+		}
+		if n < 0 || n >= L {
+			return object.Errorf(i.indexErr, "array index out of range")
+		}
+		c.V = append(c.V[:n], c.V[n+1:]...)
+		return nil
 	case *object.Deque:
 		n, ok := toInt64(key)
 		if !ok {
@@ -364,6 +396,8 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(x.Len()), nil
 	case *object.Range:
 		return rangeLen(x), nil
+	case *object.PyArray:
+		return int64(len(x.V)), nil
 	case *object.Deque:
 		return int64(len(x.V)), nil
 	case *object.Counter:
@@ -451,6 +485,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	}
 	if ba, ok := o.(*object.Bytearray); ok {
 		if m, ok := bytearrayMethod(i, ba, name); ok {
+			return m, nil
+		}
+	}
+	if arr, ok := o.(*object.PyArray); ok {
+		if m, ok := arrayMethod(i, arr, name); ok {
 			return m, nil
 		}
 	}
@@ -1215,6 +1254,16 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 				return nil, false, nil
 			}
 			r := keys[idx]
+			idx++
+			return r, true, nil
+		}}, nil
+	case *object.PyArray:
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(x.V) {
+				return nil, false, nil
+			}
+			r := x.V[idx]
 			idx++
 			return r, true, nil
 		}}, nil

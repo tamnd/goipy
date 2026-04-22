@@ -868,6 +868,33 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 			return nil, object.Errorf(i.keyErr, "%s", object.Repr(key))
 		}
 		return v, nil
+	case *object.PyArray:
+		if sl, ok := key.(*object.Slice); ok {
+			vals, err := i.seqGetitem(c.V, sl, "array")
+			if err != nil {
+				return nil, err
+			}
+			// Return a new same-typecode array.
+			if t, ok := vals.(*object.Tuple); ok {
+				return &object.PyArray{Typecode: c.Typecode, V: t.V}, nil
+			}
+			if l, ok := vals.(*object.List); ok {
+				return &object.PyArray{Typecode: c.Typecode, V: l.V}, nil
+			}
+			return &object.PyArray{Typecode: c.Typecode, V: nil}, nil
+		}
+		n, ok := toInt64(key)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "array indices must be integers")
+		}
+		length := int64(len(c.V))
+		if n < 0 {
+			n += length
+		}
+		if n < 0 || n >= length {
+			return nil, object.Errorf(i.indexErr, "array index out of range")
+		}
+		return c.V[n], nil
 	case *object.Deque:
 		n, ok := toInt64(key)
 		if !ok {

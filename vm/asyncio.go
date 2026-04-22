@@ -15,6 +15,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildFunctools(), true
 	case "itertools":
 		return i.buildItertools(), true
+	case "array":
+		return i.buildArray(), true
 	case "collections":
 		return i.buildCollections(), true
 	case "collections.abc":

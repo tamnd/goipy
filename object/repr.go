@@ -99,6 +99,15 @@ func Repr(o Object) string {
 		return "<module '" + v.Name + "'>"
 	case *Slice:
 		return "slice(" + Repr(v.Start) + ", " + Repr(v.Stop) + ", " + Repr(v.Step) + ")"
+	case *PyArray:
+		if len(v.V) == 0 {
+			return "array('" + v.Typecode + "')"
+		}
+		parts := make([]string, len(v.V))
+		for j, x := range v.V {
+			parts[j] = Repr(x)
+		}
+		return "array('" + v.Typecode + "', [" + strings.Join(parts, ", ") + "])"
 	case *Deque:
 		parts := make([]string, len(v.V))
 		for i, x := range v.V {

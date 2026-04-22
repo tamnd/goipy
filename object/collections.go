@@ -27,3 +27,33 @@ type DefaultDict struct {
 type OrderedDict struct {
 	D *Dict
 }
+
+// PyArray is Python's array.array — a typed homogeneous sequence.
+// V holds the elements as Objects; typecode governs validation and
+// serialization. ItemSize returns the byte width per element.
+type PyArray struct {
+	Typecode string
+	V        []Object
+}
+
+// ArrayItemSize returns the byte size of one element for the given typecode.
+// Sizes match Python 3.14 on macOS ARM64.
+func ArrayItemSize(tc string) int {
+	switch tc {
+	case "b", "B":
+		return 1
+	case "h", "H":
+		return 2
+	case "i", "I":
+		return 4
+	case "l", "L":
+		return 8
+	case "q", "Q":
+		return 8
+	case "f":
+		return 4
+	case "d":
+		return 8
+	}
+	return 1
+}

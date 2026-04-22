@@ -460,6 +460,8 @@ func TypeName(o Object) string {
 		return "module"
 	case *Iter:
 		return "iterator"
+	case *PyArray:
+		return "array"
 	case *Deque:
 		return "collections.deque"
 	case *Counter:

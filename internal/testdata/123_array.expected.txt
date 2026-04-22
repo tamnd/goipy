@@ -1,0 +1,90 @@
+bBuwhHiIlLqQfd
+array('i', [1, 2, 3])
+i
+4
+array('b')
+b
+1
+[10, 20, 30]
+f
+4
+[1.0, 2.5, 3.0]
+d
+8
+[0, 100, 255]
+[0, 1000, 65535]
+[0, 1, 4294967295]
+[-1, 0, 4611686018427387904]
+[0, 1, 9223372036854775808]
+b 1
+B 1
+h 2
+H 2
+i 4
+I 4
+l 8
+L 8
+q 8
+Q 8
+f 4
+d 8
+[10, 20, 30]
+[1, 2, 3, 4, 5]
+[1, 2, 3, 4, 5, 6, 7]
+[1, 2, 3, 4]
+[1, 10, 2, 3]
+[99, 1, 10, 2, 3]
+[99, 1, 10, 2, 3, 42]
+[99, 1, 10, 2, 3, 77, 42]
+40
+10
+30
+[20]
+IndexError: pop from empty array
+[1, 3, 2, 4]
+ValueError: x not in array
+3
+0
+1
+3
+4
+ValueError: not in array
+[5, 4, 3, 2, 1]
+10
+40
+30
+array
+[20, 30]
+i
+[1, 99, 3]
+[1, 99, 77]
+[10, 30, 40]
+[10, 30]
+5
+0
+6
+[9, 8, 7]
+(-1, 0, 1)
+True
+False
+b'\x01\x02\x03'
+3
+[1, 2, 3]
+12
+[1, 2, 3]
+16
+[1.5, 2.5]
+[10, 20, 30]
+list
+3
+True
+array('i')
+array('i', [1, 2])
+array('d', [1.5])
+TypeError: integer required for 'i'
+error: signed char overflow
+error: unsigned char underflow
+ValueError: bad typecode
+[1, 2, 3]
+[5, 10]
+done
