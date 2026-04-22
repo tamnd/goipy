@@ -23,7 +23,13 @@ func (i *Interp) lookupInstanceDunder(inst *object.Instance, name string) (objec
 // callInstanceDunder invokes name(args...) on inst if defined. Returns
 // (result, handled, err). handled=false means the class doesn't define the
 // method; the caller should fall back.
+// Instance dict is checked first (used by stdlib types that store per-instance
+// closures), then the class hierarchy.
 func (i *Interp) callInstanceDunder(inst *object.Instance, name string, args ...object.Object) (object.Object, bool, error) {
+	if fn, ok := inst.Dict.GetStr(name); ok {
+		r, err := i.callObject(fn, args, nil)
+		return r, true, err
+	}
 	fn, ok := i.lookupInstanceDunder(inst, name)
 	if !ok {
 		return nil, false, nil
