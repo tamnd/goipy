@@ -97,6 +97,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildTemplatelib(), true
 	case "readline":
 		return i.buildReadline(), true
+	case "rlcompleter":
+		return i.buildRlcompleter(), true
 	}
 	return nil, false
 }

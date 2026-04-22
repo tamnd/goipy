@@ -1,0 +1,11 @@
+['all(', 'alpha', 'alphabet']
+beta
+None
+None
+['print(', 'property(']
+['for ', 'format(']
+None
+True
+True
+None
+done
