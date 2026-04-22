@@ -37,7 +37,24 @@ type Interp struct {
 	eofErr,
 	osErr,
 	fileNotFoundErr,
-	stopAsyncIter *object.Class
+	stopAsyncIter,
+	// New exception classes.
+	floatErr,
+	bufferErr,
+	memoryErr,
+	unboundLocalErr,
+	moduleNotFoundErr,
+	systemExit,
+	keyboardInterrupt,
+	generatorExit,
+	connectionErr,
+	syntaxErr,
+	systemErr,
+	unicodeErr,
+	unicodeDecodeErr,
+	unicodeEncodeErr,
+	warningClass,
+	baseExcGroup *object.Class
 
 	MaxDepth  int
 	callDepth int
@@ -117,6 +134,23 @@ func extendTraceback(e *object.Exception, f *Frame) {
 // errUnsupported returns a NotImplementedError for a given opcode number.
 func (i *Interp) errUnsupported(op uint8, name string) error {
 	return object.Errorf(i.notImpl, "opcode %s (%d) not implemented", name, op)
+}
+
+// SystemExitCode returns the integer exit code if err is a SystemExit
+// exception, and ok=true. Otherwise ok=false.
+func (i *Interp) SystemExitCode(err error) (code int, ok bool) {
+	e, isExc := err.(*object.Exception)
+	if !isExc || e.Class != i.systemExit {
+		return 0, false
+	}
+	if e.Args != nil && len(e.Args.V) == 1 {
+		if n, okN := toInt64(e.Args.V[0]); okN {
+			return int(n), true
+		}
+		// Non-integer arg (e.g. a string) → print to stderr, exit 1.
+		return 1, true
+	}
+	return 0, true
 }
 
 // Sprintf helper (avoids fmt import littering other files).

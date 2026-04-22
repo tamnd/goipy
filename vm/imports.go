@@ -194,7 +194,7 @@ func (i *Interp) loadModule(qname string) (*object.Module, error) {
 			return m, nil
 		}
 	}
-	return nil, object.Errorf(i.importErr, "No module named '%s'", qname)
+	return nil, object.Errorf(i.moduleNotFoundErr, "No module named '%s'", qname)
 }
 
 // execModuleAs runs a module body with the standard module dunders set.
