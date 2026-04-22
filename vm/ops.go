@@ -373,6 +373,45 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if n, ok := o.(*object.Int); ok {
+		switch name {
+		case "real":
+			return n, nil
+		case "imag":
+			return object.NewInt(0), nil
+		case "numerator":
+			return n, nil
+		case "denominator":
+			return object.NewInt(1), nil
+		}
+		if m, ok := intMethod(n, name); ok {
+			return m, nil
+		}
+	}
+	if f, ok := o.(*object.Float); ok {
+		switch name {
+		case "real":
+			return f, nil
+		case "imag":
+			return &object.Float{V: 0}, nil
+		}
+		if m, ok := floatMethod(f, name); ok {
+			return m, nil
+		}
+	}
+	if r, ok := o.(*object.Range); ok {
+		switch name {
+		case "start":
+			return object.NewInt(r.Start), nil
+		case "stop":
+			return object.NewInt(r.Stop), nil
+		case "step":
+			return object.NewInt(r.Step), nil
+		}
+		if m, ok := rangeMethod(r, name); ok {
+			return m, nil
+		}
+	}
 	if l, ok := o.(*object.List); ok {
 		if m, ok := listMethod(l, name); ok {
 			return m, nil

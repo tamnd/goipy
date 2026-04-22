@@ -38,6 +38,37 @@ func (s *Set) Contains(o Object) (bool, error) {
 	return false, nil
 }
 
+// Discard removes o from the set if present; no-op otherwise.
+func (s *Set) Discard(o Object) {
+	h, err := Hash(o)
+	if err != nil {
+		return
+	}
+	for i, idx := range s.index[h] {
+		eq, err := Eq(s.items[idx], o)
+		if err != nil || !eq {
+			continue
+		}
+		// remove from items
+		last := len(s.items) - 1
+		s.items[idx] = s.items[last]
+		s.items = s.items[:last]
+		// remove from index bucket
+		s.index[h] = append(s.index[h][:i], s.index[h][i+1:]...)
+		// update index for the element that was swapped into position idx
+		if idx != last {
+			mh, _ := Hash(s.items[idx])
+			for j, v := range s.index[mh] {
+				if v == last {
+					s.index[mh][j] = idx
+					break
+				}
+			}
+		}
+		return
+	}
+}
+
 // Len returns element count.
 func (s *Set) Len() int { return len(s.items) }
 

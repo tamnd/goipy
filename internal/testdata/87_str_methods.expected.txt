@@ -1,0 +1,79 @@
+HELLO
+world
+Hello World
+hELLO wORLD
+hello world
+Hello world
+True
+True
+True
+True
+True
+True
+True
+True
+False
+True
+True
+False
+True
+True
+False
+False
+hello
+hello  
+  hello
+hello
+helloxx
+xxhello
+['a', 'b', 'c']
+['a', 'b', 'c']
+['a', 'b', 'c d']
+['a', 'b', 'c,d']
+['a', 'b', 'c']
+['a', 'b', 'c']
+['a,b', 'c', 'd']
+['a', 'b', 'c']
+['a', 'b', 'c']
+('hello', ' ', 'world')
+('hello world', ' ', 'foo')
+('hello', '', '')
+a, b, c
+xyz
+2
+3
+-1
+2
+3
+ValueError
+2
+0
+True
+True
+True
+True
+herro
+herlo
+world
+hello
+hello
+    hi    
+----hi----
+hi        
+hi........
+        hi
+........hi
+00042
+-0042
++0042
+a   b
+a       b
+ABCdef
+XYz
+hll wrld
+b'hello'
+b'hello'
+hello world
+a b
+Alice
+Bob and Carol

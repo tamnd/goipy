@@ -630,6 +630,23 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 	if isSetLike(a) && isSetLike(b) {
 		return setBitop(a, b, kind), nil
 	}
+	// dict | dict → merge (Python 3.9+)
+	if kind == "|" {
+		if da, ok := a.(*object.Dict); ok {
+			if db, ok2 := b.(*object.Dict); ok2 {
+				out := object.NewDict()
+				ka, va := da.Items()
+				for k, key := range ka {
+					_ = out.Set(key, va[k])
+				}
+				kb, vb := db.Items()
+				for k, key := range kb {
+					_ = out.Set(key, vb[k])
+				}
+				return out, nil
+			}
+		}
+	}
 	ni, okA := toBigInt(a)
 	nj, okB := toBigInt(b)
 	if !okA || !okB {

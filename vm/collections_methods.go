@@ -313,9 +313,6 @@ func defaultDictMethod(i *Interp, dd *object.DefaultDict, name string) (object.O
 // --- OrderedDict methods ---
 
 func orderedDictMethod(i *Interp, od *object.OrderedDict, name string) (object.Object, bool) {
-	if m, ok := dictMethod(od.D, name); ok {
-		return m, ok
-	}
 	switch name {
 	case "move_to_end":
 		return &object.BuiltinFunc{Name: "move_to_end", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -376,6 +373,10 @@ func orderedDictMethod(i *Interp, od *object.OrderedDict, name string) (object.O
 			od.D.Delete(k)
 			return &object.Tuple{V: []object.Object{k, v}}, nil
 		}}, true
+	}
+	// Fall back to regular dict methods for everything else.
+	if m, ok := dictMethod(od.D, name); ok {
+		return m, ok
 	}
 	return nil, false
 }
