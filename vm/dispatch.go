@@ -837,6 +837,66 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.SP -= n
 			f.push(&object.Str{V: sb.String()})
+
+		case op.BUILD_INTERPOLATION:
+			// PEP 750: build an Interpolation object for a t-string.
+			// oparg encoding:
+			//   bit 0: has_format_spec (format_spec string is on stack above expr_str)
+			//   bit 1: always 1 (has_expression_str, always present)
+			//   bits 3-2: conversion (0=None, 1='s', 2='r', 3='a')
+			// Stack: value, expr_str [, format_spec if bit 0 set]
+			var fmtSpec string
+			if oparg&1 != 0 {
+				if s, ok := f.pop().(*object.Str); ok {
+					fmtSpec = s.V
+				}
+			}
+			exprStr := ""
+			if s, ok := f.pop().(*object.Str); ok {
+				exprStr = s.V
+			}
+			value := f.pop()
+			convCode := (oparg >> 2) & 3
+			conv := ""
+			switch convCode {
+			case 1:
+				conv = "s"
+			case 2:
+				conv = "r"
+			case 3:
+				conv = "a"
+			}
+			f.push(&object.Interpolation{
+				Value:      value,
+				Expression: exprStr,
+				Conversion: conv,
+				FormatSpec: fmtSpec,
+			})
+
+		case op.BUILD_TEMPLATE:
+			// PEP 750: build a Template from two stack items:
+			//   TOS   = tuple of Interpolation objects
+			//   TOS-1 = tuple of string parts (len = len(interps)+1)
+			interps := f.pop()
+			strs := f.pop()
+			var interpObjs []*object.Interpolation
+			if t, ok := interps.(*object.Tuple); ok {
+				for _, o := range t.V {
+					if interp, ok2 := o.(*object.Interpolation); ok2 {
+						interpObjs = append(interpObjs, interp)
+					}
+				}
+			}
+			var strObjs []*object.Str
+			if t, ok := strs.(*object.Tuple); ok {
+				for _, o := range t.V {
+					if s, ok2 := o.(*object.Str); ok2 {
+						strObjs = append(strObjs, s)
+					}
+				}
+			}
+			f.push(&object.Template{Strings: strObjs, Interpolations: interpObjs})
+
 		case op.LIST_APPEND:
 			v := f.pop()
 			l := f.peek(int(oparg) - 1).(*object.List)
@@ -1323,6 +1383,20 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.LOAD_LOCALS:
 			f.push(f.Locals)
 
+		case op.EXIT_INIT_CHECK:
+			// Validate that __init__ returned None.
+			v := f.pop()
+			if _, ok := v.(*object.NoneType); !ok {
+				err = object.Errorf(i.typeErr, "__init__() should return None, not '%.100s'", object.TypeName(v))
+				goto handleErr
+			}
+
+		case op.SETUP_ANNOTATIONS:
+			// Ensure __annotations__ dict exists in the local namespace.
+			if _, ok := f.Locals.GetStr("__annotations__"); !ok {
+				f.Locals.SetStr("__annotations__", object.NewDict())
+			}
+
 		// --- format / f-strings ---
 		case op.CONVERT_VALUE:
 			v := f.pop()
@@ -1449,6 +1523,55 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				}
 			default:
 				err = object.Errorf(i.typeErr, "object %s can't be used in 'await' expression", object.TypeName(v))
+				goto handleErr
+			}
+
+		case op.GET_AITER:
+			// async for: pop the async iterable, call __aiter__(), push the
+			// resulting async iterator.
+			o := f.pop()
+			fn, gerr := i.getAttr(o, "__aiter__")
+			if gerr != nil {
+				err = object.Errorf(i.typeErr, "'%.100s' object is not an async iterable", object.TypeName(o))
+				goto handleErr
+			}
+			r, cerr := i.callObject(fn, nil, nil)
+			if cerr != nil {
+				err = cerr
+				goto handleErr
+			}
+			f.push(r)
+
+		case op.GET_ANEXT:
+			// async for: peek at TOS (async iterator stays), call __anext__(),
+			// push the coroutine/awaitable returned.
+			ait := f.top()
+			fn, gerr := i.getAttr(ait, "__anext__")
+			if gerr != nil {
+				err = object.Errorf(i.typeErr, "'%.100s' object is not an async iterator", object.TypeName(ait))
+				goto handleErr
+			}
+			r, cerr := i.callObject(fn, nil, nil)
+			if cerr != nil {
+				err = cerr
+				goto handleErr
+			}
+			f.push(r)
+
+		case op.END_ASYNC_FOR:
+			// Reached via exception table when StopAsyncIteration propagates
+			// from inside the async for coroutine. Stack: [ait, exc].
+			exc := f.pop()
+			f.pop() // async iterator — discard
+			if e, ok := exc.(*object.Exception); ok && object.IsSubclass(e.Class, i.stopAsyncIter) {
+				// StopAsyncIteration: loop ended normally; continue execution.
+			} else {
+				// Other exception: re-raise.
+				if e, ok2 := exc.(*object.Exception); ok2 {
+					err = e
+				} else {
+					err = object.Errorf(i.runtimeErr, "END_ASYNC_FOR: expected exception on stack")
+				}
 				goto handleErr
 			}
 

@@ -35,8 +35,14 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 		inst := &object.Instance{Class: fn, Dict: object.NewDict()}
 		if init, ok := classLookup(fn, "__init__"); ok {
 			initArgs := append([]object.Object{inst}, args...)
-			if _, err := i.callObject(init, initArgs, kwargs); err != nil {
+			ret, err := i.callObject(init, initArgs, kwargs)
+			if err != nil {
 				return nil, err
+			}
+			if ret != nil && ret != object.None {
+				if _, isNone := ret.(*object.NoneType); !isNone {
+					return nil, object.Errorf(i.typeErr, "__init__() should return None, not '%s'", object.TypeName(ret))
+				}
 			}
 		}
 		return inst, nil
@@ -614,8 +620,21 @@ func listMethod(l *object.List, name string) (object.Object, bool) {
 			return object.None, nil
 		}}, true
 	case "sort":
-		return &object.BuiltinFunc{Name: "sort", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, sortList(ii.(*Interp), l.V, false)
+		return &object.BuiltinFunc{Name: "sort", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			reverse := false
+			var key object.Object
+			if kw != nil {
+				if v, ok := kw.GetStr("reverse"); ok {
+					reverse = object.Truthy(v)
+				}
+				if v, ok := kw.GetStr("key"); ok && v != object.None {
+					key = v
+				}
+			}
+			if key != nil {
+				return object.None, sortListKey(ii.(*Interp), l.V, key, reverse)
+			}
+			return object.None, sortList(ii.(*Interp), l.V, reverse)
 		}}, true
 	case "copy":
 		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -970,6 +989,19 @@ func memoryviewAttr(mv *object.Memoryview, name string) (object.Object, bool) {
 	case "release":
 		return &object.BuiltinFunc{Name: "release", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.None, nil
+		}}, true
+	}
+	return nil, false
+}
+
+func bytesMethod(b *object.Bytes, name string) (object.Object, bool) {
+	if m, ok := bytesSubMethod(func() []byte { return b.V }, false, name); ok {
+		return m, true
+	}
+	switch name {
+	case "decode":
+		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: string(b.V)}, nil
 		}}, true
 	}
 	return nil, false

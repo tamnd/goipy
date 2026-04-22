@@ -178,6 +178,24 @@ func Repr(o Object) string {
 			parts[i] = Repr(x)
 		}
 		return name + "(" + strings.Join(parts, ", ") + ")"
+	case *File:
+		return fmt.Sprintf("<_io.TextIOWrapper name=%s mode=%s encoding='UTF-8'>", Repr(&Str{V: v.FilePath}), Repr(&Str{V: v.Mode}))
+	case *Interpolation:
+		convRepr := "None"
+		if v.Conversion != "" {
+			convRepr = Repr(&Str{V: v.Conversion})
+		}
+		return fmt.Sprintf("Interpolation(%s, %s, %s, %s)", Repr(v.Value), Repr(&Str{V: v.Expression}), convRepr, Repr(&Str{V: v.FormatSpec}))
+	case *Template:
+		strParts := make([]string, len(v.Strings))
+		for i, s := range v.Strings {
+			strParts[i] = Repr(s)
+		}
+		interpParts := make([]string, len(v.Interpolations))
+		for i, interp := range v.Interpolations {
+			interpParts[i] = Repr(interp)
+		}
+		return "Template(strings=(" + strings.Join(strParts, ", ") + ",), interpolations=(" + strings.Join(interpParts, ", ") + ",))"
 	}
 	return "<?>"
 }
