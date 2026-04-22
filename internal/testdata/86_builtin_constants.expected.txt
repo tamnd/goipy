@@ -1,0 +1,51 @@
+False
+bool
+True
+1
+True
+True
+True
+bool
+True
+2
+False
+True
+None
+NoneType
+True
+True
+False
+True
+NotImplemented
+NotImplementedType
+True
+MyNum(7)
+TypeError: unsupported operand
+Ellipsis
+Ellipsis
+ellipsis
+True
+True
+Ellipsis
+Ellipsis
+got ellipsis
+other
+all
+1
+True
+bool
+True
+AssertionError: this fails
+AssertionError: no message
+True
+True
+True
+true
+false
+none
+5
+True
+True
+True
+True
+True
