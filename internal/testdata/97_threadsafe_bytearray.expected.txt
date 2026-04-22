@@ -1,0 +1,25 @@
+11
+bytearray(b'hello world !')
+True
+True
+104
+bytearray(b'hello')
+bytearray(b'Hello')
+bytearray(b'Hello earth')
+bytearray(b'abcd')
+bytearray(b'abcdef')
+bytearray(b'Zabcdef')
+102
+90
+bytearray(b'abcde')
+bytearray(b'acba')
+bytearray(b'abca')
+bytearray(b'')
+bytearray(b'hi')
+bytearray(b'hihihi')
+True
+3
+bytearray(b'  world  ')
+[bytearray(b'a'), bytearray(b'b'), bytearray(b'c')]
+café
+532

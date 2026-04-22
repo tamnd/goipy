@@ -137,7 +137,12 @@ func (s *Str) Runes() []rune {
 type Bytes struct{ V []byte }
 
 // Bytearray is Python's mutable bytes.
-type Bytearray struct{ V []byte }
+// Views counts active memoryview objects backed by this bytearray; while
+// Views > 0, resize operations must raise BufferError.
+type Bytearray struct {
+	V     []byte
+	Views int
+}
 
 // Memoryview is a shared view over a bytes/bytearray buffer. Start/stop
 // describe a contiguous Python slice of the backing buffer (step=1 only).

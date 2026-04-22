@@ -59,9 +59,10 @@ func Repr(o Object) string {
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 	case *Dict:
-		parts := make([]string, 0, v.Len())
-		for i, k := range v.keys {
-			parts = append(parts, Repr(k)+": "+Repr(v.vals[i]))
+		ks, vs := v.Items()
+		parts := make([]string, 0, len(ks))
+		for i, k := range ks {
+			parts = append(parts, Repr(k)+": "+Repr(vs[i]))
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	case *Set:

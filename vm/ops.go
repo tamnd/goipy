@@ -438,7 +438,7 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		}
 	}
 	if ba, ok := o.(*object.Bytearray); ok {
-		if m, ok := bytearrayMethod(ba, name); ok {
+		if m, ok := bytearrayMethod(i, ba, name); ok {
 			return m, nil
 		}
 	}
@@ -611,7 +611,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		case "__class__":
 			return inst.Class, nil
 		}
-		clsAttr, clsFound := classLookup(inst.Class, name)
+		var clsAttr object.Object
+		var clsFound bool
+		if inst.Class != nil {
+			clsAttr, clsFound = classLookup(inst.Class, name)
+		}
 		if clsFound && isDataDescriptor(clsAttr) {
 			return i.bindDescriptor(clsAttr, inst, inst.Class)
 		}
@@ -621,7 +625,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		if clsFound {
 			return i.bindDescriptor(clsAttr, inst, inst.Class)
 		}
-		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
+		clsName := "object"
+		if inst.Class != nil {
+			clsName = inst.Class.Name
+		}
+		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", clsName, name)
 	}
 	if bf, ok := o.(*object.BuiltinFunc); ok {
 		if name == "__name__" {
@@ -752,15 +760,17 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 
 func (i *Interp) setAttr(o object.Object, name string, val object.Object) error {
 	if inst, ok := o.(*object.Instance); ok {
-		if desc, ok := classLookup(inst.Class, name); ok {
-			if p, ok := desc.(*object.Property); ok && p.Fset != nil {
-				_, err := i.callObject(p.Fset, []object.Object{inst, val}, nil)
-				return err
-			}
-			if dinst, ok := desc.(*object.Instance); ok {
-				if setFn, ok := classLookup(dinst.Class, "__set__"); ok {
-					_, err := i.callObject(setFn, []object.Object{dinst, inst, val}, nil)
+		if inst.Class != nil {
+			if desc, ok := classLookup(inst.Class, name); ok {
+				if p, ok := desc.(*object.Property); ok && p.Fset != nil {
+					_, err := i.callObject(p.Fset, []object.Object{inst, val}, nil)
 					return err
+				}
+				if dinst, ok := desc.(*object.Instance); ok {
+					if setFn, ok := classLookup(dinst.Class, "__set__"); ok {
+						_, err := i.callObject(setFn, []object.Object{dinst, inst, val}, nil)
+						return err
+					}
 				}
 			}
 		}

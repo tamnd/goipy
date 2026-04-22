@@ -1,0 +1,28 @@
+False
+True
+False
+rlock nested ok
+False
+[7]
+MyThread
+False
+True
+True
+False
+True
+True
+False
+sem ctx ok
+condition ok
+True
+False
+True
+MainThread
+MainThread
+1
+1
+True
+42
+[0, 1, 2, 3, 4]
+[0, 1, 2]
+[1, 2, 3, 4, 5]

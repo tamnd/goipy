@@ -417,6 +417,7 @@ func (i *Interp) initBuiltins() {
 		case *object.Bytes:
 			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: true}, nil
 		case *object.Bytearray:
+			src.Views++
 			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: false}, nil
 		case *object.Memoryview:
 			return src, nil

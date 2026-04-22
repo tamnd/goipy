@@ -1,0 +1,24 @@
+True
+B
+1
+1
+(5,)
+(1,)
+()
+5
+True
+True
+True
+b'hello'
+101
+b'ell'
+b'hello'
+b'hello'
+[104, 101, 108, 108, 111]
+False
+119
+bytearray(b'World')
+bytearray(b'WORld')
+b'WORld'
+BufferError raised
+bytearray(b'abcd')

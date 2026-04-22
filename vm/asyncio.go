@@ -87,6 +87,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildOsPath(), true
 	case "warnings":
 		return i.buildWarnings(), true
+	case "threading":
+		return i.buildThreading(), true
 	}
 	return nil, false
 }

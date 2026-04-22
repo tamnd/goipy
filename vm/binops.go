@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bytes"
 	"math"
 	"math/big"
 	"strings"
@@ -332,6 +333,44 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 	if ta, ok := a.(*object.Tuple); ok {
 		if n, ok := toInt64(b); ok {
 			return &object.Tuple{V: repeatSlice(ta.V, int(n))}, nil
+		}
+	}
+	// bytes * int
+	if ba, ok := a.(*object.Bytes); ok {
+		if n, ok := toInt64(b); ok {
+			if n <= 0 {
+				return &object.Bytes{V: nil}, nil
+			}
+			out := bytes.Repeat(ba.V, int(n))
+			return &object.Bytes{V: out}, nil
+		}
+	}
+	if bb, ok := b.(*object.Bytes); ok {
+		if n, ok := toInt64(a); ok {
+			if n <= 0 {
+				return &object.Bytes{V: nil}, nil
+			}
+			out := bytes.Repeat(bb.V, int(n))
+			return &object.Bytes{V: out}, nil
+		}
+	}
+	// bytearray * int
+	if baa, ok := a.(*object.Bytearray); ok {
+		if n, ok := toInt64(b); ok {
+			if n <= 0 {
+				return &object.Bytearray{V: nil}, nil
+			}
+			out := bytes.Repeat(baa.V, int(n))
+			return &object.Bytearray{V: out}, nil
+		}
+	}
+	if bab, ok := b.(*object.Bytearray); ok {
+		if n, ok := toInt64(a); ok {
+			if n <= 0 {
+				return &object.Bytearray{V: nil}, nil
+			}
+			out := bytes.Repeat(bab.V, int(n))
+			return &object.Bytearray{V: out}, nil
 		}
 	}
 	if isComplex(a) || isComplex(b) {
