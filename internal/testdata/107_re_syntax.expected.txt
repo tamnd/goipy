@@ -1,0 +1,40 @@
+['e', 'o', 'o']
+['h', 'll', 'w', 'rld']
+['ello', 'orld']
+abbbc
+ac
+ac
+aaa
+aaaa
+<a>
+<a><b>
+dog
+cat
+abc
+('a', 'b', 'c')
+world
+('world',)
+2024
+01
+15
+hello
+world
+hello
+world
+['hello', 'world']
+['hello', 'world']
+['hello', 'world', '42']
+['42', '00']
+[' ', '\t']
+['one', 'two']
+['cat']
+['cat']
+aXb
+True
+a
+b
+[('12', '34'), ('56', '78')]
+['1', '2', '3']
+bar foo
+bar foo
+['one', ', ', 'two', '! ', 'three']

@@ -828,6 +828,13 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		}
 		return object.NewInt(c.Start + n*c.Step), nil
 	}
+	if mt, ok := container.(*object.Match); ok {
+		g := resolveGroup(mt, key)
+		if g < 0 {
+			return nil, object.Errorf(i.indexErr, "no such group")
+		}
+		return matchGroupValue(i, mt, g)
+	}
 	return nil, object.Errorf(i.typeErr, "'%s' object is not subscriptable", object.TypeName(container))
 }
 

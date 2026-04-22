@@ -1,0 +1,45 @@
+(\w+)\s+(\w+)
+2
+1
+2
+hello world
+hello
+world
+John
+Doe
+True
+True
+[('hello', 'world'), ('foo', 'bar')]
+['', 'aaa', 'hello', ' ', 'world', 'bbb', '']
+world hello
+('world hello', 1)
+['foo bar', 'baz qux']
+John Doe
+John Doe
+John
+John
+Doe
+('John', 'Doe')
+('John', 'Doe')
+John
+Doe
+4
+7
+(4, 7)
+4
+(4, 7)
+abc 123 def
+True
+0
+11
+1
+2
+letters
+None
+John Doe
+John
+John
+Doe
+world hello
+('hello', None, '')
+('hello', 'X', '')

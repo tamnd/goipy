@@ -1,0 +1,40 @@
+123
+hello
+True
+True
+True
+['1', '22', '333']
+[('a', '1'), ('b', '22')]
+['1', '2', '3']
+['one', 'two', 'three']
+['one', ' ', 'two']
+['a', 'b', 'c,d']
+['hello']
+aXbXcX
+there hi
+aXbXc3
+a2 b44
+('aXbX', 2)
+('abc', 0)
+a\.b\*c
+\(x\+y\)
+purge ok
+2
+2
+8
+8
+16
+16
+64
+64
+256
+256
+32
+32
+0
+HELLO
+42
+a
+b
+42 hello
+re.error ok

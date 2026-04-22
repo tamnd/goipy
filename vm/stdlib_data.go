@@ -321,6 +321,16 @@ func jsonToPy(v any) object.Object {
 func (i *Interp) buildRe() *object.Module {
 	m := &object.Module{Name: "re", Dict: object.NewDict()}
 
+	// re.error / re.PatternError exception class.
+	reErrClass := &object.Class{
+		Name:   "error",
+		Bases:  []*object.Class{i.exception},
+		Dict:   object.NewDict(),
+	}
+	i.reErr = reErrClass
+	m.Dict.SetStr("error", reErrClass)
+	m.Dict.SetStr("PatternError", reErrClass)
+
 	// Flag constants (bit values match CPython).
 	m.Dict.SetStr("IGNORECASE", object.NewInt(2))
 	m.Dict.SetStr("I", object.NewInt(2))
@@ -332,6 +342,9 @@ func (i *Interp) buildRe() *object.Module {
 	m.Dict.SetStr("X", object.NewInt(64))
 	m.Dict.SetStr("ASCII", object.NewInt(256))
 	m.Dict.SetStr("A", object.NewInt(256))
+	m.Dict.SetStr("UNICODE", object.NewInt(32))
+	m.Dict.SetStr("U", object.NewInt(32))
+	m.Dict.SetStr("NOFLAG", object.NewInt(0))
 
 	compileArg := func(a []object.Object) (*object.Pattern, error) {
 		if len(a) == 0 {
@@ -448,7 +461,52 @@ func (i *Interp) buildRe() *object.Module {
 		return &object.Str{V: regexp.QuoteMeta(s.V)}, nil
 	}})
 
+	m.Dict.SetStr("purge", &object.BuiltinFunc{Name: "purge", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+
 	return m
+}
+
+// pythonPatternToRE2 translates Python-specific regex syntax to Go RE2 syntax.
+func pythonPatternToRE2(pattern string, verbose bool) string {
+	var b strings.Builder
+	inClass := false // inside [...]
+	for k := 0; k < len(pattern); k++ {
+		c := pattern[k]
+		if c == '\\' && k+1 < len(pattern) {
+			next := pattern[k+1]
+			switch next {
+			case 'Z':
+				b.WriteString(`\z`)
+				k++
+				continue
+			}
+			b.WriteByte(c)
+			b.WriteByte(next)
+			k++
+			continue
+		}
+		if c == '[' {
+			inClass = true
+		} else if c == ']' {
+			inClass = false
+		}
+		if verbose && !inClass {
+			if c == '#' {
+				// skip to end of line
+				for k < len(pattern) && pattern[k] != '\n' {
+					k++
+				}
+				continue
+			}
+			if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' {
+				continue
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 func (i *Interp) compileRe(pattern string, flags int64) (*object.Pattern, error) {
@@ -464,11 +522,17 @@ func (i *Interp) compileRe(pattern string, flags int64) (*object.Pattern, error)
 		if flags&16 != 0 {
 			prefix.WriteByte('s')
 		}
-		prefix.WriteByte(')')
+			prefix.WriteByte(')')
 	}
-	re, err := regexp.Compile(prefix.String() + pattern)
+	verbose := flags&64 != 0
+	translated := pythonPatternToRE2(pattern, verbose)
+	re, err := regexp.Compile(prefix.String() + translated)
 	if err != nil {
-		return nil, object.Errorf(i.valueErr, "re.error: %s", err.Error())
+		errCls := i.reErr
+		if errCls == nil {
+			errCls = i.valueErr
+		}
+		return nil, object.Errorf(errCls, "%s", err.Error())
 	}
 	return &object.Pattern{Pattern: pattern, Regexp: re, Flags: flags}, nil
 }
@@ -835,6 +899,22 @@ func matchAttr(i *Interp, mt *object.Match, name string) (object.Object, bool) {
 			return object.None, true
 		}
 		return object.NewInt(int64(idx)), true
+	case "lastgroup":
+		idx := 0
+		for g := 1; g*2+1 < len(mt.Offsets); g++ {
+			if mt.Offsets[g*2] >= 0 {
+				idx = g
+			}
+		}
+		if idx == 0 {
+			return object.None, true
+		}
+		for g, nm := range mt.Pattern.Regexp.SubexpNames() {
+			if g == idx && nm != "" {
+				return &object.Str{V: nm}, true
+			}
+		}
+		return object.None, true
 	case "group":
 		return &object.BuiltinFunc{Name: "group", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			return matchGroup(i, mt, a)
@@ -851,10 +931,15 @@ func matchAttr(i *Interp, mt *object.Match, name string) (object.Object, bool) {
 			return &object.Str{V: expandReReplacement(s.V, mt.String, mt.Offsets, mt.Pattern)}, nil
 		}}, true
 	case "groups":
-		return &object.BuiltinFunc{Name: "groups", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.BuiltinFunc{Name: "groups", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 			var dflt object.Object = object.None
 			if len(a) >= 1 {
 				dflt = a[0]
+			}
+			if kw != nil {
+				if v, ok := kw.GetStr("default"); ok {
+					dflt = v
+				}
 			}
 			n := mt.Pattern.Regexp.NumSubexp()
 			out := make([]object.Object, n)
