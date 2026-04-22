@@ -1,7 +1,11 @@
 package vm
 
 import (
+	"math"
+	"math/big"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/tamnd/goipy/object"
 	"github.com/tamnd/goipy/op"
@@ -437,40 +441,382 @@ func (i *Interp) intrinsic2(idx int, a, b object.Object) (object.Object, error) 
 
 // --- methods ---
 
+// strOptStr extracts optional first arg as string; returns "" if absent or None.
+func strOptStr(a []object.Object) (string, bool) {
+	if len(a) == 0 {
+		return "", false
+	}
+	if a[0] == object.None {
+		return "", false
+	}
+	if ss, ok := a[0].(*object.Str); ok {
+		return ss.V, true
+	}
+	return "", false
+}
+
+// strRuneIndex returns the rune-index of byte-index b in s, or -1.
+func strRuneIndex(s string, b int) int {
+	if b < 0 {
+		return -1
+	}
+	return utf8.RuneCountInString(s[:b])
+}
+
+// strSplitFields splits like Python str.split() with no separator.
+func strSplitFields(s string, maxsplit int) []string {
+	if maxsplit == 0 {
+		return strings.Fields(s)
+	}
+	var parts []string
+	n := 0
+	i := 0
+	for i < len(s) {
+		// skip leading whitespace
+		for i < len(s) && unicode.IsSpace(rune(s[i])) {
+			i++
+		}
+		if i >= len(s) {
+			break
+		}
+		if maxsplit > 0 && n >= maxsplit {
+			parts = append(parts, s[i:])
+			break
+		}
+		j := i
+		for j < len(s) && !unicode.IsSpace(rune(s[j])) {
+			j++
+		}
+		parts = append(parts, s[i:j])
+		n++
+		i = j
+	}
+	return parts
+}
+
 func strMethod(s *object.Str, name string) (object.Object, bool) {
+	str := func(v string) object.Object { return &object.Str{V: v} }
 	switch name {
+	// --- case ---
 	case "upper":
-		return &object.BuiltinFunc{Name: "upper", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: strings.ToUpper(s.V)}, nil
+		return &object.BuiltinFunc{Name: "upper", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return str(strings.ToUpper(s.V)), nil
 		}}, true
 	case "lower":
-		return &object.BuiltinFunc{Name: "lower", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: strings.ToLower(s.V)}, nil
+		return &object.BuiltinFunc{Name: "lower", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return str(strings.ToLower(s.V)), nil
 		}}, true
+	case "title":
+		return &object.BuiltinFunc{Name: "title", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			// Python title: uppercase after any non-cased character.
+			prev := true
+			var b strings.Builder
+			for _, r := range s.V {
+				if unicode.IsLetter(r) {
+					if prev {
+						b.WriteRune(unicode.ToUpper(r))
+					} else {
+						b.WriteRune(unicode.ToLower(r))
+					}
+					prev = false
+				} else {
+					b.WriteRune(r)
+					prev = !unicode.IsLetter(r)
+				}
+			}
+			return str(b.String()), nil
+		}}, true
+	case "swapcase":
+		return &object.BuiltinFunc{Name: "swapcase", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			var b strings.Builder
+			for _, r := range s.V {
+				if unicode.IsUpper(r) {
+					b.WriteRune(unicode.ToLower(r))
+				} else if unicode.IsLower(r) {
+					b.WriteRune(unicode.ToUpper(r))
+				} else {
+					b.WriteRune(r)
+				}
+			}
+			return str(b.String()), nil
+		}}, true
+	case "casefold":
+		return &object.BuiltinFunc{Name: "casefold", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return str(strings.ToLower(s.V)), nil
+		}}, true
+	case "capitalize":
+		return &object.BuiltinFunc{Name: "capitalize", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return str(""), nil
+			}
+			r, size := utf8.DecodeRuneInString(s.V)
+			return str(string(unicode.ToUpper(r)) + strings.ToLower(s.V[size:])), nil
+		}}, true
+	// --- predicates ---
+	case "isalpha":
+		return &object.BuiltinFunc{Name: "isalpha", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				if !unicode.IsLetter(r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isdigit":
+		return &object.BuiltinFunc{Name: "isdigit", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				if !unicode.IsDigit(r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isnumeric":
+		return &object.BuiltinFunc{Name: "isnumeric", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				if !unicode.Is(unicode.N, r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isdecimal":
+		return &object.BuiltinFunc{Name: "isdecimal", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				// Decimal digits: Unicode category Nd
+				if !unicode.Is(unicode.Nd, r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isspace":
+		return &object.BuiltinFunc{Name: "isspace", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				if !unicode.IsSpace(r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isalnum":
+		return &object.BuiltinFunc{Name: "isalnum", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for _, r := range s.V {
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isupper":
+		return &object.BuiltinFunc{Name: "isupper", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			hasCased := false
+			for _, r := range s.V {
+				if unicode.IsLower(r) {
+					return object.False, nil
+				}
+				if unicode.IsUpper(r) {
+					hasCased = true
+				}
+			}
+			return object.BoolOf(hasCased), nil
+		}}, true
+	case "islower":
+		return &object.BuiltinFunc{Name: "islower", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			hasCased := false
+			for _, r := range s.V {
+				if unicode.IsUpper(r) {
+					return object.False, nil
+				}
+				if unicode.IsLower(r) {
+					hasCased = true
+				}
+			}
+			return object.BoolOf(hasCased), nil
+		}}, true
+	case "istitle":
+		return &object.BuiltinFunc{Name: "istitle", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			hasCased := false
+			prevCased := false
+			for _, r := range s.V {
+				if unicode.IsUpper(r) {
+					if prevCased {
+						return object.False, nil
+					}
+					hasCased = true
+					prevCased = true
+				} else if unicode.IsLower(r) {
+					if !prevCased {
+						return object.False, nil
+					}
+					hasCased = true
+					prevCased = true
+				} else {
+					prevCased = false
+				}
+			}
+			return object.BoolOf(hasCased), nil
+		}}, true
+	case "isidentifier":
+		return &object.BuiltinFunc{Name: "isidentifier", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if s.V == "" {
+				return object.False, nil
+			}
+			for i, r := range s.V {
+				if i == 0 {
+					if !unicode.IsLetter(r) && r != '_' {
+						return object.False, nil
+					}
+				} else {
+					if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+						return object.False, nil
+					}
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isprintable":
+		return &object.BuiltinFunc{Name: "isprintable", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			for _, r := range s.V {
+				if !unicode.IsPrint(r) {
+					return object.False, nil
+				}
+			}
+			return object.True, nil
+		}}, true
+	case "isascii":
+		return &object.BuiltinFunc{Name: "isascii", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.BoolOf(isASCII(s.V)), nil
+		}}, true
+	// --- strip ---
 	case "strip":
 		return &object.BuiltinFunc{Name: "strip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: strings.TrimSpace(s.V)}, nil
+			if chars, ok := strOptStr(a); ok {
+				return str(strings.Trim(s.V, chars)), nil
+			}
+			return str(strings.TrimSpace(s.V)), nil
 		}}, true
+	case "lstrip":
+		return &object.BuiltinFunc{Name: "lstrip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if chars, ok := strOptStr(a); ok {
+				return str(strings.TrimLeft(s.V, chars)), nil
+			}
+			return str(strings.TrimLeftFunc(s.V, unicode.IsSpace)), nil
+		}}, true
+	case "rstrip":
+		return &object.BuiltinFunc{Name: "rstrip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if chars, ok := strOptStr(a); ok {
+				return str(strings.TrimRight(s.V, chars)), nil
+			}
+			return str(strings.TrimRightFunc(s.V, unicode.IsSpace)), nil
+		}}, true
+	// --- split ---
 	case "split":
-		return &object.BuiltinFunc{Name: "split", Call: func(i_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			sep := ""
-			if len(a) > 0 {
-				if ss, ok := a[0].(*object.Str); ok {
-					sep = ss.V
+		return &object.BuiltinFunc{Name: "split", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			maxsplit := -1
+			sep, hasSep := strOptStr(a)
+			if len(a) >= 2 {
+				if n, ok := toInt64(a[1]); ok {
+					maxsplit = int(n)
 				}
 			}
 			var parts []string
-			if sep == "" {
-				parts = strings.Fields(s.V)
-			} else {
+			if !hasSep {
+				parts = strSplitFields(s.V, maxsplit)
+			} else if maxsplit < 0 {
 				parts = strings.Split(s.V, sep)
+			} else {
+				parts = strings.SplitN(s.V, sep, maxsplit+1)
 			}
 			out := make([]object.Object, len(parts))
 			for k, p := range parts {
-				out[k] = &object.Str{V: p}
+				out[k] = str(p)
 			}
 			return &object.List{V: out}, nil
 		}}, true
+	case "rsplit":
+		return &object.BuiltinFunc{Name: "rsplit", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			maxsplit := -1
+			sep, hasSep := strOptStr(a)
+			if len(a) >= 2 {
+				if n, ok := toInt64(a[1]); ok {
+					maxsplit = int(n)
+				}
+			}
+			var parts []string
+			if !hasSep {
+				parts = strSplitFields(s.V, maxsplit)
+			} else if maxsplit < 0 {
+				parts = strings.Split(s.V, sep)
+			} else {
+				parts = strings.SplitAfterN(reverseStr(s.V), reverseStr(sep), maxsplit+1)
+				for i, p := range parts {
+					parts[i] = reverseStr(strings.TrimSuffix(p, reverseStr(sep)))
+				}
+				reverseSlice(parts)
+			}
+			out := make([]object.Object, len(parts))
+			for k, p := range parts {
+				out[k] = str(p)
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "splitlines":
+		return &object.BuiltinFunc{Name: "splitlines", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			keepends := false
+			if len(a) > 0 {
+				keepends = object.Truthy(a[0])
+			}
+			parts := strSplitLines(s.V, keepends)
+			out := make([]object.Object, len(parts))
+			for k, p := range parts {
+				out[k] = str(p)
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "partition":
+		return &object.BuiltinFunc{Name: "partition", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.(*Interp).typeErr, "partition requires 1 argument")
+			}
+			sep := a[0].(*object.Str).V
+			idx := strings.Index(s.V, sep)
+			if idx < 0 {
+				return &object.Tuple{V: []object.Object{str(s.V), str(""), str("")}}, nil
+			}
+			return &object.Tuple{V: []object.Object{str(s.V[:idx]), str(sep), str(s.V[idx+len(sep):])}}, nil
+		}}, true
+	case "rpartition":
+		return &object.BuiltinFunc{Name: "rpartition", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.(*Interp).typeErr, "rpartition requires 1 argument")
+			}
+			sep := a[0].(*object.Str).V
+			idx := strings.LastIndex(s.V, sep)
+			if idx < 0 {
+				return &object.Tuple{V: []object.Object{str(""), str(""), str(s.V)}}, nil
+			}
+			return &object.Tuple{V: []object.Object{str(s.V[:idx]), str(sep), str(s.V[idx+len(sep):])}}, nil
+		}}, true
+	// --- join ---
 	case "join":
 		return &object.BuiltinFunc{Name: "join", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) != 1 {
@@ -484,24 +830,76 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 			for k, x := range items {
 				sx, ok := x.(*object.Str)
 				if !ok {
-					return nil, object.Errorf(ii.(*Interp).typeErr, "join requires str")
+					return nil, object.Errorf(ii.(*Interp).typeErr, "sequence item %d: expected str instance, %s found", k, object.TypeName(x))
 				}
 				parts[k] = sx.V
 			}
-			return &object.Str{V: strings.Join(parts, s.V)}, nil
+			return str(strings.Join(parts, s.V)), nil
 		}}, true
-	case "replace":
-		return &object.BuiltinFunc{Name: "replace", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) < 2 {
-				return nil, object.Errorf(ii.(*Interp).typeErr, "replace needs 2 args")
+	// --- search ---
+	case "find":
+		return &object.BuiltinFunc{Name: "find", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.NewInt(-1), nil
 			}
-			old := a[0].(*object.Str).V
-			new_ := a[1].(*object.Str).V
-			return &object.Str{V: strings.ReplaceAll(s.V, old, new_)}, nil
+			sub := a[0].(*object.Str).V
+			byteIdx := strings.Index(s.V, sub)
+			return object.NewInt(int64(strRuneIndex(s.V, byteIdx))), nil
+		}}, true
+	case "rfind":
+		return &object.BuiltinFunc{Name: "rfind", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.NewInt(-1), nil
+			}
+			sub := a[0].(*object.Str).V
+			byteIdx := strings.LastIndex(s.V, sub)
+			return object.NewInt(int64(strRuneIndex(s.V, byteIdx))), nil
+		}}, true
+	case "index":
+		return &object.BuiltinFunc{Name: "index", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "substring not found")
+			}
+			sub := a[0].(*object.Str).V
+			byteIdx := strings.Index(s.V, sub)
+			if byteIdx < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "substring not found")
+			}
+			return object.NewInt(int64(strRuneIndex(s.V, byteIdx))), nil
+		}}, true
+	case "rindex":
+		return &object.BuiltinFunc{Name: "rindex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "substring not found")
+			}
+			sub := a[0].(*object.Str).V
+			byteIdx := strings.LastIndex(s.V, sub)
+			if byteIdx < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "substring not found")
+			}
+			return object.NewInt(int64(strRuneIndex(s.V, byteIdx))), nil
+		}}, true
+	case "count":
+		return &object.BuiltinFunc{Name: "count", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.NewInt(0), nil
+			}
+			return object.NewInt(int64(strings.Count(s.V, a[0].(*object.Str).V))), nil
 		}}, true
 	case "startswith":
 		return &object.BuiltinFunc{Name: "startswith", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) == 0 {
+				return object.False, nil
+			}
+			switch v := a[0].(type) {
+			case *object.Str:
+				return object.BoolOf(strings.HasPrefix(s.V, v.V)), nil
+			case *object.Tuple:
+				for _, x := range v.V {
+					if ss, ok := x.(*object.Str); ok && strings.HasPrefix(s.V, ss.V) {
+						return object.True, nil
+					}
+				}
 				return object.False, nil
 			}
 			return object.BoolOf(strings.HasPrefix(s.V, a[0].(*object.Str).V)), nil
@@ -511,29 +909,406 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 			if len(a) == 0 {
 				return object.False, nil
 			}
+			switch v := a[0].(type) {
+			case *object.Str:
+				return object.BoolOf(strings.HasSuffix(s.V, v.V)), nil
+			case *object.Tuple:
+				for _, x := range v.V {
+					if ss, ok := x.(*object.Str); ok && strings.HasSuffix(s.V, ss.V) {
+						return object.True, nil
+					}
+				}
+				return object.False, nil
+			}
 			return object.BoolOf(strings.HasSuffix(s.V, a[0].(*object.Str).V)), nil
 		}}, true
-	case "find":
-		return &object.BuiltinFunc{Name: "find", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) == 0 {
-				return object.NewInt(-1), nil
+	// --- replace ---
+	case "replace":
+		return &object.BuiltinFunc{Name: "replace", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 2 {
+				return nil, object.Errorf(ii.(*Interp).typeErr, "replace needs 2 args")
 			}
-			idx := strings.Index(s.V, a[0].(*object.Str).V)
-			return object.NewInt(int64(idx)), nil
-		}}, true
-	case "count":
-		return &object.BuiltinFunc{Name: "count", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) == 0 {
-				return object.NewInt(0), nil
+			old := a[0].(*object.Str).V
+			new_ := a[1].(*object.Str).V
+			n := -1
+			if len(a) >= 3 {
+				if v, ok := toInt64(a[2]); ok {
+					n = int(v)
+				}
 			}
-			return object.NewInt(int64(strings.Count(s.V, a[0].(*object.Str).V))), nil
+			if n < 0 {
+				return str(strings.ReplaceAll(s.V, old, new_)), nil
+			}
+			return str(strings.Replace(s.V, old, new_, n)), nil
 		}}, true
+	case "removeprefix":
+		return &object.BuiltinFunc{Name: "removeprefix", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			prefix := a[0].(*object.Str).V
+			return str(strings.TrimPrefix(s.V, prefix)), nil
+		}}, true
+	case "removesuffix":
+		return &object.BuiltinFunc{Name: "removesuffix", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			suffix := a[0].(*object.Str).V
+			return str(strings.TrimSuffix(s.V, suffix)), nil
+		}}, true
+	// --- padding ---
+	case "center":
+		return &object.BuiltinFunc{Name: "center", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := " "
+			if len(a) >= 2 {
+				if fs, ok := a[1].(*object.Str); ok {
+					fill = fs.V
+				}
+			}
+			return str(strCenter(s.V, int(width), []rune(fill)[0])), nil
+		}}, true
+	case "ljust":
+		return &object.BuiltinFunc{Name: "ljust", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := ' '
+			if len(a) >= 2 {
+				if fs, ok := a[1].(*object.Str); ok && len([]rune(fs.V)) == 1 {
+					fill = []rune(fs.V)[0]
+				}
+			}
+			runes := []rune(s.V)
+			pad := int(width) - len(runes)
+			if pad <= 0 {
+				return str(s.V), nil
+			}
+			return str(string(runes) + strings.Repeat(string(fill), pad)), nil
+		}}, true
+	case "rjust":
+		return &object.BuiltinFunc{Name: "rjust", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := ' '
+			if len(a) >= 2 {
+				if fs, ok := a[1].(*object.Str); ok && len([]rune(fs.V)) == 1 {
+					fill = []rune(fs.V)[0]
+				}
+			}
+			runes := []rune(s.V)
+			pad := int(width) - len(runes)
+			if pad <= 0 {
+				return str(s.V), nil
+			}
+			return str(strings.Repeat(string(fill), pad) + string(runes)), nil
+		}}, true
+	case "zfill":
+		return &object.BuiltinFunc{Name: "zfill", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			width, _ := toInt64(a[0])
+			runes := []rune(s.V)
+			pad := int(width) - len(runes)
+			if pad <= 0 {
+				return str(s.V), nil
+			}
+			prefix := ""
+			body := s.V
+			if len(runes) > 0 && (runes[0] == '+' || runes[0] == '-') {
+				prefix = string(runes[0])
+				body = string(runes[1:])
+			}
+			return str(prefix + strings.Repeat("0", pad) + body), nil
+		}}, true
+	case "expandtabs":
+		return &object.BuiltinFunc{Name: "expandtabs", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			tabsize := 8
+			if len(a) > 0 {
+				if n, ok := toInt64(a[0]); ok {
+					tabsize = int(n)
+				}
+			}
+			var b strings.Builder
+			col := 0
+			for _, r := range s.V {
+				if r == '\t' {
+					if tabsize > 0 {
+						spaces := tabsize - col%tabsize
+						b.WriteString(strings.Repeat(" ", spaces))
+						col += spaces
+					}
+				} else if r == '\n' || r == '\r' {
+					b.WriteRune(r)
+					col = 0
+				} else {
+					b.WriteRune(r)
+					col++
+				}
+			}
+			return str(b.String()), nil
+		}}, true
+	// --- translate ---
+	case "translate":
+		return &object.BuiltinFunc{Name: "translate", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			table, ok := a[0].(*object.Dict)
+			if !ok {
+				return str(s.V), nil
+			}
+			var b strings.Builder
+			for _, r := range s.V {
+				key := object.NewInt(int64(r))
+				if v, ok2, _ := table.Get(key); ok2 {
+					switch mv := v.(type) {
+					case *object.NoneType:
+						// delete
+					case *object.Int:
+						b.WriteRune(rune(mv.Int64()))
+					case *object.Str:
+						b.WriteString(mv.V)
+					}
+				} else {
+					b.WriteRune(r)
+				}
+			}
+			return str(b.String()), nil
+		}}, true
+	case "maketrans":
+		return &object.BuiltinFunc{Name: "maketrans", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := object.NewDict()
+			if len(a) == 1 {
+				if src, ok := a[0].(*object.Dict); ok {
+					// dict form: keys can be ints or single-char strs
+					ks, vs := src.Items()
+					for k, key := range ks {
+						var ikey object.Object
+						switch kv := key.(type) {
+						case *object.Int:
+							ikey = kv
+						case *object.Str:
+							if rs := []rune(kv.V); len(rs) == 1 {
+								ikey = object.NewInt(int64(rs[0]))
+							}
+						}
+						if ikey != nil {
+							_ = d.Set(ikey, vs[k])
+						}
+					}
+				}
+			} else if len(a) >= 2 {
+				x := []rune(a[0].(*object.Str).V)
+				y := []rune(a[1].(*object.Str).V)
+				for k, r := range x {
+					var val object.Object = object.None
+					if k < len(y) {
+						val = object.NewInt(int64(y[k]))
+					}
+					_ = d.Set(object.NewInt(int64(r)), val)
+				}
+				if len(a) >= 3 {
+					for _, r := range []rune(a[2].(*object.Str).V) {
+						_ = d.Set(object.NewInt(int64(r)), object.None)
+					}
+				}
+			}
+			return d, nil
+		}}, true
+	// --- encode ---
+	case "encode":
+		return &object.BuiltinFunc{Name: "encode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Bytes{V: []byte(s.V)}, nil
+		}}, true
+	// --- format ---
 	case "format":
-		return &object.BuiltinFunc{Name: "format", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: s.V}, nil
+		return &object.BuiltinFunc{Name: "format", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			result, err := strFormat(ii.(*Interp), s.V, a, kw)
+			if err != nil {
+				return nil, err
+			}
+			return str(result), nil
+		}}, true
+	case "format_map":
+		return &object.BuiltinFunc{Name: "format_map", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return str(s.V), nil
+			}
+			mapping, ok := a[0].(*object.Dict)
+			if !ok {
+				return str(s.V), nil
+			}
+			result, err := strFormat(ii.(*Interp), s.V, nil, mapping)
+			if err != nil {
+				return nil, err
+			}
+			return str(result), nil
 		}}, true
 	}
 	return nil, false
+}
+
+func hexNibble(c byte) int {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0')
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10
+	}
+	return -1
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+func reverseStr(s string) string {
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return string(runes)
+}
+
+func reverseSlice(s []string) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func strCenter(s string, width int, fill rune) string {
+	runes := []rune(s)
+	pad := width - len(runes)
+	if pad <= 0 {
+		return s
+	}
+	left := pad / 2
+	right := pad - left
+	return strings.Repeat(string(fill), left) + s + strings.Repeat(string(fill), right)
+}
+
+// strSplitLines splits s on line boundaries, optionally keeping the endings.
+func strSplitLines(s string, keepends bool) []string {
+	var parts []string
+	i := 0
+	for i < len(s) {
+		j := i
+		for j < len(s) && s[j] != '\n' && s[j] != '\r' && s[j] != '\f' &&
+			s[j] != '\v' && s[j] != '\x1c' && s[j] != '\x1d' && s[j] != '\x1e' && s[j] != '\x85' {
+			j++
+		}
+		if j >= len(s) {
+			if j > i {
+				parts = append(parts, s[i:j])
+			}
+			break
+		}
+		end := j
+		if s[j] == '\r' && j+1 < len(s) && s[j+1] == '\n' {
+			j += 2
+		} else {
+			j++
+		}
+		if keepends {
+			parts = append(parts, s[i:j])
+		} else {
+			parts = append(parts, s[i:end])
+		}
+		i = j
+	}
+	return parts
+}
+
+// strFormat is a minimal implementation of str.format() / str.format_map().
+// It handles positional {0}, {1} and keyword {name} fields without format specs.
+func strFormat(i *Interp, tmpl string, args []object.Object, kwargs *object.Dict) (string, error) {
+	var b strings.Builder
+	autoIdx := 0
+	j := 0
+	for j < len(tmpl) {
+		if tmpl[j] == '{' {
+			if j+1 < len(tmpl) && tmpl[j+1] == '{' {
+				b.WriteByte('{')
+				j += 2
+				continue
+			}
+			end := strings.IndexByte(tmpl[j:], '}')
+			if end < 0 {
+				b.WriteByte('{')
+				j++
+				continue
+			}
+			field := tmpl[j+1 : j+end]
+			j += end + 1
+			// strip format spec after ':'
+			if colon := strings.IndexByte(field, ':'); colon >= 0 {
+				field = field[:colon]
+			}
+			// strip conversion after '!'
+			if bang := strings.IndexByte(field, '!'); bang >= 0 {
+				field = field[:bang]
+			}
+			var val object.Object
+			if field == "" {
+				if autoIdx < len(args) {
+					val = args[autoIdx]
+					autoIdx++
+				} else {
+					val = object.None
+				}
+			} else if n, ok2 := parseInt(field); ok2 {
+				if int(n) < len(args) {
+					val = args[n]
+				} else {
+					val = object.None
+				}
+			} else if kwargs != nil {
+				v, ok2 := kwargs.GetStr(field)
+				if ok2 {
+					val = v
+				} else {
+					return "", object.Errorf(i.keyErr, "KeyError: '%s'", field)
+				}
+			} else {
+				return "", object.Errorf(i.keyErr, "KeyError: '%s'", field)
+			}
+			b.WriteString(object.Str_(val))
+		} else if tmpl[j] == '}' && j+1 < len(tmpl) && tmpl[j+1] == '}' {
+			b.WriteByte('}')
+			j += 2
+		} else {
+			b.WriteByte(tmpl[j])
+			j++
+		}
+	}
+	return b.String(), nil
+}
+
+func parseInt(s string) (int64, bool) {
+	n := int64(0)
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n, true
 }
 
 // Shared package-level BuiltinFuncs for hot list methods. These receive self
@@ -782,6 +1557,67 @@ func dictMethod(d *object.Dict, name string) (object.Object, bool) {
 			}
 			return nd, nil
 		}}, true
+	case "popitem":
+		return &object.BuiltinFunc{Name: "popitem", Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			keys, vals := d.Items()
+			if len(keys) == 0 {
+				return nil, object.Errorf(ii.(*Interp).keyErr, "dictionary is empty")
+			}
+			k := keys[len(keys)-1]
+			v := vals[len(vals)-1]
+			_, _ = d.Delete(k)
+			return &object.Tuple{V: []object.Object{k, v}}, nil
+		}}, true
+	case "fromkeys":
+		return &object.BuiltinFunc{Name: "fromkeys", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.NewDict(), nil
+			}
+			var val object.Object = object.None
+			if len(a) >= 2 {
+				val = a[1]
+			}
+			items, err := iterate(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			nd := object.NewDict()
+			for _, k := range items {
+				if err := nd.Set(k, val); err != nil {
+					return nil, err
+				}
+			}
+			return nd, nil
+		}}, true
+	case "__or__":
+		return &object.BuiltinFunc{Name: "__or__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, ok := a[0].(*object.Dict)
+			if !ok {
+				return object.NotImplemented, nil
+			}
+			nd := object.NewDict()
+			keys, vals := d.Items()
+			for k, key := range keys {
+				_ = nd.Set(key, vals[k])
+			}
+			oks, ovs := other.Items()
+			for k, key := range oks {
+				_ = nd.Set(key, ovs[k])
+			}
+			return nd, nil
+		}}, true
+	case "__ior__":
+		return &object.BuiltinFunc{Name: "__ior__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			other, ok := a[0].(*object.Dict)
+			if !ok {
+				return object.NotImplemented, nil
+			}
+			oks, ovs := other.Items()
+			for k, key := range oks {
+				_ = d.Set(key, ovs[k])
+			}
+			return d, nil
+		}}, true
 	}
 	return nil, false
 }
@@ -834,6 +1670,33 @@ func bytesSubMethod(data func() []byte, mutable bool, name string) (object.Objec
 			}
 			return object.NewInt(int64(idx)), nil
 		}}, true
+	case "rfind":
+		return &object.BuiltinFunc{Name: "rfind", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, _ := needleBytes(a[0])
+			hay := data()
+			idx := -1
+			for i := 0; i+len(nd) <= len(hay); i++ {
+				if bytesEqAt(hay, i, nd) {
+					idx = i
+				}
+			}
+			return object.NewInt(int64(idx)), nil
+		}}, true
+	case "rindex":
+		return &object.BuiltinFunc{Name: "rindex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			nd, _ := needleBytes(a[0])
+			hay := data()
+			idx := -1
+			for i := 0; i+len(nd) <= len(hay); i++ {
+				if bytesEqAt(hay, i, nd) {
+					idx = i
+				}
+			}
+			if idx < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "subsection not found")
+			}
+			return object.NewInt(int64(idx)), nil
+		}}, true
 	case "startswith":
 		return &object.BuiltinFunc{Name: "startswith", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			nd, ok := needleBytes(a[0])
@@ -876,6 +1739,144 @@ func bytesSubMethod(data func() []byte, mutable bool, name string) (object.Objec
 				out[k] = wrap(p)
 			}
 			return &object.List{V: out}, nil
+		}}, true
+	case "join":
+		return &object.BuiltinFunc{Name: "join", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return wrap(nil), nil
+			}
+			items, err := iterate(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			var parts [][]byte
+			for _, x := range items {
+				b, ok := bytesBytesOrArray(x)
+				if !ok {
+					return nil, object.Errorf(ii.(*Interp).typeErr, "sequence item must be bytes-like")
+				}
+				parts = append(parts, b)
+			}
+			sep := data()
+			result := bytesJoin(parts, sep)
+			return wrap(result), nil
+		}}, true
+	case "strip":
+		return &object.BuiltinFunc{Name: "strip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			var chars []byte
+			if len(a) > 0 {
+				chars, _ = bytesBytesOrArray(a[0])
+			}
+			return wrap(bytesTrim(d, chars, true, true)), nil
+		}}, true
+	case "lstrip":
+		return &object.BuiltinFunc{Name: "lstrip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			var chars []byte
+			if len(a) > 0 {
+				chars, _ = bytesBytesOrArray(a[0])
+			}
+			return wrap(bytesTrim(d, chars, true, false)), nil
+		}}, true
+	case "rstrip":
+		return &object.BuiltinFunc{Name: "rstrip", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			var chars []byte
+			if len(a) > 0 {
+				chars, _ = bytesBytesOrArray(a[0])
+			}
+			return wrap(bytesTrim(d, chars, false, true)), nil
+		}}, true
+	case "upper":
+		return &object.BuiltinFunc{Name: "upper", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			out := make([]byte, len(d))
+			for i, c := range d {
+				if c >= 'a' && c <= 'z' {
+					out[i] = c - 32
+				} else {
+					out[i] = c
+				}
+			}
+			return wrap(out), nil
+		}}, true
+	case "lower":
+		return &object.BuiltinFunc{Name: "lower", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			out := make([]byte, len(d))
+			for i, c := range d {
+				if c >= 'A' && c <= 'Z' {
+					out[i] = c + 32
+				} else {
+					out[i] = c
+				}
+			}
+			return wrap(out), nil
+		}}, true
+	case "center":
+		return &object.BuiltinFunc{Name: "center", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			if len(a) == 0 {
+				return wrap(d), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := byte(' ')
+			if len(a) >= 2 {
+				if fb, ok := bytesBytesOrArray(a[1]); ok && len(fb) == 1 {
+					fill = fb[0]
+				}
+			}
+			return wrap(bytesPad(d, int(width), fill, "center")), nil
+		}}, true
+	case "ljust":
+		return &object.BuiltinFunc{Name: "ljust", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			if len(a) == 0 {
+				return wrap(d), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := byte(' ')
+			if len(a) >= 2 {
+				if fb, ok := bytesBytesOrArray(a[1]); ok && len(fb) == 1 {
+					fill = fb[0]
+				}
+			}
+			return wrap(bytesPad(d, int(width), fill, "right")), nil
+		}}, true
+	case "rjust":
+		return &object.BuiltinFunc{Name: "rjust", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			if len(a) == 0 {
+				return wrap(d), nil
+			}
+			width, _ := toInt64(a[0])
+			fill := byte(' ')
+			if len(a) >= 2 {
+				if fb, ok := bytesBytesOrArray(a[1]); ok && len(fb) == 1 {
+					fill = fb[0]
+				}
+			}
+			return wrap(bytesPad(d, int(width), fill, "left")), nil
+		}}, true
+	case "zfill":
+		return &object.BuiltinFunc{Name: "zfill", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			d := data()
+			if len(a) == 0 {
+				return wrap(d), nil
+			}
+			width, _ := toInt64(a[0])
+			return wrap(bytesPad(d, int(width), '0', "right_fill_left")), nil
+		}}, true
+	case "hex":
+		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			const digits = "0123456789abcdef"
+			d := data()
+			buf := make([]byte, 0, 2*len(d))
+			for _, c := range d {
+				buf = append(buf, digits[c>>4], digits[c&0xf])
+			}
+			return &object.Str{V: string(buf)}, nil
 		}}, true
 	}
 	return nil, false
@@ -959,6 +1960,106 @@ func bytesSplit(hay, sep []byte) [][]byte {
 
 func isAsciiSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
+}
+
+func bytesJoin(parts [][]byte, sep []byte) []byte {
+	if len(parts) == 0 {
+		return nil
+	}
+	total := len(sep) * (len(parts) - 1)
+	for _, p := range parts {
+		total += len(p)
+	}
+	out := make([]byte, 0, total)
+	for i, p := range parts {
+		if i > 0 {
+			out = append(out, sep...)
+		}
+		out = append(out, p...)
+	}
+	return out
+}
+
+// bytesTrim trims ASCII whitespace or the given chars from left/right.
+func bytesTrim(d, chars []byte, left, right bool) []byte {
+	isChar := func(c byte) bool {
+		if chars == nil {
+			return isAsciiSpace(c)
+		}
+		for _, ch := range chars {
+			if c == ch {
+				return true
+			}
+		}
+		return false
+	}
+	start, end := 0, len(d)
+	if left {
+		for start < end && isChar(d[start]) {
+			start++
+		}
+	}
+	if right {
+		for end > start && isChar(d[end-1]) {
+			end--
+		}
+	}
+	return append([]byte(nil), d[start:end]...)
+}
+
+// bytesPad pads d to width using fill byte.
+// mode: "left" = rjust, "right" = ljust, "center" = center, "right_fill_left" = zfill.
+func bytesPad(d []byte, width int, fill byte, mode string) []byte {
+	pad := width - len(d)
+	if pad <= 0 {
+		return append([]byte(nil), d...)
+	}
+	switch mode {
+	case "left":
+		out := make([]byte, width)
+		copy(out[pad:], d)
+		for i := 0; i < pad; i++ {
+			out[i] = fill
+		}
+		return out
+	case "right":
+		out := make([]byte, width)
+		copy(out, d)
+		for i := len(d); i < width; i++ {
+			out[i] = fill
+		}
+		return out
+	case "center":
+		left := pad / 2
+		right := pad - left
+		out := make([]byte, width)
+		for i := 0; i < left; i++ {
+			out[i] = fill
+		}
+		copy(out[left:], d)
+		for i := left + len(d); i < width; i++ {
+			_ = right
+			out[i] = fill
+		}
+		return out
+	case "right_fill_left":
+		// zfill: preserve sign prefix if present
+		out := make([]byte, width)
+		if len(d) > 0 && (d[0] == '+' || d[0] == '-') {
+			out[0] = d[0]
+			for i := 1; i <= pad; i++ {
+				out[i] = fill
+			}
+			copy(out[pad+1:], d[1:])
+		} else {
+			for i := 0; i < pad; i++ {
+				out[i] = fill
+			}
+			copy(out[pad:], d)
+		}
+		return out
+	}
+	return append([]byte(nil), d...)
 }
 
 func memoryviewAttr(mv *object.Memoryview, name string) (object.Object, bool) {
@@ -1117,15 +2218,6 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return &object.Str{V: string(ba.V)}, nil
 		}}, true
-	case "hex":
-		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			const digits = "0123456789abcdef"
-			buf := make([]byte, 0, 2*len(ba.V))
-			for _, c := range ba.V {
-				buf = append(buf, digits[c>>4], digits[c&0xf])
-			}
-			return &object.Str{V: string(buf)}, nil
-		}}, true
 	}
 	return nil, false
 }
@@ -1138,6 +2230,37 @@ func setMethod(s *object.Set, name string) (object.Object, bool) {
 		}}, true
 	case "discard":
 		return &object.BuiltinFunc{Name: "discard", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			s.Discard(a[0])
+			return object.None, nil
+		}}, true
+	case "remove":
+		return &object.BuiltinFunc{Name: "remove", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ok, err := s.Contains(a[0])
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, object.Errorf(ii.(*Interp).keyErr, "%s", object.Repr(a[0]))
+			}
+			s.Discard(a[0])
+			return object.None, nil
+		}}, true
+	case "pop":
+		return &object.BuiltinFunc{Name: "pop", Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			items := s.Items()
+			if len(items) == 0 {
+				return nil, object.Errorf(ii.(*Interp).keyErr, "pop from an empty set")
+			}
+			v := items[0]
+			s.Discard(v)
+			return v, nil
+		}}, true
+	case "clear":
+		return &object.BuiltinFunc{Name: "clear", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			items := append([]object.Object(nil), s.Items()...)
+			for _, x := range items {
+				s.Discard(x)
+			}
 			return object.None, nil
 		}}, true
 	case "copy":
@@ -1147,6 +2270,68 @@ func setMethod(s *object.Set, name string) (object.Object, bool) {
 				_ = out.Add(x)
 			}
 			return out, nil
+		}}, true
+	case "update":
+		return &object.BuiltinFunc{Name: "update", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			for _, arg := range a {
+				other, err := materializeSet(ii.(*Interp), arg)
+				if err != nil {
+					return nil, err
+				}
+				for _, x := range setItems(other) {
+					if err := s.Add(x); err != nil {
+						return nil, err
+					}
+				}
+			}
+			return object.None, nil
+		}}, true
+	case "intersection_update":
+		return &object.BuiltinFunc{Name: "intersection_update", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			result, err := setReduce(ii.(*Interp), s, a, "&")
+			if err != nil {
+				return nil, err
+			}
+			items := append([]object.Object(nil), s.Items()...)
+			for _, x := range items {
+				s.Discard(x)
+			}
+			for _, x := range setItems(result) {
+				_ = s.Add(x)
+			}
+			return object.None, nil
+		}}, true
+	case "difference_update":
+		return &object.BuiltinFunc{Name: "difference_update", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			for _, arg := range a {
+				other, err := materializeSet(ii.(*Interp), arg)
+				if err != nil {
+					return nil, err
+				}
+				for _, x := range setItems(other) {
+					s.Discard(x)
+				}
+			}
+			return object.None, nil
+		}}, true
+	case "symmetric_difference_update":
+		return &object.BuiltinFunc{Name: "symmetric_difference_update", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.None, nil
+			}
+			other, err := materializeSet(ii.(*Interp), a[0])
+			if err != nil {
+				return nil, err
+			}
+			result := setBitop(s, other, "^")
+			items := append([]object.Object(nil), s.Items()...)
+			for _, x := range items {
+				s.Discard(x)
+			}
+			for _, x := range setItems(result) {
+				_ = s.Add(x)
+			}
+			return object.None, nil
 		}}, true
 	}
 	if m, ok := setQueryMethod(s, name); ok {
@@ -1302,6 +2487,239 @@ func tupleMethod(t *object.Tuple, name string) (object.Object, bool) {
 		}}, true
 	}
 	return nil, false
+}
+
+// intMethod returns methods on int objects.
+func intMethod(n *object.Int, name string) (object.Object, bool) {
+	switch name {
+	case "bit_length":
+		return &object.BuiltinFunc{Name: "bit_length", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.NewInt(int64(n.V.BitLen())), nil
+		}}, true
+	case "bit_count":
+		return &object.BuiltinFunc{Name: "bit_count", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			abs := new(big.Int).Abs(&n.V)
+			return object.NewInt(int64(abs.BitLen() - int(abs.BitLen()) + popcount(abs))), nil
+		}}, true
+	case "to_bytes":
+		return &object.BuiltinFunc{Name: "to_bytes", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			length := int64(1)
+			byteorder := "big"
+			signed := false
+			if len(a) >= 1 {
+				length, _ = toInt64(a[0])
+			}
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					byteorder = s.V
+				}
+			}
+			if kw != nil {
+				if v, ok := kw.GetStr("signed"); ok {
+					signed = object.Truthy(v)
+				}
+			}
+			var src *big.Int
+			if signed && n.V.Sign() < 0 {
+				// two's complement
+				mod := new(big.Int).Lsh(big.NewInt(1), uint(length*8))
+				src = new(big.Int).Add(&n.V, mod)
+			} else {
+				src = new(big.Int).Set(&n.V)
+			}
+			b := make([]byte, length)
+			raw := src.Bytes()
+			copy(b[int(length)-len(raw):], raw)
+			if byteorder == "little" {
+				for l, r := 0, len(b)-1; l < r; l, r = l+1, r-1 {
+					b[l], b[r] = b[r], b[l]
+				}
+			}
+			return &object.Bytes{V: b}, nil
+		}}, true
+	case "conjugate":
+		return &object.BuiltinFunc{Name: "conjugate", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return n, nil
+		}}, true
+	case "as_integer_ratio":
+		return &object.BuiltinFunc{Name: "as_integer_ratio", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Tuple{V: []object.Object{n, object.NewInt(1)}}, nil
+		}}, true
+	}
+	return nil, false
+}
+
+// popcount counts set bits in a big.Int.
+func popcount(n *big.Int) int {
+	count := 0
+	for _, w := range n.Bits() {
+		count += bits64(uint64(w))
+	}
+	return count
+}
+
+func bits64(x uint64) int {
+	count := 0
+	for x != 0 {
+		count += int(x & 1)
+		x >>= 1
+	}
+	return count
+}
+
+// floatMethod returns methods on float objects.
+func floatMethod(f *object.Float, name string) (object.Object, bool) {
+	switch name {
+	case "is_integer":
+		return &object.BuiltinFunc{Name: "is_integer", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.BoolOf(!math.IsInf(f.V, 0) && !math.IsNaN(f.V) && f.V == math.Trunc(f.V)), nil
+		}}, true
+	case "as_integer_ratio":
+		return &object.BuiltinFunc{Name: "as_integer_ratio", Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if math.IsInf(f.V, 0) {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "cannot convert infinity to integer ratio")
+			}
+			if math.IsNaN(f.V) {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "cannot convert NaN to integer ratio")
+			}
+			num, den := floatRatio(f.V)
+			return &object.Tuple{V: []object.Object{
+				object.IntFromBig(num),
+				object.IntFromBig(den),
+			}}, nil
+		}}, true
+	case "conjugate":
+		return &object.BuiltinFunc{Name: "conjugate", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return f, nil
+		}}, true
+	case "hex":
+		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: floatHex(f.V)}, nil
+		}}, true
+	}
+	return nil, false
+}
+
+// floatRatio returns (numerator, denominator) as *big.Int for a finite float.
+func floatRatio(f float64) (*big.Int, *big.Int) {
+	if f == 0 {
+		return big.NewInt(0), big.NewInt(1)
+	}
+	sign := 1
+	if f < 0 {
+		sign = -1
+		f = -f
+	}
+	frac, exp := math.Frexp(f) // f = frac * 2^exp, 0.5 <= frac < 1
+	// frac has 52 mantissa bits; multiply by 2^53 to get integer
+	const shift = 53
+	mantissa := uint64(frac * (1 << shift))
+	num := new(big.Int).SetUint64(mantissa)
+	den := new(big.Int).SetUint64(1)
+	e := exp - shift
+	if e >= 0 {
+		num.Lsh(num, uint(e))
+	} else {
+		den.Lsh(den, uint(-e))
+	}
+	// reduce
+	gcd := new(big.Int).GCD(nil, nil, num, den)
+	num.Div(num, gcd)
+	den.Div(den, gcd)
+	if sign < 0 {
+		num.Neg(num)
+	}
+	return num, den
+}
+
+// floatHex returns Python-style hex representation of a float.
+func floatHex(f float64) string {
+	if math.IsInf(f, 1) {
+		return "inf"
+	}
+	if math.IsInf(f, -1) {
+		return "-inf"
+	}
+	if math.IsNaN(f) {
+		return "nan"
+	}
+	sign := ""
+	if math.Signbit(f) {
+		sign = "-"
+		f = -f
+	}
+	if f == 0 {
+		return sign + "0x0.0000000000000p+0"
+	}
+	frac, exp := math.Frexp(f)
+	// frac in [0.5, 1.0); adjust so mantissa is displayed as 0x1.xxxxp+e
+	exp--
+	frac *= 2
+	// frac now in [1.0, 2.0); strip the leading 1
+	mantissa := frac - 1.0
+	// 52 hex digits of the mantissa (13 hex digits = 52 bits)
+	m := uint64(mantissa * (1 << 52))
+	hexStr := "0000000000000"
+	buf := make([]byte, 13)
+	const hexChars = "0123456789abcdef"
+	for i := 12; i >= 0; i-- {
+		buf[i] = hexChars[m&0xf]
+		m >>= 4
+	}
+	hexStr = string(buf)
+	// trim trailing zeros but keep at least one digit
+	hexStr = strings.TrimRight(hexStr, "0")
+	if hexStr == "" {
+		hexStr = "0"
+	}
+	expSign := "+"
+	if exp < 0 {
+		expSign = "-"
+		exp = -exp
+	}
+	return sign + "0x1." + hexStr + "p" + expSign + string([]byte{byte('0' + exp/100%10), byte('0' + exp/10%10), byte('0' + exp%10)})
+}
+
+// rangeMethod returns methods and attributes for range objects.
+func rangeMethod(r *object.Range, name string) (object.Object, bool) {
+	switch name {
+	case "count":
+		return &object.BuiltinFunc{Name: "count", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return object.NewInt(0), nil
+			}
+			v, ok := toInt64(a[0])
+			if !ok {
+				return object.NewInt(0), nil
+			}
+			if rangeContains(r, v) {
+				return object.NewInt(1), nil
+			}
+			return object.NewInt(0), nil
+		}}, true
+	case "index":
+		return &object.BuiltinFunc{Name: "index", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "0 is not in range")
+			}
+			v, ok := toInt64(a[0])
+			if !ok || !rangeContains(r, v) {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "%d is not in range", v)
+			}
+			return object.NewInt((v - r.Start) / r.Step), nil
+		}}, true
+	}
+	return nil, false
+}
+
+func rangeContains(r *object.Range, v int64) bool {
+	if r.Step > 0 {
+		return v >= r.Start && v < r.Stop && (v-r.Start)%r.Step == 0
+	}
+	if r.Step < 0 {
+		return v <= r.Start && v > r.Stop && (v-r.Start)%r.Step == 0
+	}
+	return false
 }
 
 // sortList sorts a slice in place using the interpreter's lt.

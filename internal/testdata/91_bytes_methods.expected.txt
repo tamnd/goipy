@@ -1,0 +1,38 @@
+b'\xde\xad\xbe\xef'
+b'Hello'
+bytearray(b'\xde\xad\xbe\xef')
+deadbeef
+cafe
+b'a, b, c'
+bytearray(b'x-y')
+b'hello'
+b'hello  '
+b'  hello'
+b'hello'
+b'hello'
+b'hello'
+b'HELLO'
+b'world'
+bytearray(b'HELLO')
+bytearray(b'world')
+b'    hi    '
+b'----hi----'
+b'hi        '
+b'hi........'
+b'        hi'
+b'........hi'
+b'00042'
+b'-0042'
+b'+0042'
+2
+2
+3
+2
+ValueError
+True
+True
+b'herro'
+[b'a', b'b', b'c']
+[b'a', b'b', b'c']
+hello
+hello

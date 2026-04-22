@@ -56,7 +56,60 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("NotImplemented", object.NotImplemented)
 
 	// Constructors / types.
-	b.SetStr("int", &object.BuiltinFunc{Name: "int", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	intFromBytes := &object.BuiltinFunc{Name: "from_bytes", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) == 0 {
+			return object.NewInt(0), nil
+		}
+		var raw []byte
+		switch v := a[0].(type) {
+		case *object.Bytes:
+			raw = v.V
+		case *object.Bytearray:
+			raw = v.V
+		default:
+			items, err := iterate(in, a[0])
+			if err != nil {
+				return nil, err
+			}
+			raw = make([]byte, len(items))
+			for i, x := range items {
+				n, ok := toInt64(x)
+				if !ok {
+					return nil, object.Errorf(in.typeErr, "int.from_bytes: not an integer")
+				}
+				raw[i] = byte(n)
+			}
+		}
+		byteorder := "big"
+		if len(a) >= 2 {
+			if s, ok := a[1].(*object.Str); ok {
+				byteorder = s.V
+			}
+		}
+		signed := false
+		if kw != nil {
+			if v, ok := kw.GetStr("signed"); ok {
+				signed = object.Truthy(v)
+			}
+		}
+		b2 := append([]byte(nil), raw...)
+		if byteorder == "little" {
+			for l, r := 0, len(b2)-1; l < r; l, r = l+1, r-1 {
+				b2[l], b2[r] = b2[r], b2[l]
+			}
+		}
+		n := new(big.Int).SetBytes(b2)
+		if signed && len(b2) > 0 && b2[0]&0x80 != 0 {
+			mod := new(big.Int).Lsh(big.NewInt(1), uint(len(b2)*8))
+			n.Sub(n, mod)
+		}
+		return object.IntFromBig(n), nil
+	}}
+	intAttrs := object.NewDict()
+	intAttrs.SetStr("from_bytes", intFromBytes)
+
+	b.SetStr("int", &object.BuiltinFunc{Name: "int", Attrs: intAttrs, Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
 		if len(a) == 0 {
 			return object.NewInt(0), nil
@@ -108,7 +161,38 @@ func (i *Interp) initBuiltins() {
 		}
 		return nil, object.Errorf(in.typeErr, "int() argument must be str or int")
 	}})
-	b.SetStr("float", &object.BuiltinFunc{Name: "float", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	floatFromHex := &object.BuiltinFunc{Name: "fromhex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "float.fromhex() takes exactly one argument")
+		}
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "float.fromhex() argument must be str")
+		}
+		clean := strings.TrimSpace(s.V)
+		// Normalise to Go hex-float format (prepend 0x after optional sign)
+		withHex := clean
+		lower := strings.ToLower(clean)
+		if !strings.HasPrefix(lower, "0x") && !strings.HasPrefix(lower, "+0x") && !strings.HasPrefix(lower, "-0x") {
+			if strings.HasPrefix(clean, "+") || strings.HasPrefix(clean, "-") {
+				withHex = string(clean[0]) + "0x" + clean[1:]
+			} else {
+				withHex = "0x" + clean
+			}
+		}
+		f, err := strconv.ParseFloat(withHex, 64)
+		if err != nil {
+			// Fall back to decimal parsing
+			f, err = strconv.ParseFloat(clean, 64)
+			if err != nil {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "could not convert string to float: %s", s.V)
+			}
+		}
+		return &object.Float{V: f}, nil
+	}}
+	floatAttrs := object.NewDict()
+	floatAttrs.SetStr("fromhex", floatFromHex)
+	b.SetStr("float", &object.BuiltinFunc{Name: "float", Attrs: floatAttrs, Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
 		if len(a) == 0 {
 			return &object.Float{V: 0}, nil
@@ -144,7 +228,47 @@ func (i *Interp) initBuiltins() {
 		}
 		return nil, object.Errorf(in.typeErr, "float() bad arg")
 	}})
-	b.SetStr("str", &object.BuiltinFunc{Name: "str", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	strMaketrans := &object.BuiltinFunc{Name: "maketrans", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		d := object.NewDict()
+		if len(a) == 1 {
+			if src, ok := a[0].(*object.Dict); ok {
+				ks, vs := src.Items()
+				for k, key := range ks {
+					var ikey object.Object
+					switch kv := key.(type) {
+					case *object.Int:
+						ikey = kv
+					case *object.Str:
+						if rs := []rune(kv.V); len(rs) == 1 {
+							ikey = object.NewInt(int64(rs[0]))
+						}
+					}
+					if ikey != nil {
+						_ = d.Set(ikey, vs[k])
+					}
+				}
+			}
+		} else if len(a) >= 2 {
+			x := []rune(a[0].(*object.Str).V)
+			y := []rune(a[1].(*object.Str).V)
+			for k, r := range x {
+				var val object.Object = object.None
+				if k < len(y) {
+					val = object.NewInt(int64(y[k]))
+				}
+				_ = d.Set(object.NewInt(int64(r)), val)
+			}
+			if len(a) >= 3 {
+				for _, r := range []rune(a[2].(*object.Str).V) {
+					_ = d.Set(object.NewInt(int64(r)), object.None)
+				}
+			}
+		}
+		return d, nil
+	}}
+	strAttrs := object.NewDict()
+	strAttrs.SetStr("maketrans", strMaketrans)
+	b.SetStr("str", &object.BuiltinFunc{Name: "str", Attrs: strAttrs, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.Str{V: ""}, nil
 		}
@@ -156,7 +280,32 @@ func (i *Interp) initBuiltins() {
 		}
 		return object.BoolOf(object.Truthy(a[0])), nil
 	}})
-	b.SetStr("bytes", &object.BuiltinFunc{Name: "bytes", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	bytesFromHex := &object.BuiltinFunc{Name: "fromhex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "bytes.fromhex() takes exactly one argument")
+		}
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "bytes.fromhex() argument must be str")
+		}
+		raw := strings.ReplaceAll(s.V, " ", "")
+		if len(raw)%2 != 0 {
+			return nil, object.Errorf(ii.(*Interp).valueErr, "non-hexadecimal number found in fromhex() arg")
+		}
+		out := make([]byte, len(raw)/2)
+		for i := 0; i < len(raw); i += 2 {
+			hi := hexNibble(raw[i])
+			lo := hexNibble(raw[i+1])
+			if hi < 0 || lo < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "non-hexadecimal number found in fromhex() arg")
+			}
+			out[i/2] = byte(hi<<4 | lo)
+		}
+		return &object.Bytes{V: out}, nil
+	}}
+	bytesAttrs := object.NewDict()
+	bytesAttrs.SetStr("fromhex", bytesFromHex)
+	b.SetStr("bytes", &object.BuiltinFunc{Name: "bytes", Attrs: bytesAttrs, Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.Bytes{V: nil}, nil
 		}
@@ -199,7 +348,32 @@ func (i *Interp) initBuiltins() {
 		}
 		return nil, object.Errorf(ii.(*Interp).typeErr, "memoryview: a bytes-like object is required")
 	}})
-	b.SetStr("bytearray", &object.BuiltinFunc{Name: "bytearray", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	bytearrayFromHex := &object.BuiltinFunc{Name: "fromhex", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "bytearray.fromhex() takes exactly one argument")
+		}
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(ii.(*Interp).typeErr, "bytearray.fromhex() argument must be str")
+		}
+		raw := strings.ReplaceAll(s.V, " ", "")
+		if len(raw)%2 != 0 {
+			return nil, object.Errorf(ii.(*Interp).valueErr, "non-hexadecimal number found in fromhex() arg")
+		}
+		out := make([]byte, len(raw)/2)
+		for i := 0; i < len(raw); i += 2 {
+			hi := hexNibble(raw[i])
+			lo := hexNibble(raw[i+1])
+			if hi < 0 || lo < 0 {
+				return nil, object.Errorf(ii.(*Interp).valueErr, "non-hexadecimal number found in fromhex() arg")
+			}
+			out[i/2] = byte(hi<<4 | lo)
+		}
+		return &object.Bytearray{V: out}, nil
+	}}
+	bytearrayAttrs := object.NewDict()
+	bytearrayAttrs.SetStr("fromhex", bytearrayFromHex)
+	b.SetStr("bytearray", &object.BuiltinFunc{Name: "bytearray", Attrs: bytearrayAttrs, Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.Bytearray{V: []byte{}}, nil
 		}
@@ -245,7 +419,30 @@ func (i *Interp) initBuiltins() {
 		}
 		return &object.Tuple{V: items}, nil
 	}})
-	b.SetStr("dict", &object.BuiltinFunc{Name: "dict", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	dictFromkeys := &object.BuiltinFunc{Name: "fromkeys", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) == 0 {
+			return nil, object.Errorf(in.typeErr, "dict.fromkeys() requires at least one argument")
+		}
+		var val object.Object = object.None
+		if len(a) >= 2 {
+			val = a[1]
+		}
+		d := object.NewDict()
+		items, err := iterate(in, a[0])
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range items {
+			if err := d.Set(k, val); err != nil {
+				return nil, err
+			}
+		}
+		return d, nil
+	}}
+	dictAttrs := object.NewDict()
+	dictAttrs.SetStr("fromkeys", dictFromkeys)
+	b.SetStr("dict", &object.BuiltinFunc{Name: "dict", Attrs: dictAttrs, Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
 		d := object.NewDict()
 		if len(a) > 0 {
