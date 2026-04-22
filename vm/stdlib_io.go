@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"bufio"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -9,6 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"hash"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/tamnd/goipy/object"
@@ -759,4 +762,182 @@ func shorten(text string, width int, placeholder string) string {
 		}
 	}
 	return placeholder
+}
+
+// fileAttr dispatches attribute/method access on an *object.File (from open()).
+func fileAttr(i *Interp, f *object.File, name string) (object.Object, bool) {
+	osf := f.F.(*os.File)
+	switch name {
+	case "name":
+		return &object.Str{V: f.FilePath}, true
+	case "mode":
+		return &object.Str{V: f.Mode}, true
+	case "closed":
+		return object.BoolOf(f.Closed), true
+	case "read":
+		return &object.BuiltinFunc{Name: "read", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			var data []byte
+			var err error
+			if len(a) >= 1 {
+				n, ok := a[0].(*object.Int)
+				if !ok {
+					return nil, object.Errorf(i.typeErr, "read() argument must be int")
+				}
+				sz := n.V.Int64()
+				if sz < 0 {
+					data, err = io.ReadAll(osf)
+				} else {
+					data = make([]byte, sz)
+					nr, e := osf.Read(data)
+					data = data[:nr]
+					err = e
+					if err == io.EOF {
+						err = nil
+					}
+				}
+			} else {
+				data, err = io.ReadAll(osf)
+			}
+			if err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			if f.Binary {
+				return &object.Bytes{V: data}, nil
+			}
+			return &object.Str{V: string(data)}, nil
+		}}, true
+	case "readline":
+		return &object.BuiltinFunc{Name: "readline", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			rd := bufio.NewReader(osf)
+			line, err := rd.ReadString('\n')
+			if err != nil && err != io.EOF {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			if f.Binary {
+				return &object.Bytes{V: []byte(line)}, nil
+			}
+			return &object.Str{V: line}, nil
+		}}, true
+	case "readlines":
+		return &object.BuiltinFunc{Name: "readlines", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			data, err := io.ReadAll(osf)
+			if err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			lines := strings.Split(string(data), "\n")
+			out := make([]object.Object, 0, len(lines))
+			for idx, l := range lines {
+				if idx < len(lines)-1 {
+					l += "\n"
+				}
+				if l == "" {
+					continue
+				}
+				if f.Binary {
+					out = append(out, &object.Bytes{V: []byte(l)})
+				} else {
+					out = append(out, &object.Str{V: l})
+				}
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "write":
+		return &object.BuiltinFunc{Name: "write", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "write() requires 1 argument")
+			}
+			var data []byte
+			if f.Binary {
+				switch v := a[0].(type) {
+				case *object.Bytes:
+					data = v.V
+				case *object.Bytearray:
+					data = v.V
+				default:
+					return nil, object.Errorf(i.typeErr, "write() argument must be bytes-like in binary mode")
+				}
+			} else {
+				s, ok := a[0].(*object.Str)
+				if !ok {
+					return nil, object.Errorf(i.typeErr, "write() argument must be str")
+				}
+				data = []byte(s.V)
+			}
+			n, err := osf.Write(data)
+			if err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			return object.NewInt(int64(n)), nil
+		}}, true
+	case "writelines":
+		return &object.BuiltinFunc{Name: "writelines", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "writelines() requires 1 argument")
+			}
+			lst, ok := a[0].(*object.List)
+			if !ok {
+				return nil, object.Errorf(i.typeErr, "writelines() argument must be list")
+			}
+			for _, item := range lst.V {
+				var data []byte
+				if f.Binary {
+					b, ok := item.(*object.Bytes)
+					if !ok {
+						return nil, object.Errorf(i.typeErr, "writelines() items must be bytes in binary mode")
+					}
+					data = b.V
+				} else {
+					s, ok := item.(*object.Str)
+					if !ok {
+						return nil, object.Errorf(i.typeErr, "writelines() items must be str")
+					}
+					data = []byte(s.V)
+				}
+				if _, err := osf.Write(data); err != nil {
+					return nil, object.Errorf(i.osErr, "%v", err)
+				}
+			}
+			return object.None, nil
+		}}, true
+	case "flush":
+		return &object.BuiltinFunc{Name: "flush", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		}}, true
+	case "close":
+		return &object.BuiltinFunc{Name: "close", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if !f.Closed {
+				f.Closed = true
+				osf.Close()
+			}
+			return object.None, nil
+		}}, true
+	case "__enter__":
+		return &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return f, nil
+		}}, true
+	case "__exit__":
+		return &object.BuiltinFunc{Name: "__exit__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if !f.Closed {
+				f.Closed = true
+				osf.Close()
+			}
+			return object.False, nil
+		}}, true
+	}
+	return nil, false
 }

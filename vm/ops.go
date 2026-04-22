@@ -438,6 +438,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if fo, ok := o.(*object.File); ok {
+		if m, ok := fileAttr(i, fo, name); ok {
+			return m, nil
+		}
+	}
 	if ts, ok := o.(*object.TextStream); ok {
 		if m, ok := textStreamAttr(i, ts, name); ok {
 			return m, nil

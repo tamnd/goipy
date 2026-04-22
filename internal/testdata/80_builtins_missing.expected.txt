@@ -1,0 +1,19 @@
+dict
+True
+['x', 'y']
+['a', 'b']
+99
+True
+True
+True
+10
+20
+stop
+breakpoint ok
+line one
+line two
+
+['line one\n', 'line two\n']
+b'bytes data\n'
+file not found
+['p', 'q']

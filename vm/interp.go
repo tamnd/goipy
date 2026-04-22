@@ -33,7 +33,11 @@ type Interp struct {
 	arithErr,
 	assertErr,
 	importErr,
-	recursionErr *object.Class
+	recursionErr,
+	eofErr,
+	osErr,
+	fileNotFoundErr,
+	stopAsyncIter *object.Class
 
 	MaxDepth  int
 	callDepth int

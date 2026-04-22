@@ -81,6 +81,10 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSys(), true
 	case "time":
 		return i.buildTime(), true
+	case "os":
+		return i.buildOs(), true
+	case "os.path":
+		return i.buildOsPath(), true
 	}
 	return nil, false
 }
