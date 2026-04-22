@@ -101,6 +101,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildRlcompleter(), true
 	case "codecs":
 		return i.buildCodecs(), true
+	case "datetime":
+		return i.buildDatetime(), true
 	}
 	return nil, false
 }
