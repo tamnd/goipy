@@ -43,6 +43,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildBase64(), true
 	case "textwrap":
 		return i.buildTextwrap(), true
+	case "unicodedata":
+		return i.buildUnicodedata(), true
 	case "struct":
 		return i.buildStruct(), true
 	case "csv":
