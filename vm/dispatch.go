@@ -1587,6 +1587,13 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				}
 			}
 			if method == nil {
+				// Fall back to getAttr for non-instance objects (e.g. File,
+				// StringIO) that expose __enter__/__exit__ through getAttr.
+				if m, gerr := i.getAttr(inst, name); gerr == nil {
+					method = m
+				}
+			}
+			if method == nil {
 				return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", object.TypeName(inst), name)
 			}
 			f.push(method)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 
@@ -41,6 +42,11 @@ func (i *Interp) initBuiltins() {
 	i.assertErr = mk("AssertionError", i.exception)
 	i.importErr = mk("ImportError", i.exception)
 	i.recursionErr = mk("RecursionError", i.runtimeErr)
+	i.eofErr = mk("EOFError", i.exception)
+	i.osErr = mk("OSError", i.exception)
+	mk("IOError", i.osErr)
+	i.fileNotFoundErr = mk("FileNotFoundError", i.osErr)
+	i.stopAsyncIter = mk("StopAsyncIteration", i.exception)
 
 	// Singletons & types.
 	b.SetStr("None", object.None)
@@ -936,6 +942,121 @@ func (i *Interp) initBuiltins() {
 		}
 		return &object.Tuple{V: []object.Object{q, r}}, nil
 	}})
+	// object — the root base class.
+	objectClass := &object.Class{Name: "object", Dict: object.NewDict()}
+	b.SetStr("object", objectClass)
+
+	// globals() — return the calling frame's global namespace.
+	b.SetStr("globals", &object.BuiltinFunc{Name: "globals", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if in.curFrame == nil {
+			return object.NewDict(), nil
+		}
+		return in.curFrame.Globals, nil
+	}})
+
+	// locals() — snapshot of the calling frame's local namespace.
+	b.SetStr("locals", &object.BuiltinFunc{Name: "locals", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		return frameLocals(in.curFrame), nil
+	}})
+
+	// vars([obj]) — obj.__dict__ or locals() if no argument.
+	b.SetStr("vars", &object.BuiltinFunc{Name: "vars", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) == 0 {
+			return frameLocals(in.curFrame), nil
+		}
+		switch v := a[0].(type) {
+		case *object.Instance:
+			return v.Dict, nil
+		case *object.Module:
+			return v.Dict, nil
+		case *object.Class:
+			return v.Dict, nil
+		default:
+			return nil, object.Errorf(in.typeErr, "vars() argument must have __dict__ attribute")
+		}
+	}})
+
+	// input([prompt]) — read one line from stdin.
+	b.SetStr("input", &object.BuiltinFunc{Name: "input", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) >= 1 {
+			fmt.Fprint(in.Stdout, object.Str_(a[0]))
+		}
+		var line []byte
+		buf := make([]byte, 1)
+		for {
+			_, err := os.Stdin.Read(buf)
+			if err != nil {
+				if len(line) == 0 {
+					return nil, object.Errorf(in.eofErr, "EOF when reading a line")
+				}
+				break
+			}
+			if buf[0] == '\n' {
+				break
+			}
+			line = append(line, buf[0])
+		}
+		return &object.Str{V: string(line)}, nil
+	}})
+
+	// aiter(obj) — call obj.__aiter__().
+	b.SetStr("aiter", &object.BuiltinFunc{Name: "aiter", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) < 1 {
+			return nil, object.Errorf(in.typeErr, "aiter() requires 1 argument")
+		}
+		fn, err := in.getAttr(a[0], "__aiter__")
+		if err != nil {
+			return nil, object.Errorf(in.typeErr, "'%.100s' object is not an async iterable", object.TypeName(a[0]))
+		}
+		return in.callObject(fn, nil, nil)
+	}})
+
+	// anext(obj[, default]) — call obj.__anext__(); return default on StopAsyncIteration.
+	b.SetStr("anext", &object.BuiltinFunc{Name: "anext", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if len(a) < 1 {
+			return nil, object.Errorf(in.typeErr, "anext() requires at least 1 argument")
+		}
+		fn, err := in.getAttr(a[0], "__anext__")
+		if err != nil {
+			return nil, object.Errorf(in.typeErr, "'%.100s' object is not an async iterator", object.TypeName(a[0]))
+		}
+		r, callErr := in.callObject(fn, nil, nil)
+		if callErr != nil {
+			exc, ok := callErr.(*object.Exception)
+			if ok && len(a) >= 2 && object.IsSubclass(exc.Class, in.stopAsyncIter) {
+				return a[1], nil
+			}
+			return nil, callErr
+		}
+		return r, nil
+	}})
+
+	// breakpoint() — no debugger in goipy; write a notice and return None.
+	b.SetStr("breakpoint", &object.BuiltinFunc{Name: "breakpoint", Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		fmt.Fprintln(in.Stderr, "breakpoint() is a no-op in goipy")
+		return object.None, nil
+	}})
+
+	// help([obj]) — pydoc not available; print a stub notice to stderr.
+	b.SetStr("help", &object.BuiltinFunc{Name: "help", Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		fmt.Fprintln(in.Stderr, "help() not available in goipy")
+		return object.None, nil
+	}})
+
+	// open(file, mode='r', ...) — basic file I/O.
+	b.SetStr("open", &object.BuiltinFunc{Name: "open", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		return builtinOpen(in, a, kw)
+	}})
+
 	b.SetStr("__build_class__", &object.BuiltinFunc{Name: "__build_class__", Call: func(ii any, a []object.Object, kwds *object.Dict) (object.Object, error) {
 		// args: func, name, *bases, **kwds
 		in := ii.(*Interp)
@@ -1150,4 +1271,79 @@ func sortStrings(s []string) {
 			s[j-1], s[j] = s[j], s[j-1]
 		}
 	}
+}
+
+// frameLocals builds a snapshot dict of the locals visible in frame f. For
+// function frames the live values come from f.Fast; for module/class frames
+// they come from f.Locals.
+func frameLocals(f *Frame) *object.Dict {
+	d := object.NewDict()
+	if f == nil {
+		return d
+	}
+	// Fast locals (function frames).
+	for idx, name := range f.Code.LocalsPlusNames {
+		if idx < len(f.Fast) && f.Fast[idx] != nil {
+			d.SetStr(name, f.Fast[idx])
+		}
+	}
+	// Locals dict (module / class body frames).
+	if f.Locals != nil && f.Locals != f.Globals {
+		keys, vals := f.Locals.Items()
+		for i, k := range keys {
+			if s, ok := k.(*object.Str); ok {
+				d.SetStr(s.V, vals[i])
+			}
+		}
+	}
+	return d
+}
+
+// builtinOpen implements open(file, mode='r', ...).
+func builtinOpen(in *Interp, a []object.Object, kw *object.Dict) (object.Object, error) {
+	if len(a) < 1 {
+		return nil, object.Errorf(in.typeErr, "open() requires at least 1 argument")
+	}
+	path, ok := a[0].(*object.Str)
+	if !ok {
+		return nil, object.Errorf(in.typeErr, "open() path must be str")
+	}
+
+	mode := "r"
+	if len(a) >= 2 {
+		ms, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(in.typeErr, "open() mode must be str")
+		}
+		mode = ms.V
+	} else if kw != nil {
+		if v, ok2 := kw.GetStr("mode"); ok2 {
+			if ms, ok3 := v.(*object.Str); ok3 {
+				mode = ms.V
+			}
+		}
+	}
+
+	binary := strings.ContainsRune(mode, 'b')
+
+	var flag int
+	switch {
+	case strings.ContainsRune(mode, 'w'):
+		flag = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	case strings.ContainsRune(mode, 'a'):
+		flag = os.O_WRONLY | os.O_CREATE | os.O_APPEND
+	case strings.ContainsRune(mode, '+'):
+		flag = os.O_RDWR | os.O_CREATE
+	default:
+		flag = os.O_RDONLY
+	}
+
+	f, err := os.OpenFile(path.V, flag, 0o666)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, object.Errorf(in.fileNotFoundErr, "[Errno 2] No such file or directory: '%s'", path.V)
+		}
+		return nil, object.Errorf(in.osErr, "%v", err)
+	}
+	return &object.File{F: f, FilePath: path.V, Mode: mode, Binary: binary}, nil
 }

@@ -35,3 +35,14 @@ type TextStream struct {
 	Name string // "stdout" / "stderr"
 	W    any
 }
+
+// File wraps an *os.File for the built-in open() function. F is kept as `any`
+// to avoid pulling `os` into the object package's import graph; the vm layer
+// type-asserts to *os.File.
+type File struct {
+	F        any    // *os.File
+	FilePath string // value of the `name` attribute
+	Mode     string // e.g. "r", "wb"
+	Binary   bool   // true for "b" modes
+	Closed   bool
+}
