@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"io"
 	"runtime"
 
@@ -48,6 +49,21 @@ func (i *Interp) buildSys() *object.Module {
 	m.Dict.SetStr("stdout", &object.TextStream{Name: "stdout", W: i.Stdout})
 	m.Dict.SetStr("stderr", &object.TextStream{Name: "stderr", W: i.Stderr})
 
+	m.Dict.SetStr("exit", &object.BuiltinFunc{Name: "exit", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		var code object.Object = object.NewInt(0)
+		if len(a) > 0 {
+			code = a[0]
+		}
+		e := &object.Exception{
+			Class: i.systemExit,
+			Args:  &object.Tuple{V: []object.Object{code}},
+		}
+		if s, ok := code.(*object.Str); ok {
+			e.Msg = s.V
+		}
+		return nil, e
+	}})
+
 	m.Dict.SetStr("exc_info", &object.BuiltinFunc{Name: "exc_info", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		for f := i.curFrame; f != nil; f = f.Back {
 			if f.ExcInfo != nil {
@@ -70,6 +86,48 @@ func (i *Interp) buildSys() *object.Module {
 			return nil, object.Errorf(i.typeErr, "integer expected")
 		}
 		i.MaxDepth = int(n)
+		return object.None, nil
+	}})
+
+	return m
+}
+
+// buildWarnings exposes a minimal warnings module.
+func (i *Interp) buildWarnings() *object.Module {
+	m := &object.Module{Name: "warnings", Dict: object.NewDict()}
+
+	m.Dict.SetStr("warn", &object.BuiltinFunc{Name: "warn", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "warn() missing message argument")
+		}
+		msg := object.Str_(a[0])
+		category := "UserWarning"
+		if len(a) >= 2 {
+			if cls, ok := a[1].(*object.Class); ok {
+				category = cls.Name
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("category"); ok {
+				if cls, ok := v.(*object.Class); ok {
+					category = cls.Name
+				}
+			}
+		}
+		fmt.Fprintf(i.Stderr, "%s: %s\n", category, msg)
+		return object.None, nil
+	}})
+
+	m.Dict.SetStr("filterwarnings", &object.BuiltinFunc{Name: "filterwarnings", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	m.Dict.SetStr("simplefilter", &object.BuiltinFunc{Name: "simplefilter", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	m.Dict.SetStr("resetwarnings", &object.BuiltinFunc{Name: "resetwarnings", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	m.Dict.SetStr("catch_warnings", &object.BuiltinFunc{Name: "catch_warnings", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.None, nil
 	}})
 

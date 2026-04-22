@@ -1,0 +1,40 @@
+SystemExit: 0
+SystemExit: 42
+SystemExit: error message
+caught GeneratorExit
+GeneratorExit not caught by Exception
+caught KeyboardInterrupt
+KeyboardInterrupt not caught by Exception
+FloatingPointError as ArithmeticError: fp error
+BufferError: buf err
+caught MemoryError
+UnboundLocalError as NameError: x before assignment
+ModuleNotFoundError: True
+ModuleNotFoundError as ImportError: True
+FileExistsError as OSError: already exists
+PermissionError: denied
+TimeoutError: timed out
+IsADirectoryError: is a dir
+NotADirectoryError: not a dir
+InterruptedError: interrupted
+BlockingIOError: blocking
+ChildProcessError: child
+ProcessLookupError: no process
+BrokenPipeError as ConnectionError: broken pipe
+ConnectionAbortedError as OSError: aborted
+ConnectionRefusedError: refused
+ConnectionResetError as OSError: reset
+SyntaxError: bad syntax
+IndentationError as SyntaxError: bad indent
+TabError as IndentationError: mixed tabs
+SystemError: internal
+ReferenceError: dead weakref
+UnicodeError as ValueError: unicode error
+UnicodeDecodeError: UnicodeDecodeError
+UnicodeEncodeError: UnicodeEncodeError
+UnicodeTranslateError: UnicodeTranslateError
+DeprecationWarning as Warning: deprecated
+UserWarning as Exception: user warn
+RuntimeWarning: runtime warn
+BytesWarning: bytes warn
+True

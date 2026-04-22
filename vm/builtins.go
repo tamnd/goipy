@@ -26,27 +26,102 @@ func (i *Interp) initBuiltins() {
 	}
 	i.baseExc = mk("BaseException")
 	i.exception = mk("Exception", i.baseExc)
-	i.typeErr = mk("TypeError", i.exception)
-	i.valueErr = mk("ValueError", i.exception)
-	i.nameErr = mk("NameError", i.exception)
-	i.lookupErr = mk("LookupError", i.exception)
-	i.keyErr = mk("KeyError", i.lookupErr)
-	i.indexErr = mk("IndexError", i.lookupErr)
-	i.attrErr = mk("AttributeError", i.exception)
+
+	// ArithmeticError family.
 	i.arithErr = mk("ArithmeticError", i.exception)
-	i.zeroDivErr = mk("ZeroDivisionError", i.arithErr)
+	i.floatErr = mk("FloatingPointError", i.arithErr)
 	i.overflowErr = mk("OverflowError", i.arithErr)
-	i.runtimeErr = mk("RuntimeError", i.exception)
-	i.stopIter = mk("StopIteration", i.exception)
-	i.notImpl = mk("NotImplementedError", i.runtimeErr)
+	i.zeroDivErr = mk("ZeroDivisionError", i.arithErr)
+
+	// Simple Exception subclasses.
 	i.assertErr = mk("AssertionError", i.exception)
-	i.importErr = mk("ImportError", i.exception)
-	i.recursionErr = mk("RecursionError", i.runtimeErr)
+	i.attrErr = mk("AttributeError", i.exception)
+	i.bufferErr = mk("BufferError", i.exception)
 	i.eofErr = mk("EOFError", i.exception)
+	i.memoryErr = mk("MemoryError", i.exception)
+
+	// ImportError family.
+	i.importErr = mk("ImportError", i.exception)
+	i.moduleNotFoundErr = mk("ModuleNotFoundError", i.importErr)
+
+	// LookupError family.
+	i.lookupErr = mk("LookupError", i.exception)
+	i.indexErr = mk("IndexError", i.lookupErr)
+	i.keyErr = mk("KeyError", i.lookupErr)
+
+	// NameError family.
+	i.nameErr = mk("NameError", i.exception)
+	i.unboundLocalErr = mk("UnboundLocalError", i.nameErr)
+
+	// OSError family.
 	i.osErr = mk("OSError", i.exception)
 	mk("IOError", i.osErr)
+	mk("EnvironmentError", i.osErr)
+	mk("WindowsError", i.osErr)
+	mk("BlockingIOError", i.osErr)
+	mk("ChildProcessError", i.osErr)
+	i.connectionErr = mk("ConnectionError", i.osErr)
+	mk("BrokenPipeError", i.connectionErr, i.osErr)
+	mk("ConnectionAbortedError", i.connectionErr)
+	mk("ConnectionRefusedError", i.connectionErr)
+	mk("ConnectionResetError", i.connectionErr)
 	i.fileNotFoundErr = mk("FileNotFoundError", i.osErr)
+	mk("FileExistsError", i.osErr)
+	mk("InterruptedError", i.osErr)
+	mk("IsADirectoryError", i.osErr)
+	mk("NotADirectoryError", i.osErr)
+	mk("PermissionError", i.osErr)
+	mk("ProcessLookupError", i.osErr)
+	mk("TimeoutError", i.osErr)
+
+	// Other Exception subclasses.
+	mk("ReferenceError", i.exception)
+	i.runtimeErr = mk("RuntimeError", i.exception)
+	i.notImpl = mk("NotImplementedError", i.runtimeErr)
+	i.recursionErr = mk("RecursionError", i.runtimeErr)
 	i.stopAsyncIter = mk("StopAsyncIteration", i.exception)
+	i.stopIter = mk("StopIteration", i.exception)
+
+	// SyntaxError family.
+	i.syntaxErr = mk("SyntaxError", i.exception)
+	indentErr := mk("IndentationError", i.syntaxErr)
+	mk("TabError", indentErr)
+
+	// SystemError.
+	i.systemErr = mk("SystemError", i.exception)
+
+	// TypeError / ValueError.
+	i.typeErr = mk("TypeError", i.exception)
+	i.valueErr = mk("ValueError", i.exception)
+
+	// UnicodeError family (subclass of ValueError).
+	i.unicodeErr = mk("UnicodeError", i.valueErr)
+	i.unicodeDecodeErr = mk("UnicodeDecodeError", i.unicodeErr)
+	i.unicodeEncodeErr = mk("UnicodeEncodeError", i.unicodeErr)
+	mk("UnicodeTranslateError", i.unicodeErr)
+
+	// Warning hierarchy (subclass of Exception).
+	i.warningClass = mk("Warning", i.exception)
+	mk("DeprecationWarning", i.warningClass)
+	mk("PendingDeprecationWarning", i.warningClass)
+	mk("RuntimeWarning", i.warningClass)
+	mk("SyntaxWarning", i.warningClass)
+	mk("UserWarning", i.warningClass)
+	mk("FutureWarning", i.warningClass)
+	mk("ImportWarning", i.warningClass)
+	mk("UnicodeWarning", i.warningClass)
+	mk("BytesWarning", i.warningClass)
+	mk("ResourceWarning", i.warningClass)
+	mk("EncodingWarning", i.warningClass)
+
+	// BaseException-level (not caught by bare except Exception).
+	i.systemExit = mk("SystemExit", i.baseExc)
+	i.keyboardInterrupt = mk("KeyboardInterrupt", i.baseExc)
+	i.generatorExit = mk("GeneratorExit", i.baseExc)
+
+	// ExceptionGroup (Python 3.11+): inherits Exception AND BaseExceptionGroup.
+	i.baseExcGroup = mk("BaseExceptionGroup", i.baseExc)
+	mk("ExceptionGroup", i.exception, i.baseExcGroup)
 
 	// Singletons & types.
 	b.SetStr("None", object.None)
