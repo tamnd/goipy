@@ -1,0 +1,58 @@
+16.0.0
+LATIN CAPITAL LETTER A
+LATIN SMALL LETTER A
+DIGIT ONE
+LATIN SMALL LETTER E WITH ACUTE
+CJK UNIFIED IDEOGRAPH-4E2D
+GRINNING FACE
+no name
+ValueError
+A
+é
+KeyError
+9
+0
+None
+5
+9
+2
+None
+9.0
+0.5
+2.0
+None
+Lu
+Ll
+Nd
+Zs
+Po
+Mn
+Cf
+Cc
+L
+EN
+AN
+R
+BN
+230
+0
+230
+Na
+W
+F
+1
+0
+1
+0065 0301
+
+<fraction> 0031 2044 0034
+<compat> 0066 0069
+'é'
+'é'
+'a'
+'Ω'
+'hello'
+True
+True
+False
+False
