@@ -229,6 +229,21 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 			return &object.Tuple{V: out}, nil
 		}
 	}
+	// Template + Template → new Template (PEP 750)
+	if ta, ok := a.(*object.Template); ok {
+		if tb, ok := b.(*object.Template); ok {
+			// Merge: last string of a concatenated with first string of b.
+			newStrs := make([]*object.Str, 0, len(ta.Strings)+len(tb.Strings)-1)
+			newStrs = append(newStrs, ta.Strings[:len(ta.Strings)-1]...)
+			merged := ta.Strings[len(ta.Strings)-1].V + tb.Strings[0].V
+			newStrs = append(newStrs, &object.Str{V: merged})
+			newStrs = append(newStrs, tb.Strings[1:]...)
+			newInterps := make([]*object.Interpolation, 0, len(ta.Interpolations)+len(tb.Interpolations))
+			newInterps = append(newInterps, ta.Interpolations...)
+			newInterps = append(newInterps, tb.Interpolations...)
+			return &object.Template{Strings: newStrs, Interpolations: newInterps}, nil
+		}
+	}
 	// bytes/bytearray concatenation. Result type follows the left operand:
 	// bytes + bytes → bytes; bytearray + bytes → bytearray; bytes + bytearray → bytes.
 	if ab, ok := a.(*object.Bytes); ok {
