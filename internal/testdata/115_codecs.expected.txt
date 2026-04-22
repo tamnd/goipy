@@ -1,0 +1,47 @@
+b'\xef\xbb\xbf'
+b'\xfe\xff'
+b'\xff\xfe'
+b'\x00\x00\xfe\xff'
+b'\xff\xfe\x00\x00'
+b'hello'
+hello
+b'hello'
+hello
+b'\xe9'
+é
+b'hi'
+b'hi'
+b'68656c6c6f'
+b'hello'
+b'aGVsbG8='
+b'hello'
+Uryyb, Jbeyq!
+Hello, World!
+b'caf'
+b'caf?'
+b'caf&#233;'
+b'caf\\xe9'
+
+��
+utf-8
+True
+True
+ascii
+utf-8
+utf-8
+(b'hello', 5)
+('hello', 5)
+True
+True
+True
+True
+True
+True
+True
+True
+True
+[b'hello', b' ', b'world']
+['hel', 'lo']
+0
+4
+done
