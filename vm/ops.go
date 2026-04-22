@@ -393,6 +393,11 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if b, ok := o.(*object.Bytes); ok {
+		if m, ok := bytesMethod(b, name); ok {
+			return m, nil
+		}
+	}
 	if ba, ok := o.(*object.Bytearray); ok {
 		if m, ok := bytearrayMethod(ba, name); ok {
 			return m, nil
@@ -501,6 +506,43 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	if t, ok := o.(*object.Tuple); ok {
 		if m, ok := tupleMethod(t, name); ok {
 			return m, nil
+		}
+	}
+	if interp, ok := o.(*object.Interpolation); ok {
+		switch name {
+		case "value":
+			return interp.Value, nil
+		case "expression":
+			return &object.Str{V: interp.Expression}, nil
+		case "conversion":
+			if interp.Conversion == "" {
+				return object.None, nil
+			}
+			return &object.Str{V: interp.Conversion}, nil
+		case "format_spec":
+			return &object.Str{V: interp.FormatSpec}, nil
+		}
+	}
+	if tmpl, ok := o.(*object.Template); ok {
+		switch name {
+		case "strings":
+			elems := make([]object.Object, len(tmpl.Strings))
+			for idx, s := range tmpl.Strings {
+				elems[idx] = s
+			}
+			return &object.Tuple{V: elems}, nil
+		case "interpolations":
+			elems := make([]object.Object, len(tmpl.Interpolations))
+			for idx, interp := range tmpl.Interpolations {
+				elems[idx] = interp
+			}
+			return &object.Tuple{V: elems}, nil
+		case "values":
+			elems := make([]object.Object, len(tmpl.Interpolations))
+			for idx, interp := range tmpl.Interpolations {
+				elems[idx] = interp.Value
+			}
+			return &object.Tuple{V: elems}, nil
 		}
 	}
 	if g, ok := o.(*object.Generator); ok {
@@ -1185,6 +1227,26 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			}
 			r := object.NewInt(cur)
 			cur += x.Step
+			return r, true, nil
+		}}, nil
+	case *object.Template:
+		// Iteration yields interleaved non-empty str parts and all interpolations.
+		var flat []object.Object
+		for idx, s := range x.Strings {
+			if s.V != "" {
+				flat = append(flat, s)
+			}
+			if idx < len(x.Interpolations) {
+				flat = append(flat, x.Interpolations[idx])
+			}
+		}
+		pos := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if pos >= len(flat) {
+				return nil, false, nil
+			}
+			r := flat[pos]
+			pos++
 			return r, true, nil
 		}}, nil
 	}

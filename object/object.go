@@ -487,6 +487,12 @@ func TypeName(o Object) string {
 		return "UUID"
 	case *SequenceMatcher:
 		return "SequenceMatcher"
+	case *File:
+		return "_io.TextIOWrapper"
+	case *Interpolation:
+		return "Interpolation"
+	case *Template:
+		return "Template"
 	}
 	return fmt.Sprintf("%T", o)
 }

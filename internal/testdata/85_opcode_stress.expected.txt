@@ -1,0 +1,86 @@
+20 10
+0 1 255 256 -1 -5 1000
+3.14 (1+2j) hello b'bytes' None True False
+7 7 42 2.5
+3 1 256
+8 15 6
+16 32
+no matmul
+True True True True
+True True
+True True
+True True
+False True True False
+-5 3
+-1 -2 0
+24
+global
+global
+7
+11 12 13
+3 4
+25
+False
+10 50
+[20, 30, 40]
+[10, 30, 50]
+99
+20
+(1, 2, 3) [4, 5, 6] {'a': 1, 'b': 2} [7, 8, 9]
+xyz
+slice(1, 5, 2)
+[0, 1, 2, 3, 4]
+[0, 2, 4, 6]
+{0: 0, 1: 1, 2: 4, 3: 9}
+45
+1 2 3
+10 [20, 30, 40]
+[1, 2, 3] 4
+positive negative zero
+got none
+7
+120
+[0, 1, 2, 3, 4]
+[0, 1, 1, 2, 3, 5, 8, 13]
+((1, 2, 3), [('x', 4), ('y', 5)])
+12 25
+True
+True
+5.0
+div by zero
+5
+ValueError: zero!
+TypeError: negative!
+enter A
+inside A
+exit A
+7
+10
+circle r=5
+rect 3x4
+unknown
+hello world
+pi = 3.142
+'world'
+00042
+3
+4
+4.0
+HELLO WORLD
+['hello', 'world']
+hello python
+5 104
+hello
+[1, 1, 2, 3, 4, 5, 9]
+[8, 5, 2]
+[('a', 1), ('b', 2), ('c', 3)]
+[0, 2, 4, 6, 8]
+[0, 2, 4, 6]
+[5, 4, 3, 1, 1]
+42 3.14 123 False True
+[1, 2, 3] (4, 5, 6)
+{1, 2, 3}
+Template
+42
+r
+['value=', Interpolation(42, 'x', None, ''), ' ', Interpolation('ok', 'msg', 'r', '')]
