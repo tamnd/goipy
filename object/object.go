@@ -462,6 +462,18 @@ func TypeName(o Object) string {
 		return "iterator"
 	case *PyArray:
 		return "array"
+	case *PyWeakRef:
+		if v.TypeName != "" {
+			return v.TypeName
+		}
+		return "ReferenceType"
+	case *PyProxy:
+		if v.Callable {
+			return "CallableProxyType"
+		}
+		return "ProxyType"
+	case *PyFinalizer:
+		return "finalize"
 	case *Deque:
 		return "collections.deque"
 	case *Counter:

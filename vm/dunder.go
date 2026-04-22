@@ -2,6 +2,7 @@ package vm
 
 import (
 	"math/big"
+	"reflect"
 
 	"github.com/tamnd/goipy/object"
 )
@@ -182,7 +183,10 @@ func (i *Interp) instHashHook(o object.Object) (uint64, bool, error) {
 	}
 	r, ok, err := i.callInstanceDunder(inst, "__hash__")
 	if !ok {
-		return 0, false, nil
+		// No __hash__ defined: use identity hash (CPython default).
+		p := reflect.ValueOf(inst).Pointer()
+		h := uint64(p>>4) ^ uint64(p>>12)
+		return h, true, nil
 	}
 	if err != nil {
 		return 0, true, err

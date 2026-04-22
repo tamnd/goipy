@@ -54,6 +54,17 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 		if r, ok, err := i.callInstanceDunder(fn, "__call__", args...); ok {
 			return r, err
 		}
+	case *object.PyWeakRef:
+		if fn.Target == nil {
+			return object.None, nil
+		}
+		return fn.Target, nil
+	case *object.PyFinalizer:
+		if !fn.Alive {
+			return object.None, nil
+		}
+		fn.Alive = false
+		return i.callObject(fn.Fn, fn.Args, fn.Kwargs)
 	}
 	return nil, object.Errorf(i.typeErr, "'%s' object is not callable", object.TypeName(callable))
 }

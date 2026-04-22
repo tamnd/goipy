@@ -99,6 +99,22 @@ func Repr(o Object) string {
 		return "<module '" + v.Name + "'>"
 	case *Slice:
 		return "slice(" + Repr(v.Start) + ", " + Repr(v.Stop) + ", " + Repr(v.Step) + ")"
+	case *PyWeakRef:
+		if v.Target == nil {
+			return "<weakref at 0x0; dead>"
+		}
+		return "<weakref at 0x0; to '" + TypeName(v.Target) + "' at 0x0>"
+	case *PyProxy:
+		if v.Target == nil {
+			return "<weakproxy at 0x0; dead>"
+		}
+		return "<weakproxy at 0x0; to '" + TypeName(v.Target) + "' at 0x0>"
+	case *PyFinalizer:
+		state := "alive"
+		if !v.Alive {
+			state = "dead"
+		}
+		return "<finalize object at 0x0; " + state + ">"
 	case *PyArray:
 		if len(v.V) == 0 {
 			return "array('" + v.Typecode + "')"
