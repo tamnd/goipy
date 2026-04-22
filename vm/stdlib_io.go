@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"hash"
 	"io"
+	"math/big"
 	"os"
 	"strings"
 
@@ -516,6 +517,78 @@ func (i *Interp) buildBase64() *object.Module {
 
 // --- textwrap module ---
 
+// twOpts mirrors Python's TextWrapper constructor parameters.
+type twOpts struct {
+	width            int
+	initialIndent    string
+	subsequentIndent string
+	expandTabs       bool
+	tabsize          int
+	breakLongWords   bool
+	maxLines         int    // 0 = unlimited
+	placeholder      string // default " [...]"
+}
+
+func defaultTWOpts() twOpts {
+	return twOpts{
+		width:          70,
+		expandTabs:     true,
+		tabsize:        8,
+		breakLongWords: true,
+		placeholder:    " [...]",
+	}
+}
+
+// parseTWOpts reads positional arg[1] as width and keyword args.
+func parseTWOpts(a []object.Object, kw *object.Dict) twOpts {
+	o := defaultTWOpts()
+	if len(a) >= 2 {
+		if n, ok := toInt64(a[1]); ok {
+			o.width = int(n)
+		}
+	}
+	if kw == nil {
+		return o
+	}
+	if v, ok := kw.GetStr("width"); ok {
+		if n, ok := toInt64(v); ok {
+			o.width = int(n)
+		}
+	}
+	if v, ok := kw.GetStr("initial_indent"); ok {
+		if s, ok := v.(*object.Str); ok {
+			o.initialIndent = s.V
+		}
+	}
+	if v, ok := kw.GetStr("subsequent_indent"); ok {
+		if s, ok := v.(*object.Str); ok {
+			o.subsequentIndent = s.V
+		}
+	}
+	if v, ok := kw.GetStr("expand_tabs"); ok {
+		o.expandTabs = object.Truthy(v)
+	}
+	if v, ok := kw.GetStr("tabsize"); ok {
+		if n, ok := toInt64(v); ok {
+			o.tabsize = int(n)
+		}
+	}
+	if v, ok := kw.GetStr("break_long_words"); ok {
+		o.breakLongWords = object.Truthy(v)
+	}
+	if v, ok := kw.GetStr("max_lines"); ok {
+		if n, ok := toInt64(v); ok {
+			o.maxLines = int(n)
+		}
+	}
+	if v, ok := kw.GetStr("placeholder"); ok {
+		if s, ok := v.(*object.Str); ok {
+			o.placeholder = s.V
+		}
+	}
+	return o
+}
+
 func (i *Interp) buildTextwrap() *object.Module {
 	m := &object.Module{Name: "textwrap", Dict: object.NewDict()}
 
@@ -527,7 +600,7 @@ func (i *Interp) buildTextwrap() *object.Module {
 		return &object.Str{V: dedent(s.V)}, nil
 	}})
 
-	m.Dict.SetStr("indent", &object.BuiltinFunc{Name: "indent", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	m.Dict.SetStr("indent", &object.BuiltinFunc{Name: "indent", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 2 {
 			return nil, object.Errorf(i.typeErr, "indent() missing args")
 		}
@@ -539,7 +612,17 @@ func (i *Interp) buildTextwrap() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "indent() prefix must be str")
 		}
-		return &object.Str{V: indent(s.V, prefix.V)}, nil
+		var predicate object.Object
+		if kw != nil {
+			if v, ok := kw.GetStr("predicate"); ok {
+				predicate = v
+			}
+		}
+		result, err := i.indentText(s.V, prefix.V, predicate)
+		if err != nil {
+			return nil, err
+		}
+		return &object.Str{V: result}, nil
 	}})
 
 	m.Dict.SetStr("wrap", &object.BuiltinFunc{Name: "wrap", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -550,20 +633,8 @@ func (i *Interp) buildTextwrap() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "wrap() text must be str")
 		}
-		width := 70
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				width = int(n)
-			}
-		}
-		if kw != nil {
-			if v, ok := kw.GetStr("width"); ok {
-				if n, ok := toInt64(v); ok {
-					width = int(n)
-				}
-			}
-		}
-		lines := wrap(s.V, width)
+		opts := parseTWOpts(a, kw)
+		lines := wrapFull(s.V, opts)
 		out := make([]object.Object, len(lines))
 		for k, l := range lines {
 			out[k] = &object.Str{V: l}
@@ -579,20 +650,8 @@ func (i *Interp) buildTextwrap() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "fill() text must be str")
 		}
-		width := 70
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				width = int(n)
-			}
-		}
-		if kw != nil {
-			if v, ok := kw.GetStr("width"); ok {
-				if n, ok := toInt64(v); ok {
-					width = int(n)
-				}
-			}
-		}
-		return &object.Str{V: strings.Join(wrap(s.V, width), "\n")}, nil
+		opts := parseTWOpts(a, kw)
+		return &object.Str{V: strings.Join(wrapFull(s.V, opts), "\n")}, nil
 	}})
 
 	m.Dict.SetStr("shorten", &object.BuiltinFunc{Name: "shorten", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -603,29 +662,156 @@ func (i *Interp) buildTextwrap() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "shorten() text must be str")
 		}
-		width := 70
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				width = int(n)
-			}
-		}
-		placeholder := " [...]"
-		if kw != nil {
-			if v, ok := kw.GetStr("width"); ok {
-				if n, ok := toInt64(v); ok {
-					width = int(n)
-				}
-			}
-			if v, ok := kw.GetStr("placeholder"); ok {
-				if p, ok := v.(*object.Str); ok {
-					placeholder = p.V
-				}
-			}
-		}
-		return &object.Str{V: shorten(s.V, width, placeholder)}, nil
+		opts := parseTWOpts(a, kw)
+		return &object.Str{V: i.shortenText(s.V, opts)}, nil
 	}})
 
+	// TextWrapper class
+	twClass := &object.Class{Name: "TextWrapper"}
+	twClass.Dict = object.NewDict()
+	twClass.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		// defaults
+		opts := defaultTWOpts()
+		// parse kw only (no positional width for TextWrapper)
+		if kw != nil {
+			if v, ok2 := kw.GetStr("width"); ok2 {
+				if n, ok3 := toInt64(v); ok3 {
+					opts.width = int(n)
+				}
+			}
+			if v, ok2 := kw.GetStr("initial_indent"); ok2 {
+				if s, ok3 := v.(*object.Str); ok3 {
+					opts.initialIndent = s.V
+				}
+			}
+			if v, ok2 := kw.GetStr("subsequent_indent"); ok2 {
+				if s, ok3 := v.(*object.Str); ok3 {
+					opts.subsequentIndent = s.V
+				}
+			}
+			if v, ok2 := kw.GetStr("expand_tabs"); ok2 {
+				opts.expandTabs = object.Truthy(v)
+			}
+			if v, ok2 := kw.GetStr("tabsize"); ok2 {
+				if n, ok3 := toInt64(v); ok3 {
+					opts.tabsize = int(n)
+				}
+			}
+			if v, ok2 := kw.GetStr("break_long_words"); ok2 {
+				opts.breakLongWords = object.Truthy(v)
+			}
+			if v, ok2 := kw.GetStr("max_lines"); ok2 {
+				if n, ok3 := toInt64(v); ok3 {
+					opts.maxLines = int(n)
+				}
+			}
+			if v, ok2 := kw.GetStr("placeholder"); ok2 {
+				if s, ok3 := v.(*object.Str); ok3 {
+					opts.placeholder = s.V
+				}
+			}
+		}
+		self.Dict.SetStr("width", &object.Int{V: *new(big.Int).SetInt64(int64(opts.width))})
+		self.Dict.SetStr("initial_indent", &object.Str{V: opts.initialIndent})
+		self.Dict.SetStr("subsequent_indent", &object.Str{V: opts.subsequentIndent})
+		self.Dict.SetStr("expand_tabs", object.BoolOf(opts.expandTabs))
+		self.Dict.SetStr("tabsize", &object.Int{V: *new(big.Int).SetInt64(int64(opts.tabsize))})
+		self.Dict.SetStr("break_long_words", object.BoolOf(opts.breakLongWords))
+		if opts.maxLines > 0 {
+			self.Dict.SetStr("max_lines", &object.Int{V: *new(big.Int).SetInt64(int64(opts.maxLines))})
+		} else {
+			self.Dict.SetStr("max_lines", object.None)
+		}
+		self.Dict.SetStr("placeholder", &object.Str{V: opts.placeholder})
+		return object.None, nil
+	}})
+	twClass.Dict.SetStr("wrap", &object.BuiltinFunc{Name: "wrap", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.wrap() missing text")
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.wrap() bad self")
+		}
+		text, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.wrap() text must be str")
+		}
+		opts := twOptsFromInstance(self)
+		lines := wrapFull(text.V, opts)
+		out := make([]object.Object, len(lines))
+		for k, l := range lines {
+			out[k] = &object.Str{V: l}
+		}
+		return &object.List{V: out}, nil
+	}})
+	twClass.Dict.SetStr("fill", &object.BuiltinFunc{Name: "fill", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.fill() missing text")
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.fill() bad self")
+		}
+		text, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "TextWrapper.fill() text must be str")
+		}
+		opts := twOptsFromInstance(self)
+		return &object.Str{V: strings.Join(wrapFull(text.V, opts), "\n")}, nil
+	}})
+	m.Dict.SetStr("TextWrapper", twClass)
+
 	return m
+}
+
+// twOptsFromInstance reads twOpts back from a TextWrapper instance's __dict__.
+func twOptsFromInstance(self *object.Instance) twOpts {
+	o := defaultTWOpts()
+	if v, ok := self.Dict.GetStr("width"); ok {
+		if n, ok2 := toInt64(v); ok2 {
+			o.width = int(n)
+		}
+	}
+	if v, ok := self.Dict.GetStr("initial_indent"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			o.initialIndent = s.V
+		}
+	}
+	if v, ok := self.Dict.GetStr("subsequent_indent"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			o.subsequentIndent = s.V
+		}
+	}
+	if v, ok := self.Dict.GetStr("expand_tabs"); ok {
+		o.expandTabs = object.Truthy(v)
+	}
+	if v, ok := self.Dict.GetStr("tabsize"); ok {
+		if n, ok2 := toInt64(v); ok2 {
+			o.tabsize = int(n)
+		}
+	}
+	if v, ok := self.Dict.GetStr("break_long_words"); ok {
+		o.breakLongWords = object.Truthy(v)
+	}
+	if v, ok := self.Dict.GetStr("max_lines"); ok {
+		if n, ok2 := toInt64(v); ok2 {
+			o.maxLines = int(n)
+		}
+	}
+	if v, ok := self.Dict.GetStr("placeholder"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			o.placeholder = s.V
+		}
+	}
+	return o
 }
 
 // dedent strips the longest common leading whitespace from every non-blank
@@ -679,89 +865,198 @@ func commonPrefix(a, b string) string {
 	return a[:n]
 }
 
-// indent prepends prefix to each non-empty line (CPython default).
-func indent(text, prefix string) string {
-	lines := strings.SplitAfter(text, "\n")
+// splitlinesKeepends mimics Python's str.splitlines(keepends=True).
+// A trailing newline does NOT produce a trailing empty element.
+func splitlinesKeepends(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.SplitAfter(s, "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
+
+// expandTabsStr expands tab characters to spaces using given tabsize.
+func expandTabsStr(s string, tabsize int) string {
+	if tabsize <= 0 {
+		return strings.ReplaceAll(s, "\t", "")
+	}
 	var b strings.Builder
-	for _, line := range lines {
-		if strings.TrimSpace(strings.TrimRight(line, "\n")) != "" {
-			b.WriteString(prefix)
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			spaces := tabsize - col%tabsize
+			b.WriteString(strings.Repeat(" ", spaces))
+			col += spaces
+		} else if r == '\n' || r == '\r' {
+			b.WriteRune(r)
+			col = 0
+		} else {
+			b.WriteRune(r)
+			col++
 		}
-		b.WriteString(line)
 	}
 	return b.String()
 }
 
-// wrap splits text into lines no wider than width, breaking on whitespace.
-// Words longer than width are split (CPython's default break_long_words).
-// Empty input returns an empty list.
-func wrap(text string, width int) []string {
-	if width <= 0 {
-		width = 1
+// indentText prepends prefix to lines selected by predicate (default: non-blank).
+// predicate may be nil (use default) or a Python callable object.
+func (i *Interp) indentText(text, prefix string, predicate object.Object) (string, error) {
+	lines := splitlinesKeepends(text)
+	var b strings.Builder
+	for _, line := range lines {
+		add := false
+		if predicate == nil || predicate == object.None {
+			add = strings.TrimSpace(line) != ""
+		} else {
+			res, err := i.callObject(predicate, []object.Object{&object.Str{V: line}}, nil)
+			if err != nil {
+				return "", err
+			}
+			add = object.Truthy(res)
+		}
+		if add {
+			b.WriteString(prefix)
+		}
+		b.WriteString(line)
 	}
+	return b.String(), nil
+}
+
+// wrapFull is a full CPython-compatible text wrapper.
+func wrapFull(text string, o twOpts) []string {
+	if o.expandTabs {
+		ts := o.tabsize
+		if ts <= 0 {
+			ts = 8
+		}
+		text = expandTabsStr(text, ts)
+	}
+
+	// CPython preserves leading whitespace on the first line (drop_whitespace
+	// only drops leading whitespace on lines after the first).
+	leadWS := ""
+	trimmed := strings.TrimLeft(text, " \t")
+	if len(trimmed) < len(text) {
+		leadWS = text[:len(text)-len(trimmed)]
+		text = trimmed
+	}
+
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return nil
 	}
+
+	ph := o.placeholder
+	if ph == "" {
+		ph = " [...]"
+	}
+	width := o.width
+	if width < 1 {
+		width = 1
+	}
+
+	// Work on a mutable copy so we can split long words inline.
+	ws := make([]string, len(words))
+	copy(ws, words)
+
 	var lines []string
-	var cur strings.Builder
-	flush := func() {
-		if cur.Len() > 0 {
-			lines = append(lines, cur.String())
-			cur.Reset()
-		}
-	}
-	for _, w := range words {
-		// Break oversized words across lines by emitting width-sized slices.
-		for len(w) > width {
-			if cur.Len() > 0 {
-				remaining := width - cur.Len() - 1
-				if remaining > 0 {
-					cur.WriteByte(' ')
-					cur.WriteString(w[:remaining])
-					w = w[remaining:]
-				}
-				flush()
+	// Leading whitespace merges with initial_indent (applies to first line only).
+	indent := leadWS + o.initialIndent
+
+	wi := 0
+	for wi < len(ws) {
+		lineIndent := indent
+		lineW := lineIndent
+		isLast := o.maxLines > 0 && len(lines) == o.maxLines-1
+		startWi := wi
+
+		// Fill this line greedily.
+		for wi < len(ws) {
+			w := ws[wi]
+			sep := " "
+			if lineW == lineIndent {
+				sep = ""
 			}
-			cur.WriteString(w[:width])
-			w = w[width:]
-			flush()
+			fits := len(lineW)+len(sep)+len(w) <= width
+			if fits {
+				lineW += sep + w
+				wi++
+			} else if lineW == lineIndent {
+				// First word on line; it's too long.
+				if o.breakLongWords {
+					rem := width - len(lineIndent)
+					if rem < 1 {
+						rem = 1
+					}
+					lineW += w[:rem]
+					tail := w[rem:]
+					if tail == "" {
+						wi++
+					} else {
+						// Splice remainder back into ws.
+						ws = append(ws[:wi], append([]string{tail}, ws[wi+1:]...)...)
+					}
+				} else {
+					lineW += w
+					wi++
+				}
+				break
+			} else {
+				break // word doesn't fit; flush line
+			}
 		}
-		if w == "" {
-			continue
+
+		// If this is the last allowed line and there are still words left,
+		// truncate with placeholder.
+		if isLast && wi < len(ws) {
+			actualPh := ph
+			if lineW == lineIndent {
+				// Nothing on line yet: strip leading spaces from placeholder.
+				actualPh = strings.TrimLeft(ph, " ")
+			}
+			// Backtrack words until placeholder fits.
+			for len(lineW)+len(actualPh) > width && lineW != lineIndent {
+				idx := strings.LastIndex(lineW[len(lineIndent):], " ")
+				if idx < 0 {
+					lineW = lineIndent
+					actualPh = strings.TrimLeft(ph, " ")
+					break
+				}
+				lineW = lineW[:len(lineIndent)+idx]
+				if lineW == lineIndent {
+					actualPh = strings.TrimLeft(ph, " ")
+				}
+			}
+			lineW += actualPh
 		}
-		if cur.Len() == 0 {
-			cur.WriteString(w)
-			continue
+
+		if lineW != lineIndent || wi > startWi {
+			lines = append(lines, lineW)
+		} else {
+			break // safety: no progress
 		}
-		if cur.Len()+1+len(w) > width {
-			flush()
-			cur.WriteString(w)
-			continue
+
+		indent = o.subsequentIndent
+		if isLast {
+			break
 		}
-		cur.WriteByte(' ')
-		cur.WriteString(w)
 	}
-	flush()
+
 	return lines
 }
 
-// shorten collapses whitespace then trims to width, appending placeholder
-// when the result would otherwise exceed width.
-func shorten(text string, width int, placeholder string) string {
+// shortenText collapses whitespace and wraps to a single line with placeholder.
+func (i *Interp) shortenText(text string, o twOpts) string {
 	text = strings.Join(strings.Fields(text), " ")
-	if len(text) <= width {
-		return text
+	o.maxLines = 1
+	lines := wrapFull(text, o)
+	if len(lines) == 0 {
+		return ""
 	}
-	// Walk back word-by-word until the result + placeholder fits.
-	words := strings.Split(text, " ")
-	for n := len(words); n > 0; n-- {
-		candidate := strings.Join(words[:n], " ") + placeholder
-		if len(candidate) <= width {
-			return candidate
-		}
-	}
-	return placeholder
+	return lines[0]
 }
 
 // fileAttr dispatches attribute/method access on an *object.File (from open()).
