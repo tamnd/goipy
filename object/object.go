@@ -368,6 +368,10 @@ type Class struct {
 	// is bumped whenever any class is mutated (ClassEpoch()); stale entries
 	// are ignored. Populated by the VM; safe to leave nil.
 	MethodCache map[string]MethodCacheEntry
+
+	// ABCCheck is set on abstract base classes (collections.abc). When
+	// non-nil, isinstance() calls it before the normal MRO walk.
+	ABCCheck func(o Object) bool
 }
 
 // MethodCacheEntry stores one cached classLookup result.

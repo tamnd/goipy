@@ -1428,6 +1428,10 @@ func reduceMinMax(in *Interp, a []object.Object, isMin bool) (object.Object, err
 
 func isinstance(o, t object.Object) bool {
 	if cls, ok := t.(*object.Class); ok {
+		// ABC structural check: if the class defines ABCCheck, try it first.
+		if cls.ABCCheck != nil && cls.ABCCheck(o) {
+			return true
+		}
 		if inst, ok := o.(*object.Instance); ok {
 			return object.IsSubclass(inst.Class, cls)
 		}

@@ -17,6 +17,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildItertools(), true
 	case "collections":
 		return i.buildCollections(), true
+	case "collections.abc":
+		return i.buildCollectionsAbc(), true
 	case "operator":
 		return i.buildOperator(), true
 	case "math":
