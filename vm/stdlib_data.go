@@ -997,22 +997,6 @@ func groupIndex(i *Interp, mt *object.Match, a []object.Object) (int, error) {
 	return g, nil
 }
 
-// --- string (constants) ---
-
-func (i *Interp) buildStringMod() *object.Module {
-	m := &object.Module{Name: "string", Dict: object.NewDict()}
-	m.Dict.SetStr("ascii_lowercase", &object.Str{V: "abcdefghijklmnopqrstuvwxyz"})
-	m.Dict.SetStr("ascii_uppercase", &object.Str{V: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"})
-	m.Dict.SetStr("ascii_letters", &object.Str{V: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"})
-	m.Dict.SetStr("digits", &object.Str{V: "0123456789"})
-	m.Dict.SetStr("hexdigits", &object.Str{V: "0123456789abcdefABCDEF"})
-	m.Dict.SetStr("octdigits", &object.Str{V: "01234567"})
-	m.Dict.SetStr("punctuation", &object.Str{V: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"})
-	m.Dict.SetStr("whitespace", &object.Str{V: " \t\n\r\v\f"})
-	m.Dict.SetStr("printable", &object.Str{V: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\r\v\f"})
-	return m
-}
-
 // --- copy ---
 
 func (i *Interp) buildCopy() *object.Module {

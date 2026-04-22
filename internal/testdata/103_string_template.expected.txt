@@ -1,0 +1,17 @@
+tim likes kung pao
+hi!
+Price: $100
+The dog says woof
+John Doe
+tim likes $what
+Hello $name
+Hello, ${name}!
+$x + $y
+True
+True
+True
+False
+['first', 'second']
+['x', 'y', 'z']
+KeyError raised
+cost: $ each
