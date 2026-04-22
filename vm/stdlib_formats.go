@@ -73,12 +73,12 @@ func parseStructFormat(fmt string) (binary.ByteOrder, bool, []structItem, error)
 		}
 		i++
 		switch c {
-		case 'x', 'c', 'b', 'B', '?', 'h', 'H', 'i', 'I', 'l', 'L', 'q', 'Q', 'f', 'd':
+		case 'x', 'c', 'b', 'B', '?', 'h', 'H', 'i', 'I', 'l', 'L', 'q', 'Q', 'e', 'f', 'd':
 			for k := 0; k < n; k++ {
 				items = append(items, structItem{kind: c, n: 1})
 			}
-		case 's':
-			items = append(items, structItem{kind: 's', n: n})
+		case 's', 'p':
+			items = append(items, structItem{kind: c, n: n})
 		default:
 			return nil, false, nil, fmt2err("bad char in struct format: " + string(c))
 		}
@@ -92,16 +92,65 @@ func structItemSize(it structItem) int {
 	switch it.kind {
 	case 'x', 'c', 'b', 'B', '?':
 		return 1
-	case 'h', 'H':
+	case 'h', 'H', 'e':
 		return 2
 	case 'i', 'I', 'l', 'L', 'f':
 		return 4
 	case 'q', 'Q', 'd':
 		return 8
-	case 's':
+	case 's', 'p':
 		return it.n
 	}
 	return 0
+}
+
+// float16Encode converts float32 to IEEE 754 half-precision bits.
+func float16Encode(f float32) uint16 {
+	b := math.Float32bits(f)
+	sign := uint16(b>>31) << 15
+	exp := int((b>>23)&0xFF) - 127
+	mantissa := b & 0x7FFFFF
+	if exp == 128 { // inf/nan
+		return sign | 0x7C00 | uint16(mantissa>>13)
+	}
+	exp16 := exp + 15
+	if exp16 >= 31 {
+		return sign | 0x7C00 // overflow → inf
+	}
+	if exp16 <= 0 {
+		if exp16 < -10 {
+			return sign // underflow → zero
+		}
+		m := uint16((mantissa | 0x800000) >> (14 - exp16))
+		return sign | m
+	}
+	return sign | uint16(exp16)<<10 | uint16(mantissa>>13)
+}
+
+// float16Decode converts IEEE 754 half-precision bits to float32.
+func float16Decode(b uint16) float32 {
+	sign := uint32(b>>15) << 31
+	exp := uint32(b>>10) & 0x1F
+	mantissa := uint32(b & 0x3FF)
+	var bits uint32
+	switch exp {
+	case 31: // inf/nan
+		bits = sign | 0x7F800000 | mantissa<<13
+	case 0: // zero/subnormal
+		if mantissa == 0 {
+			bits = sign
+		} else {
+			e, m := uint32(0), mantissa
+			for m&0x400 == 0 {
+				m <<= 1
+				e++
+			}
+			bits = sign | (127-15-e+1)<<23 | (m&0x3FF)<<13
+		}
+	default:
+		bits = sign | (exp+127-15)<<23 | mantissa<<13
+	}
+	return math.Float32frombits(bits)
 }
 
 func structTotalSize(items []structItem) int {
@@ -115,75 +164,315 @@ func structTotalSize(items []structItem) int {
 func (i *Interp) buildStruct() *object.Module {
 	m := &object.Module{Name: "struct", Dict: object.NewDict()}
 
+	// struct.error is the canonical exception for all struct errors.
+	errCls := &object.Class{Name: "error", Dict: object.NewDict(), Bases: []*object.Class{i.exception}}
+	m.Dict.SetStr("error", errCls)
+	se := func(msg string, a ...any) error { return object.Errorf(errCls, msg, a...) }
+
+	parseFormat := func(fmtStr string) (binary.ByteOrder, []structItem, error) {
+		order, _, items, err := parseStructFormat(fmtStr)
+		if err != nil {
+			return nil, nil, se("%s", err.Error())
+		}
+		return order, items, nil
+	}
+
 	m.Dict.SetStr("calcsize", &object.BuiltinFunc{Name: "calcsize", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		s, ok := a[0].(*object.Str)
 		if !ok {
-			return nil, object.Errorf(i.typeErr, "calcsize() argument must be str")
+			return nil, se("calcsize() argument must be str")
 		}
-		_, _, items, err := parseStructFormat(s.V)
+		_, items, err := parseFormat(s.V)
 		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
+			return nil, err
 		}
 		return object.NewInt(int64(structTotalSize(items))), nil
 	}})
 
 	m.Dict.SetStr("pack", &object.BuiltinFunc{Name: "pack", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "pack() missing format")
+			return nil, se("pack() missing format")
 		}
 		s, ok := a[0].(*object.Str)
 		if !ok {
-			return nil, object.Errorf(i.typeErr, "pack() format must be str")
+			return nil, se("pack() format must be str")
 		}
-		order, _, items, err := parseStructFormat(s.V)
+		order, items, err := parseFormat(s.V)
 		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
+			return nil, err
 		}
-		out, err := structPack(i, order, items, a[1:])
+		out, err := structPack(errCls, order, items, a[1:])
 		if err != nil {
 			return nil, err
 		}
 		return &object.Bytes{V: out}, nil
 	}})
 
-	unpackFn := func(name string) *object.BuiltinFunc {
+	m.Dict.SetStr("pack_into", &object.BuiltinFunc{Name: "pack_into", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return nil, se("pack_into() requires format, buffer, offset")
+		}
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, se("pack_into() format must be str")
+		}
+		ba, ok2 := a[1].(*object.Bytearray)
+		if !ok2 {
+			return nil, se("pack_into() buffer must be a writable bytes-like object")
+		}
+		off, ok3 := toInt64(a[2])
+		if !ok3 {
+			return nil, se("pack_into() offset must be int")
+		}
+		order, items, err := parseFormat(s.V)
+		if err != nil {
+			return nil, err
+		}
+		packed, err := structPack(errCls, order, items, a[3:])
+		if err != nil {
+			return nil, err
+		}
+		start := int(off)
+		if start < 0 || start+len(packed) > len(ba.V) {
+			return nil, se("pack_into requires a buffer of at least %d bytes", start+len(packed))
+		}
+		copy(ba.V[start:], packed)
+		return object.None, nil
+	}})
+
+	unpackFn := func(name string, exact bool) *object.BuiltinFunc {
 		return &object.BuiltinFunc{Name: name, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) < 2 {
-				return nil, object.Errorf(i.typeErr, "%s", name+"() missing format or buffer")
+				return nil, se("%s() missing format or buffer", name)
 			}
 			s, ok := a[0].(*object.Str)
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "%s", name+"() format must be str")
+				return nil, se("%s() format must be str", name)
 			}
 			data, err := asBytes(a[1])
 			if err != nil {
-				return nil, object.Errorf(i.typeErr, "%s", name+"() buffer must be bytes-like")
+				return nil, se("%s() buffer must be bytes-like", name)
 			}
 			offset := 0
 			if len(a) >= 3 {
-				n, ok := toInt64(a[2])
-				if !ok {
-					return nil, object.Errorf(i.typeErr, "%s", name+"() offset must be int")
+				n, ok2 := toInt64(a[2])
+				if !ok2 {
+					return nil, se("%s() offset must be int", name)
 				}
 				offset = int(n)
 			}
-			order, _, items, err := parseStructFormat(s.V)
-			if err != nil {
-				return nil, object.Errorf(i.valueErr, "%s", err.Error())
+			order, items, err2 := parseFormat(s.V)
+			if err2 != nil {
+				return nil, err2
 			}
 			need := structTotalSize(items)
-			if offset < 0 || offset+need > len(data) {
-				return nil, object.Errorf(i.valueErr, "%s requires a buffer of at least %d bytes", name, need)
+			if exact && offset == 0 && len(data) != need {
+				return nil, se("unpack requires a buffer of %d bytes", need)
 			}
-			vals, err := structUnpack(i, order, items, data[offset:offset+need])
-			if err != nil {
-				return nil, err
+			if offset < 0 || offset+need > len(data) {
+				return nil, se("%s requires a buffer of at least %d bytes for unpacking", name, need)
+			}
+			vals, err3 := structUnpack(order, items, data[offset:offset+need])
+			if err3 != nil {
+				return nil, err3
 			}
 			return &object.Tuple{V: vals}, nil
 		}}
 	}
-	m.Dict.SetStr("unpack", unpackFn("unpack"))
-	m.Dict.SetStr("unpack_from", unpackFn("unpack_from"))
+	m.Dict.SetStr("unpack", unpackFn("unpack", true))
+	m.Dict.SetStr("unpack_from", unpackFn("unpack_from", false))
+
+	m.Dict.SetStr("iter_unpack", &object.BuiltinFunc{Name: "iter_unpack", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, se("iter_unpack() missing format or buffer")
+		}
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, se("iter_unpack() format must be str")
+		}
+		data, err := asBytes(a[1])
+		if err != nil {
+			return nil, se("iter_unpack() buffer must be bytes-like")
+		}
+		order, items, err2 := parseFormat(s.V)
+		if err2 != nil {
+			return nil, err2
+		}
+		itemSize := structTotalSize(items)
+		if itemSize == 0 {
+			return nil, se("iter_unpack() format size is 0")
+		}
+		if len(data)%itemSize != 0 {
+			return nil, se("iterative unpacking requires a buffer whose length is a multiple of %d", itemSize)
+		}
+		buf := append([]byte(nil), data...)
+		pos := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if pos >= len(buf) {
+				return nil, false, nil
+			}
+			vals, err3 := structUnpack(order, items, buf[pos:pos+itemSize])
+			if err3 != nil {
+				return nil, false, err3
+			}
+			pos += itemSize
+			return &object.Tuple{V: vals}, true, nil
+		}}, nil
+	}})
+
+	// Struct class — compiled format object.
+	structCls := &object.Class{Name: "Struct", Dict: object.NewDict()}
+	structCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		fmtStr, ok2 := a[1].(*object.Str)
+		if !ok2 {
+			return nil, se("Struct() format must be str")
+		}
+		_, items, err := parseFormat(fmtStr.V)
+		if err != nil {
+			return nil, err
+		}
+		sz := structTotalSize(items)
+
+		// Store format and size in instance dict.
+		self.Dict.SetStr("format", fmtStr)
+		self.Dict.SetStr("size", object.NewInt(int64(sz)))
+
+		// All methods stored in instance dict to avoid AttrCacheClassValue issue.
+		self.Dict.SetStr("pack", &object.BuiltinFunc{Name: "pack", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			order, its, err2 := parseFormat(fmtStr.V)
+			if err2 != nil {
+				return nil, err2
+			}
+			out, err3 := structPack(errCls, order, its, args)
+			if err3 != nil {
+				return nil, err3
+			}
+			return &object.Bytes{V: out}, nil
+		}})
+
+		self.Dict.SetStr("unpack", &object.BuiltinFunc{Name: "unpack", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 1 {
+				return nil, se("unpack() missing buffer")
+			}
+			data, err2 := asBytes(args[0])
+			if err2 != nil {
+				return nil, se("unpack() buffer must be bytes-like")
+			}
+			if len(data) != sz {
+				return nil, se("unpack requires a buffer of %d bytes", sz)
+			}
+			order, its, err3 := parseFormat(fmtStr.V)
+			if err3 != nil {
+				return nil, err3
+			}
+			vals, err4 := structUnpack(order, its, data)
+			if err4 != nil {
+				return nil, err4
+			}
+			return &object.Tuple{V: vals}, nil
+		}})
+
+		self.Dict.SetStr("unpack_from", &object.BuiltinFunc{Name: "unpack_from", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 1 {
+				return nil, se("unpack_from() missing buffer")
+			}
+			data, err2 := asBytes(args[0])
+			if err2 != nil {
+				return nil, se("unpack_from() buffer must be bytes-like")
+			}
+			offset := 0
+			if len(args) >= 2 {
+				n, ok3 := toInt64(args[1])
+				if !ok3 {
+					return nil, se("unpack_from() offset must be int")
+				}
+				offset = int(n)
+			}
+			if offset < 0 || offset+sz > len(data) {
+				return nil, se("unpack_from requires a buffer of at least %d bytes", sz)
+			}
+			order, its, err3 := parseFormat(fmtStr.V)
+			if err3 != nil {
+				return nil, err3
+			}
+			vals, err4 := structUnpack(order, its, data[offset:offset+sz])
+			if err4 != nil {
+				return nil, err4
+			}
+			return &object.Tuple{V: vals}, nil
+		}})
+
+		self.Dict.SetStr("pack_into", &object.BuiltinFunc{Name: "pack_into", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 2 {
+				return nil, se("pack_into() requires buffer and offset")
+			}
+			ba, ok3 := args[0].(*object.Bytearray)
+			if !ok3 {
+				return nil, se("pack_into() buffer must be a writable bytes-like object")
+			}
+			off, ok4 := toInt64(args[1])
+			if !ok4 {
+				return nil, se("pack_into() offset must be int")
+			}
+			order, its, err2 := parseFormat(fmtStr.V)
+			if err2 != nil {
+				return nil, err2
+			}
+			packed, err3 := structPack(errCls, order, its, args[2:])
+			if err3 != nil {
+				return nil, err3
+			}
+			start := int(off)
+			if start < 0 || start+len(packed) > len(ba.V) {
+				return nil, se("pack_into requires a buffer of at least %d bytes", start+len(packed))
+			}
+			copy(ba.V[start:], packed)
+			return object.None, nil
+		}})
+
+		self.Dict.SetStr("iter_unpack", &object.BuiltinFunc{Name: "iter_unpack", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 1 {
+				return nil, se("iter_unpack() missing buffer")
+			}
+			data, err2 := asBytes(args[0])
+			if err2 != nil {
+				return nil, se("iter_unpack() buffer must be bytes-like")
+			}
+			if sz == 0 {
+				return nil, se("iter_unpack() format size is 0")
+			}
+			if len(data)%sz != 0 {
+				return nil, se("iterative unpacking requires a buffer whose length is a multiple of %d", sz)
+			}
+			buf := append([]byte(nil), data...)
+			pos := 0
+			order, its, err3 := parseFormat(fmtStr.V)
+			if err3 != nil {
+				return nil, err3
+			}
+			return &object.Iter{Next: func() (object.Object, bool, error) {
+				if pos >= len(buf) {
+					return nil, false, nil
+				}
+				vals, err4 := structUnpack(order, its, buf[pos:pos+sz])
+				if err4 != nil {
+					return nil, false, err4
+				}
+				pos += sz
+				return &object.Tuple{V: vals}, true, nil
+			}}, nil
+		}})
+
+		return object.None, nil
+	}})
+	m.Dict.SetStr("Struct", structCls)
 
 	return m
 }
@@ -214,8 +503,10 @@ func argAsUint64(o object.Object) (uint64, bool) {
 	return 0, false
 }
 
-func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []object.Object) ([]byte, error) {
-	// Count how many items consume an argument.
+func structPack(errCls *object.Class, order binary.ByteOrder, items []structItem, args []object.Object) ([]byte, error) {
+	se := func(msg string, a ...any) error {
+		return object.Errorf(errCls, msg, a...)
+	}
 	need := 0
 	for _, it := range items {
 		if it.kind != 'x' {
@@ -223,7 +514,7 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 		}
 	}
 	if len(args) != need {
-		return nil, object.Errorf(i.valueErr, "pack expected %d items for packing (got %d)", need, len(args))
+		return nil, se("pack expected %d items for packing (got %d)", need, len(args))
 	}
 	out := make([]byte, 0, structTotalSize(items))
 	ai := 0
@@ -234,50 +525,87 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 		case 'c':
 			b, err := asBytes(args[ai])
 			if err != nil || len(b) != 1 {
-				return nil, object.Errorf(i.valueErr, "char format requires a bytes object of length 1")
+				return nil, se("char format requires a bytes object of length 1")
 			}
 			out = append(out, b[0])
 			ai++
 		case 'b':
 			n, ok := argAsInt(args[ai])
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "required argument is not an integer")
+				return nil, se("required argument is not an integer")
+			}
+			if n < -128 || n > 127 {
+				return nil, se("byte format requires -128 <= number <= 127")
 			}
 			out = append(out, byte(int8(n)))
 			ai++
-		case 'B', '?':
+		case 'B':
 			n, ok := argAsInt(args[ai])
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "required argument is not an integer")
+				return nil, se("required argument is not an integer")
+			}
+			if n < 0 || n > 255 {
+				return nil, se("ubyte format requires 0 <= number <= 255")
+			}
+			out = append(out, byte(n))
+			ai++
+		case '?':
+			n, ok := argAsInt(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
 			}
 			out = append(out, byte(n))
 			ai++
 		case 'h':
-			n, _ := argAsInt(args[ai])
+			n, ok := argAsInt(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
+			}
+			if n < -32768 || n > 32767 {
+				return nil, se("short format requires -32768 <= number <= 32767")
+			}
 			var buf [2]byte
 			order.PutUint16(buf[:], uint16(int16(n)))
 			out = append(out, buf[:]...)
 			ai++
 		case 'H':
-			n, _ := argAsInt(args[ai])
+			n, ok := argAsInt(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
+			}
+			if n < 0 || n > 65535 {
+				return nil, se("ushort format requires 0 <= number <= 65535")
+			}
 			var buf [2]byte
 			order.PutUint16(buf[:], uint16(n))
 			out = append(out, buf[:]...)
 			ai++
 		case 'i', 'l':
-			n, _ := argAsInt(args[ai])
+			n, ok := argAsInt(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
+			}
+			if n < -2147483648 || n > 2147483647 {
+				return nil, se("int format requires -2147483648 <= number <= 2147483647")
+			}
 			var buf [4]byte
 			order.PutUint32(buf[:], uint32(int32(n)))
 			out = append(out, buf[:]...)
 			ai++
 		case 'I', 'L':
-			n, _ := argAsInt(args[ai])
+			u, ok := argAsUint64(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
+			}
 			var buf [4]byte
-			order.PutUint32(buf[:], uint32(n))
+			order.PutUint32(buf[:], uint32(u))
 			out = append(out, buf[:]...)
 			ai++
 		case 'q':
-			n, _ := argAsInt(args[ai])
+			n, ok := argAsInt(args[ai])
+			if !ok {
+				return nil, se("required argument is not an integer")
+			}
 			var buf [8]byte
 			order.PutUint64(buf[:], uint64(n))
 			out = append(out, buf[:]...)
@@ -285,16 +613,25 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 		case 'Q':
 			u, ok := argAsUint64(args[ai])
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "required argument is not an integer")
+				return nil, se("required argument is not an integer")
 			}
 			var buf [8]byte
 			order.PutUint64(buf[:], u)
 			out = append(out, buf[:]...)
 			ai++
+		case 'e':
+			f, ok := toFloat64(args[ai])
+			if !ok {
+				return nil, se("required argument is not a float")
+			}
+			var buf [2]byte
+			order.PutUint16(buf[:], float16Encode(float32(f)))
+			out = append(out, buf[:]...)
+			ai++
 		case 'f':
 			f, ok := toFloat64(args[ai])
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "required argument is not a float")
+				return nil, se("required argument is not a float")
 			}
 			var buf [4]byte
 			order.PutUint32(buf[:], math.Float32bits(float32(f)))
@@ -303,7 +640,7 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 		case 'd':
 			f, ok := toFloat64(args[ai])
 			if !ok {
-				return nil, object.Errorf(i.typeErr, "required argument is not a float")
+				return nil, se("required argument is not a float")
 			}
 			var buf [8]byte
 			order.PutUint64(buf[:], math.Float64bits(f))
@@ -312,7 +649,7 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 		case 's':
 			b, err := asBytes(args[ai])
 			if err != nil {
-				return nil, object.Errorf(i.typeErr, "s format requires a bytes-like object")
+				return nil, se("s format requires a bytes-like object")
 			}
 			if len(b) > it.n {
 				b = b[:it.n]
@@ -322,12 +659,30 @@ func structPack(i *Interp, order binary.ByteOrder, items []structItem, args []ob
 				out = append(out, 0)
 			}
 			ai++
+		case 'p':
+			b, err := asBytes(args[ai])
+			if err != nil {
+				return nil, se("p format requires a bytes-like object")
+			}
+			maxLen := it.n - 1
+			if maxLen < 0 {
+				maxLen = 0
+			}
+			if len(b) > maxLen {
+				b = b[:maxLen]
+			}
+			out = append(out, byte(len(b)))
+			out = append(out, b...)
+			for k := len(b) + 1; k < it.n; k++ {
+				out = append(out, 0)
+			}
+			ai++
 		}
 	}
 	return out, nil
 }
 
-func structUnpack(i *Interp, order binary.ByteOrder, items []structItem, data []byte) ([]object.Object, error) {
+func structUnpack(order binary.ByteOrder, items []structItem, data []byte) ([]object.Object, error) {
 	out := make([]object.Object, 0, len(items))
 	p := 0
 	for _, it := range items {
@@ -362,10 +717,13 @@ func structUnpack(i *Interp, order binary.ByteOrder, items []structItem, data []
 			out = append(out, object.NewInt(int64(order.Uint64(data[p:]))))
 			p += 8
 		case 'Q':
-			// unsigned 64 — use big.Int to preserve full range
 			u := order.Uint64(data[p:])
 			out = append(out, newIntU64(u))
 			p += 8
+		case 'e':
+			bits := order.Uint16(data[p:])
+			out = append(out, &object.Float{V: float64(float16Decode(bits))})
+			p += 2
 		case 'f':
 			bits := order.Uint32(data[p:])
 			out = append(out, &object.Float{V: float64(math.Float32frombits(bits))})
@@ -377,9 +735,15 @@ func structUnpack(i *Interp, order binary.ByteOrder, items []structItem, data []
 		case 's':
 			out = append(out, &object.Bytes{V: append([]byte(nil), data[p:p+it.n]...)})
 			p += it.n
+		case 'p':
+			length := int(data[p])
+			if length > it.n-1 {
+				length = it.n - 1
+			}
+			out = append(out, &object.Bytes{V: append([]byte(nil), data[p+1:p+1+length]...)})
+			p += it.n
 		}
 	}
-	_ = i
 	return out, nil
 }
 
