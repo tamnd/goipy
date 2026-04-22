@@ -1,0 +1,106 @@
+[1, 2, 3, 4, 5]
+[1, 2, 99, 3, 4, 5]
+[1, 2, 3, 4, 5]
+2
+2
+[5, 4, 3, 2, 1]
+10
+[2, 3, 4, 5]
+True
+False
+[('a', 4), ('b', 4), ('c', 1)]
+[('a', 2)]
+[('a', 1), ('b', 2)]
+[('a', 3), ('b', 2), ('c', 1)]
+[('a', 3)]
+[('b', 2)]
+[('a', 3), ('b', 2)]
+Counter.fromkeys raises NotImplementedError
+[1, 2]
+defaultdict
+['c', 'b', 'a']
+['a', 'b', 'c']
+[('x', 0), ('y', 0)]
+OrderedDict
+['a', 'b', 'c', 'x', 'y']
+{'x': 0, 'y': 0}
+1 2
+1
+1
+True
+1
+2
+4
+3
+['a', 'b', 'c']
+[1, 2, 4]
+True
+False
+5
+3
+2
+6
+4
+2
+ChainMap
+1
+99
+1
+3
+True
+False
+2
+['b', 'c']
+[2, 3]
+[('b', 2), ('c', 3)]
+['b', 'c']
+UserDict
+[('b', 2), ('c', 3)]
+['b', 'c', 'd']
+2
+0
+3
+['b', 'd']
+5
+0
+1
+[1, 2, 3, 4]
+10
+[2, 3, 4]
+3
+True
+[2, 3, 4, 5, 6]
+UserList
+[2, 3, 4]
+1
+1
+[4, 3, 2]
+[0, 4, 3, 2]
+[4, 3, 2]
+[4, 3, 2]
+[4, 3, 2, 9, 8]
+[4, 3, 2, 9]
+[]
+HELLO
+hello
+hello world
+h
+el
+5
+True
+False
+True
+True
+UserString
+hello
+hello
+hi
+heLLo
+True
+True
+2
+['he', '', 'o']
+ahellob
+hello world
+11
+done

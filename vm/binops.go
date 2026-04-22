@@ -199,10 +199,86 @@ func bytesBytesOrArray(o object.Object) ([]byte, bool) {
 	return nil, false
 }
 
+// counterArith computes Counter +, -, &, | returning a new Counter with only
+// positive counts. op is one of "+", "-", "&", "|".
+func counterArith(a, b *object.Counter, op string) *object.Counter {
+	out := &object.Counter{D: object.NewDict()}
+	getCount := func(c *object.Counter, key object.Object) int64 {
+		v, ok, _ := c.D.Get(key)
+		if !ok {
+			return 0
+		}
+		n, _ := toInt64(v)
+		return n
+	}
+	aKeys, aVals := a.D.Items()
+	for k, key := range aKeys {
+		av, _ := toInt64(aVals[k])
+		bv := getCount(b, key)
+		var res int64
+		switch op {
+		case "+":
+			res = av + bv
+		case "-":
+			res = av - bv
+		case "&":
+			if av > 0 && bv > 0 {
+				if av < bv {
+					res = av
+				} else {
+					res = bv
+				}
+			}
+		case "|":
+			if av > bv {
+				res = av
+			} else {
+				res = bv
+			}
+			if res < 0 {
+				res = 0
+			}
+		}
+		if res > 0 {
+			_ = out.D.Set(key, object.NewInt(res))
+		}
+	}
+	// For +, -, |: process keys only in b (not in a).
+	if op != "&" {
+		bKeys, bVals := b.D.Items()
+		for k, key := range bKeys {
+			if _, ok, _ := a.D.Get(key); !ok {
+				bv, _ := toInt64(bVals[k])
+				var res int64
+				switch op {
+				case "+":
+					res = bv
+				case "-":
+					res = -bv
+				case "|":
+					if bv > 0 {
+						res = bv
+					}
+				}
+				if res > 0 {
+					_ = out.D.Set(key, object.NewInt(res))
+				}
+			}
+		}
+	}
+	return out
+}
+
 func (i *Interp) add(a, b object.Object) (object.Object, error) {
 	if hasInstance(a, b) {
 		if r, ok, err := i.tryBinaryDunder(a, b, "__add__", "__radd__"); ok {
 			return r, err
+		}
+	}
+	// Counter + Counter
+	if ca, ok := a.(*object.Counter); ok {
+		if cb, ok2 := b.(*object.Counter); ok2 {
+			return counterArith(ca, cb, "+"), nil
 		}
 	}
 	// str + str
@@ -286,6 +362,12 @@ func (i *Interp) sub(a, b object.Object) (object.Object, error) {
 	if hasInstance(a, b) {
 		if r, ok, err := i.tryBinaryDunder(a, b, "__sub__", "__rsub__"); ok {
 			return r, err
+		}
+	}
+	// Counter - Counter
+	if ca, ok := a.(*object.Counter); ok {
+		if cb, ok2 := b.(*object.Counter); ok2 {
+			return counterArith(ca, cb, "-"), nil
 		}
 	}
 	if isSetLike(a) && isSetLike(b) {
@@ -681,11 +763,34 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 			return r, err
 		}
 	}
+	// Counter & Counter, Counter | Counter
+	if kind == "&" || kind == "|" {
+		if ca, ok := a.(*object.Counter); ok {
+			if cb, ok2 := b.(*object.Counter); ok2 {
+				return counterArith(ca, cb, kind), nil
+			}
+		}
+	}
 	if isSetLike(a) && isSetLike(b) {
 		return setBitop(a, b, kind), nil
 	}
 	// dict | dict → merge (Python 3.9+)
 	if kind == "|" {
+		// OrderedDict | OrderedDict → OrderedDict
+		if oa, ok := a.(*object.OrderedDict); ok {
+			if ob, ok2 := b.(*object.OrderedDict); ok2 {
+				out := &object.OrderedDict{D: object.NewDict()}
+				ka, va := oa.D.Items()
+				for k, key := range ka {
+					_ = out.D.Set(key, va[k])
+				}
+				kb, vb := ob.D.Items()
+				for k, key := range kb {
+					_ = out.D.Set(key, vb[k])
+				}
+				return out, nil
+			}
+		}
 		if da, ok := a.(*object.Dict); ok {
 			if db, ok2 := b.(*object.Dict); ok2 {
 				out := object.NewDict()
