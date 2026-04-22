@@ -7,8 +7,10 @@ type UUID struct {
 	Bytes [16]byte
 }
 
-// SequenceMatcher is difflib's similarity-scoring object. We keep the two
-// inputs as strings and compute ratios on demand.
+// SequenceMatcher is difflib's similarity-scoring object.
+// When SeqA/SeqB are non-nil, the matcher operates on those sequences;
+// otherwise A and B are used as character sequences.
 type SequenceMatcher struct {
-	A, B string
+	A, B     string
+	SeqA, SeqB []Object // non-nil when operating on lists
 }

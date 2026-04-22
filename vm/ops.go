@@ -523,7 +523,7 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		}
 	}
 	if sm, ok := o.(*object.SequenceMatcher); ok {
-		if m, ok := sequenceMatcherAttr(sm, name); ok {
+		if m, ok := sequenceMatcherAttr(i, sm, name); ok {
 			return m, nil
 		}
 	}
