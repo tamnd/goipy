@@ -89,6 +89,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildWarnings(), true
 	case "threading":
 		return i.buildThreading(), true
+	case "string.templatelib":
+		return i.buildTemplatelib(), true
 	}
 	return nil, false
 }

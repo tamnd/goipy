@@ -48,10 +48,7 @@ func Repr(o Object) string {
 		for i, x := range v.V {
 			parts[i] = Repr(x)
 		}
-		if len(parts) == 1 {
-			return "(" + parts[0] + ",)"
-		}
-		return "(" + strings.Join(parts, ", ") + ")"
+		return tupleRepr(parts)
 	case *List:
 		parts := make([]string, len(v.V))
 		for i, x := range v.V {
@@ -196,9 +193,23 @@ func Repr(o Object) string {
 		for i, interp := range v.Interpolations {
 			interpParts[i] = Repr(interp)
 		}
-		return "Template(strings=(" + strings.Join(strParts, ", ") + ",), interpolations=(" + strings.Join(interpParts, ", ") + ",))"
+		strTuple := tupleRepr(strParts)
+		interpTuple := tupleRepr(interpParts)
+		return "Template(strings=" + strTuple + ", interpolations=" + interpTuple + ")"
 	}
 	return "<?>"
+}
+
+// tupleRepr formats a pre-rendered slice of element reprs as a Python tuple literal.
+func tupleRepr(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return "()"
+	case 1:
+		return "(" + parts[0] + ",)"
+	default:
+		return "(" + strings.Join(parts, ", ") + ")"
+	}
 }
 
 // Str returns Python-style str().

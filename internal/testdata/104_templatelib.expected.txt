@@ -1,0 +1,49 @@
+('value is ', '')
+(42,)
+42
+x
+None
+
+Template(strings=('value is ', ''), interpolations=(Interpolation(42, 'x', None, ''),))
+Interpolation(42, 'x', None, '')
+('',)
+()
+('', ' says hi')
+('Alice',)
+('', ' + ', ' = ', '')
+(3, 5, 8)
+('', '', '')
+('foo', 'bar')
+5
+interp: 3
+str: ' + '
+interp: 5
+str: ' = '
+interp: 8
+r
+a
+s
+.2f
+s
+.4f
+('hello ', '!')
+('Alice',)
+('start ', ' end')
+(99,)
+('abc',)
+('', '', '')
+(1, 2)
+world
+name
+r
+.10s
+Interpolation('world', 'name', 'r', '.10s')
+hello
+'hello'
+'hello'
+42
+True
+True
+False
+Template
+Interpolation

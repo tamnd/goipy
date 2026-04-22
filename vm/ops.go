@@ -972,6 +972,12 @@ func matchBuiltinType(o object.Object, name string) bool {
 	case "type":
 		_, ok := o.(*object.Class)
 		return ok
+	case "Template":
+		_, ok := o.(*object.Template)
+		return ok
+	case "Interpolation":
+		_, ok := o.(*object.Interpolation)
+		return ok
 	}
 	return false
 }
