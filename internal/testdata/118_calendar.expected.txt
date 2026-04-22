@@ -1,0 +1,75 @@
+0
+1
+2
+3
+4
+5
+6
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+0
+1
+6
+MONDAY
+1
+12
+JANUARY
+0
+6
+0
+Mo Tu We Th Fr Sa Su
+Mon Tue Wed Thu Fri Sat Sun
+True
+False
+True
+False
+6
+0
+6
+3
+0 31
+3 29
+2 28
+[1, 2, 3, 4, 5, 6, 7]
+[29, 30, 31, 0, 0, 0, 0]
+5
+7
+January 2024
+Mo Tu We Th Fr Sa Su
+ 1  2  3  4  5  6  7
+Calendar
+[0, 1, 2, 3, 4, 5, 6]
+[1, 2, 3, 4, 5, 6, 7]
+1 0
+2024 1 1
+2024 1 1 0
+[6, 0, 1, 2, 3, 4, 5]
+[1, 2, 3, 4, 5, 6, 7]
+5
+1 0
+4
+4
+TextCalendar
+January 2024
+Mo Tu We Th Fr Sa Su
+Mo Tu We Th Fr Sa Su
+2024
+HTMLCalendar
+<table
+True
+<table
+IllegalMonthError caught
+IllegalWeekdayError caught
+LocaleTextCalendar
+LocaleHTMLCalendar
+done

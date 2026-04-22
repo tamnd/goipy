@@ -558,6 +558,7 @@ func (i *Interp) buildCalendar() *object.Module {
 		return object.IntFromBig(big.NewInt(t.Unix())), nil
 	}})
 
+	i.extendCalendar(m)
 	return m
 }
 
