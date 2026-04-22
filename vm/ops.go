@@ -493,6 +493,32 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if wr, ok := o.(*object.PyWeakRef); ok {
+		switch name {
+		case "__callback__":
+			if wr.Callback == nil {
+				return object.None, nil
+			}
+			return wr.Callback, nil
+		}
+		return nil, object.Errorf(i.attrErr, "'weakref' object has no attribute '%s'", name)
+	}
+	if px, ok := o.(*object.PyProxy); ok {
+		// Forward attribute access to the proxied target.
+		if px.Target == nil {
+			return nil, object.Errorf(i.runtimeErr, "weakly-referenced object no longer exists")
+		}
+		return i.getAttr(px.Target, name)
+	}
+	if fin, ok := o.(*object.PyFinalizer); ok {
+		switch name {
+		case "alive":
+			return object.BoolOf(fin.Alive), nil
+		case "atexit":
+			return object.BoolOf(fin.Atexit), nil
+		}
+		return nil, object.Errorf(i.attrErr, "'finalize' object has no attribute '%s'", name)
+	}
 	if dq, ok := o.(*object.Deque); ok {
 		if m, ok := dequeMethod(i, dq, name); ok {
 			return m, nil
@@ -837,6 +863,12 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 		m.Dict.SetStr(name, val)
 		return nil
 	}
+	if fin, ok := o.(*object.PyFinalizer); ok {
+		if name == "atexit" {
+			fin.Atexit = object.Truthy(val)
+			return nil
+		}
+	}
 	return object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", object.TypeName(o), name)
 }
 
@@ -1028,6 +1060,9 @@ func matchBuiltinType(o object.Object, name string) bool {
 		return ok
 	case "Interpolation":
 		_, ok := o.(*object.Interpolation)
+		return ok
+	case "weakref.ref":
+		_, ok := o.(*object.PyWeakRef)
 		return ok
 	}
 	return false

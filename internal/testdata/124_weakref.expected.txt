@@ -1,0 +1,80 @@
+ReferenceType
+True
+42
+84
+True
+False
+True
+True
+True
+True
+False
+2
+2
+True
+TypeError: int
+TypeError: float
+TypeError: str
+TypeError: bytes
+TypeError: list
+TypeError: tuple
+TypeError: dict
+ProxyType
+7
+14
+CallableProxyType
+True
+False
+True
+2
+<class 'weakref.ReferenceType'>
+3
+True
+False
+1
+2
+None
+['a', 'b', 'c']
+[1, 2, 3]
+[('a', 1), ('b', 2), ('c', 3)]
+2
+4
+3
+10
+3
+0
+2
+['e', 'f']
+2
+True
+alpha
+['alpha', 'beta']
+1
+['delta', 'gamma']
+0
+3
+True
+True
+False
+2
+1
+True
+2
+0
+3
+True
+3
+True
+finalize
+['cleaned']
+False
+['cleaned']
+[(1, 2, 3)]
+False
+True
+False
+['cleaned', 'x']
+WeakMethod
+15
+30
+done
