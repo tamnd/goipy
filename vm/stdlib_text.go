@@ -19,6 +19,25 @@ import (
 func (i *Interp) buildDifflib() *object.Module {
 	m := &object.Module{Name: "difflib", Dict: object.NewDict()}
 
+	// IS_LINE_JUNK: blank or comment-only line
+	m.Dict.SetStr("IS_LINE_JUNK", &object.BuiltinFunc{Name: "IS_LINE_JUNK", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return object.BoolOf(false), nil
+		}
+		stripped := strings.TrimRight(s.V, " \t\r\n")
+		return object.BoolOf(stripped == "" || stripped == "#"), nil
+	}})
+
+	// IS_CHARACTER_JUNK: space or tab
+	m.Dict.SetStr("IS_CHARACTER_JUNK", &object.BuiltinFunc{Name: "IS_CHARACTER_JUNK", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		s, ok := a[0].(*object.Str)
+		if !ok {
+			return object.BoolOf(false), nil
+		}
+		return object.BoolOf(s.V == " " || s.V == "\t"), nil
+	}})
+
 	m.Dict.SetStr("get_close_matches", &object.BuiltinFunc{Name: "get_close_matches", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 2 {
 			return nil, object.Errorf(i.typeErr, "get_close_matches() requires word and possibilities")
@@ -110,56 +129,307 @@ func (i *Interp) buildDifflib() *object.Module {
 		if err != nil {
 			return nil, err
 		}
-		fromfile, tofile := "", ""
+		fromfile, tofile, fromdate, todate := "", "", "", ""
+		n := 3
+		lineterm := "\n"
 		if kw != nil {
 			if v, ok := kw.GetStr("fromfile"); ok {
-				if s, ok := v.(*object.Str); ok {
-					fromfile = s.V
-				}
+				if s, ok := v.(*object.Str); ok { fromfile = s.V }
 			}
 			if v, ok := kw.GetStr("tofile"); ok {
-				if s, ok := v.(*object.Str); ok {
-					tofile = s.V
-				}
+				if s, ok := v.(*object.Str); ok { tofile = s.V }
+			}
+			if v, ok := kw.GetStr("fromfiledate"); ok {
+				if s, ok := v.(*object.Str); ok { fromdate = s.V }
+			}
+			if v, ok := kw.GetStr("tofiledate"); ok {
+				if s, ok := v.(*object.Str); ok { todate = s.V }
+			}
+			if v, ok := kw.GetStr("n"); ok {
+				if iv, ok2 := toInt64(v); ok2 { n = int(iv) }
+			}
+			if v, ok := kw.GetStr("lineterm"); ok {
+				if s, ok := v.(*object.Str); ok { lineterm = s.V }
 			}
 		}
-		lines := unifiedDiff(aLines, bLines, fromfile, tofile)
+		lines := unifiedDiff(aLines, bLines, fromfile, tofile, fromdate, todate, n, lineterm)
 		return listOfStr(lines), nil
 	}})
 
-	m.Dict.SetStr("SequenceMatcher", &object.BuiltinFunc{Name: "SequenceMatcher", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		var aStr, bStr string
-		// Signature: SequenceMatcher(isjunk=None, a='', b='', autojunk=True)
-		if len(a) >= 2 {
-			if s, ok := a[1].(*object.Str); ok {
-				aStr = s.V
-			}
+	m.Dict.SetStr("context_diff", &object.BuiltinFunc{Name: "context_diff", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "context_diff() requires a and b")
 		}
-		if len(a) >= 3 {
-			if s, ok := a[2].(*object.Str); ok {
-				bStr = s.V
-			}
+		aLines, err := i.iterStrings(a[0])
+		if err != nil {
+			return nil, err
 		}
+		bLines, err := i.iterStrings(a[1])
+		if err != nil {
+			return nil, err
+		}
+		fromfile, tofile, fromdate, todate := "", "", "", ""
+		n := 3
+		lineterm := "\n"
 		if kw != nil {
-			if v, ok := kw.GetStr("a"); ok {
-				if s, ok := v.(*object.Str); ok {
-					aStr = s.V
-				}
+			if v, ok := kw.GetStr("fromfile"); ok {
+				if s, ok := v.(*object.Str); ok { fromfile = s.V }
 			}
-			if v, ok := kw.GetStr("b"); ok {
-				if s, ok := v.(*object.Str); ok {
-					bStr = s.V
-				}
+			if v, ok := kw.GetStr("tofile"); ok {
+				if s, ok := v.(*object.Str); ok { tofile = s.V }
+			}
+			if v, ok := kw.GetStr("fromfiledate"); ok {
+				if s, ok := v.(*object.Str); ok { fromdate = s.V }
+			}
+			if v, ok := kw.GetStr("tofiledate"); ok {
+				if s, ok := v.(*object.Str); ok { todate = s.V }
+			}
+			if v, ok := kw.GetStr("n"); ok {
+				if iv, ok2 := toInt64(v); ok2 { n = int(iv) }
+			}
+			if v, ok := kw.GetStr("lineterm"); ok {
+				if s, ok := v.(*object.Str); ok { lineterm = s.V }
 			}
 		}
-		return &object.SequenceMatcher{A: aStr, B: bStr}, nil
+		lines := contextDiff(aLines, bLines, fromfile, tofile, fromdate, todate, n, lineterm)
+		return listOfStr(lines), nil
+	}})
+
+	m.Dict.SetStr("restore", &object.BuiltinFunc{Name: "restore", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "restore() requires sequence and which")
+		}
+		lines, err := i.iterStrings(a[0])
+		if err != nil {
+			return nil, err
+		}
+		which, ok := toInt64(a[1])
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "restore() which must be 1 or 2")
+		}
+		var prefix string
+		if which == 1 {
+			prefix = "- "
+		} else {
+			prefix = "+ "
+		}
+		var out []string
+		for _, l := range lines {
+			if strings.HasPrefix(l, "  ") {
+				out = append(out, l[2:])
+			} else if strings.HasPrefix(l, prefix) {
+				out = append(out, l[2:])
+			}
+		}
+		return listOfStr(out), nil
+	}})
+
+	// Differ class
+	differCls := i.makeDifferClass()
+	m.Dict.SetStr("Differ", differCls)
+
+	m.Dict.SetStr("SequenceMatcher", &object.BuiltinFunc{Name: "SequenceMatcher", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		sm := &object.SequenceMatcher{}
+		// Signature: SequenceMatcher(isjunk=None, a='', b='', autojunk=True)
+		// args[0] = isjunk (ignored), args[1] = a, args[2] = b
+		setSeq := func(idx int, kwName string) {
+			var val object.Object
+			if len(a) > idx {
+				val = a[idx]
+			} else if kw != nil {
+				if v, ok := kw.GetStr(kwName); ok {
+					val = v
+				}
+			}
+			if val == nil {
+				return
+			}
+			switch v := val.(type) {
+			case *object.Str:
+				if idx == 1 { sm.A = v.V } else { sm.B = v.V }
+			case *object.List:
+				if idx == 1 { sm.SeqA = v.V } else { sm.SeqB = v.V }
+			case *object.Tuple:
+				if idx == 1 { sm.SeqA = v.V } else { sm.SeqB = v.V }
+			}
+		}
+		setSeq(1, "a")
+		setSeq(2, "b")
+		return sm, nil
 	}})
 
 	return m
 }
 
+// makeDifferClass returns a callable that creates Differ instances.
+func (i *Interp) makeDifferClass() *object.BuiltinFunc {
+	return &object.BuiltinFunc{Name: "Differ", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		inst := &object.Instance{Dict: object.NewDict()}
+		inst.Dict.SetStr("compare", &object.BuiltinFunc{Name: "compare", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 2 {
+				return nil, object.Errorf(i.typeErr, "compare() requires a and b")
+			}
+			aLines, err := i.iterStrings(a[0])
+			if err != nil {
+				return nil, err
+			}
+			bLines, err := i.iterStrings(a[1])
+			if err != nil {
+				return nil, err
+			}
+			lines := ndiffLines(aLines, bLines)
+			return listOfStr(lines), nil
+		}})
+		return inst, nil
+	}}
+}
+
+// smSeqLen returns the length of the sequence stored in the SequenceMatcher.
+func smSeqLen(sm *object.SequenceMatcher) (int, int) {
+	if sm.SeqA != nil {
+		return len(sm.SeqA), len(sm.SeqB)
+	}
+	return len([]rune(sm.A)), len([]rune(sm.B))
+}
+
+// smEqual reports whether element i of seqA equals element j of seqB.
+func smEqual(sm *object.SequenceMatcher, ai, bj int) bool {
+	if sm.SeqA != nil {
+		if ai >= len(sm.SeqA) || bj >= len(sm.SeqB) {
+			return false
+		}
+		eq, _ := objectEqual(sm.SeqA[ai], sm.SeqB[bj])
+		return eq
+	}
+	ar, br := []rune(sm.A), []rune(sm.B)
+	if ai >= len(ar) || bj >= len(br) {
+		return false
+	}
+	return ar[ai] == br[bj]
+}
+
+// objectEqual checks equality between two Objects.
+func objectEqual(a, b object.Object) (bool, error) {
+	switch va := a.(type) {
+	case *object.Str:
+		if vb, ok := b.(*object.Str); ok {
+			return va.V == vb.V, nil
+		}
+	case *object.Int:
+		if vb, ok := b.(*object.Int); ok {
+			return va.V.Cmp(&vb.V) == 0, nil
+		}
+	case *object.Bool:
+		if vb, ok := b.(*object.Bool); ok {
+			return va.V == vb.V, nil
+		}
+	}
+	return object.Repr(a) == object.Repr(b), nil
+}
+
+// smFindLongestMatch finds the longest matching block in sm.SeqA[alo:ahi]
+// and sm.SeqB[blo:bhi], returning (bestI, bestJ, bestSize).
+func smFindLongestMatch(sm *object.SequenceMatcher, alo, ahi, blo, bhi int) (int, int, int) {
+	bestI, bestJ, bestK := alo, blo, 0
+	// j2len[j] = length of longest match ending at sm.SeqB[j]
+	j2len := make(map[int]int)
+	for i := alo; i < ahi; i++ {
+		newj2len := make(map[int]int)
+		for j := blo; j < bhi; j++ {
+			if smEqual(sm, i, j) {
+				k := j2len[j-1] + 1
+				newj2len[j] = k
+				if k > bestK {
+					bestI, bestJ, bestK = i-k+1, j-k+1, k
+				}
+			}
+		}
+		j2len = newj2len
+	}
+	return bestI, bestJ, bestK
+}
+
+// smGetMatchingBlocks returns all matching blocks as (a, b, size) triples.
+func smGetMatchingBlocks(sm *object.SequenceMatcher) [][3]int {
+	la, lb := smSeqLen(sm)
+	var blocks [][3]int
+	var recurse func(alo, ahi, blo, bhi int)
+	recurse = func(alo, ahi, blo, bhi int) {
+		i, j, k := smFindLongestMatch(sm, alo, ahi, blo, bhi)
+		if k > 0 {
+			recurse(alo, i, blo, j)
+			blocks = append(blocks, [3]int{i, j, k})
+			recurse(i+k, ahi, j+k, bhi)
+		}
+	}
+	recurse(0, la, 0, lb)
+	// Sentinel
+	blocks = append(blocks, [3]int{la, lb, 0})
+	return blocks
+}
+
+// smGetOpcodes derives edit opcodes from matching blocks.
+func smGetOpcodes(sm *object.SequenceMatcher) [][5]interface{} {
+	blocks := smGetMatchingBlocks(sm)
+	var opcodes [][5]interface{}
+	i, j := 0, 0
+	for _, b := range blocks {
+		ai, bj, size := b[0], b[1], b[2]
+		var tag string
+		if i < ai && j < bj {
+			tag = "replace"
+		} else if i < ai {
+			tag = "delete"
+		} else if j < bj {
+			tag = "insert"
+		}
+		if tag != "" {
+			opcodes = append(opcodes, [5]interface{}{tag, i, ai, j, bj})
+		}
+		if size > 0 {
+			opcodes = append(opcodes, [5]interface{}{"equal", ai, ai + size, bj, bj + size})
+		}
+		i, j = ai+size, bj+size
+	}
+	return opcodes
+}
+
+// smRatio computes the Ratcliff/Obershelp ratio for a SequenceMatcher.
+func smRatio(sm *object.SequenceMatcher) float64 {
+	if sm.SeqA != nil {
+		la, lb := len(sm.SeqA), len(sm.SeqB)
+		if la+lb == 0 {
+			return 1.0
+		}
+		blocks := smGetMatchingBlocks(sm)
+		matches := 0
+		for _, b := range blocks {
+			matches += b[2]
+		}
+		return 2.0 * float64(matches) / float64(la+lb)
+	}
+	return ratcliffObershelp(sm.A, sm.B)
+}
+
+// makeMatchTuple constructs a Match-like object with .a, .b, .size attrs and
+// repr "Match(a=N, b=N, size=N)".
+func makeMatchTuple(interp *Interp, a, b, size int) *object.Instance {
+	inst := &object.Instance{Dict: object.NewDict()}
+	inst.Dict.SetStr("a", object.NewInt(int64(a)))
+	inst.Dict.SetStr("b", object.NewInt(int64(b)))
+	inst.Dict.SetStr("size", object.NewInt(int64(size)))
+	// Give it a synthetic class named "Match" so Repr shows the right name.
+	cls := &object.Class{Name: "Match", Dict: object.NewDict()}
+	reprStr := fmt.Sprintf("Match(a=%d, b=%d, size=%d)", a, b, size)
+	cls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.Str{V: reprStr}, nil
+	}})
+	inst.Class = cls
+	return inst
+}
+
 // sequenceMatcherAttr dispatches attribute access on *object.SequenceMatcher.
-func sequenceMatcherAttr(sm *object.SequenceMatcher, name string) (object.Object, bool) {
+func sequenceMatcherAttr(i *Interp, sm *object.SequenceMatcher, name string) (object.Object, bool) {
 	switch name {
 	case "a":
 		return &object.Str{V: sm.A}, true
@@ -167,15 +437,18 @@ func sequenceMatcherAttr(sm *object.SequenceMatcher, name string) (object.Object
 		return &object.Str{V: sm.B}, true
 	case "ratio":
 		return &object.BuiltinFunc{Name: "ratio", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Float{V: ratcliffObershelp(sm.A, sm.B)}, nil
+			return &object.Float{V: smRatio(sm)}, nil
 		}}, true
 	case "quick_ratio":
 		return &object.BuiltinFunc{Name: "quick_ratio", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if sm.SeqA != nil {
+				return &object.Float{V: smRatio(sm)}, nil
+			}
 			return &object.Float{V: quickRatio(sm.A, sm.B)}, nil
 		}}, true
 	case "real_quick_ratio":
 		return &object.BuiltinFunc{Name: "real_quick_ratio", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			la, lb := len([]rune(sm.A)), len([]rune(sm.B))
+			la, lb := smSeqLen(sm)
 			if la+lb == 0 {
 				return &object.Float{V: 1.0}, nil
 			}
@@ -185,22 +458,102 @@ func sequenceMatcherAttr(sm *object.SequenceMatcher, name string) (object.Object
 			}
 			return &object.Float{V: 2.0 * float64(m) / float64(la+lb)}, nil
 		}}, true
+	case "set_seqs":
+		return &object.BuiltinFunc{Name: "set_seqs", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) >= 1 { smSetSeq(sm, 1, a[0]) }
+			if len(a) >= 2 { smSetSeq(sm, 2, a[1]) }
+			return object.None, nil
+		}}, true
 	case "set_seq1":
 		return &object.BuiltinFunc{Name: "set_seq1", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if s, ok := a[0].(*object.Str); ok {
-				sm.A = s.V
-			}
+			if len(a) >= 1 { smSetSeq(sm, 1, a[0]) }
 			return object.None, nil
 		}}, true
 	case "set_seq2":
 		return &object.BuiltinFunc{Name: "set_seq2", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if s, ok := a[0].(*object.Str); ok {
-				sm.B = s.V
-			}
+			if len(a) >= 1 { smSetSeq(sm, 2, a[0]) }
 			return object.None, nil
+		}}, true
+	case "find_longest_match":
+		return &object.BuiltinFunc{Name: "find_longest_match", Call: func(_ any, args []object.Object, kw *object.Dict) (object.Object, error) {
+			la, lb := smSeqLen(sm)
+			alo, ahi, blo, bhi := 0, la, 0, lb
+			if len(args) >= 1 { if v, ok := toInt64(args[0]); ok { alo = int(v) } }
+			if len(args) >= 2 { if v, ok := toInt64(args[1]); ok { ahi = int(v) } }
+			if len(args) >= 3 { if v, ok := toInt64(args[2]); ok { blo = int(v) } }
+			if len(args) >= 4 { if v, ok := toInt64(args[3]); ok { bhi = int(v) } }
+			if kw != nil {
+				if v, ok := kw.GetStr("alo"); ok { if n, ok2 := toInt64(v); ok2 { alo = int(n) } }
+				if v, ok := kw.GetStr("ahi"); ok { if n, ok2 := toInt64(v); ok2 { ahi = int(n) } }
+				if v, ok := kw.GetStr("blo"); ok { if n, ok2 := toInt64(v); ok2 { blo = int(n) } }
+				if v, ok := kw.GetStr("bhi"); ok { if n, ok2 := toInt64(v); ok2 { bhi = int(n) } }
+			}
+			a, b, size := smFindLongestMatch(sm, alo, ahi, blo, bhi)
+			return makeMatchTuple(i, a, b, size), nil
+		}}, true
+	case "get_matching_blocks":
+		return &object.BuiltinFunc{Name: "get_matching_blocks", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			blocks := smGetMatchingBlocks(sm)
+			out := make([]object.Object, len(blocks))
+			for k, b := range blocks {
+				out[k] = makeMatchTuple(i, b[0], b[1], b[2])
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "get_opcodes":
+		return &object.BuiltinFunc{Name: "get_opcodes", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			ops := smGetOpcodes(sm)
+			out := make([]object.Object, len(ops))
+			for k, op := range ops {
+				tup := []object.Object{
+					&object.Str{V: op[0].(string)},
+					object.NewInt(int64(op[1].(int))),
+					object.NewInt(int64(op[2].(int))),
+					object.NewInt(int64(op[3].(int))),
+					object.NewInt(int64(op[4].(int))),
+				}
+				out[k] = &object.Tuple{V: tup}
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "get_grouped_opcodes":
+		return &object.BuiltinFunc{Name: "get_grouped_opcodes", Call: func(_ any, args []object.Object, kw *object.Dict) (object.Object, error) {
+			n := 3
+			if len(args) >= 1 { if v, ok := toInt64(args[0]); ok { n = int(v) } }
+			if kw != nil { if v, ok := kw.GetStr("n"); ok { if iv, ok2 := toInt64(v); ok2 { n = int(iv) } } }
+			ops := smGetOpcodes(sm)
+			groups := groupOpcodes(ops, n)
+			out := make([]object.Object, len(groups))
+			for gi, g := range groups {
+				elems := make([]object.Object, len(g))
+				for k, op := range g {
+					tup := []object.Object{
+						&object.Str{V: op[0].(string)},
+						object.NewInt(int64(op[1].(int))),
+						object.NewInt(int64(op[2].(int))),
+						object.NewInt(int64(op[3].(int))),
+						object.NewInt(int64(op[4].(int))),
+					}
+					elems[k] = &object.Tuple{V: tup}
+				}
+				out[gi] = &object.List{V: elems}
+			}
+			return &object.List{V: out}, nil
 		}}, true
 	}
 	return nil, false
+}
+
+// smSetSeq updates seq 1 (A) or 2 (B) from an Object.
+func smSetSeq(sm *object.SequenceMatcher, which int, v object.Object) {
+	switch val := v.(type) {
+	case *object.Str:
+		if which == 1 { sm.A = val.V; sm.SeqA = nil } else { sm.B = val.V; sm.SeqB = nil }
+	case *object.List:
+		if which == 1 { sm.SeqA = val.V; sm.A = "" } else { sm.SeqB = val.V; sm.B = "" }
+	case *object.Tuple:
+		if which == 1 { sm.SeqA = val.V; sm.A = "" } else { sm.SeqB = val.V; sm.B = "" }
+	}
 }
 
 // ratcliffObershelp implements CPython's difflib ratio via longest-common-
@@ -314,46 +667,168 @@ func ndiffLines(a, b []string) []string {
 	return out
 }
 
-// unifiedDiff produces a single-hunk unified diff covering the full range.
-// We don't trim context blocks the way CPython does for multi-hunk outputs;
-// for the sizes users test with this is indistinguishable.
-func unifiedDiff(a, b []string, fromfile, tofile string) []string {
-	if fromfile == "" && tofile == "" {
-		// Bare diff with no headers.
-	}
-	var lines []string
-	lines = append(lines, "--- "+fromfile+"\n")
-	lines = append(lines, "+++ "+tofile+"\n")
-	// Compute an edit script aligned with ndiff so the hunk ordering matches.
-	nd := ndiffLines(a, b)
-	// Count edits.
-	adds, dels, ctxA, ctxB := 0, 0, 0, 0
-	for _, l := range nd {
-		switch l[:2] {
-		case "+ ":
-			adds++
-		case "- ":
-			dels++
-		case "  ":
-			ctxA++
-			ctxB++
-		}
-	}
-	if adds == 0 && dels == 0 {
+// groupOpcodes groups opcodes into context-bounded hunks (like CPython's
+// SequenceMatcher.get_grouped_opcodes).
+func groupOpcodes(ops [][5]interface{}, n int) [][][5]interface{} {
+	if len(ops) == 0 {
 		return nil
 	}
-	lines = append(lines, fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(a), len(b)))
-	for _, l := range nd {
-		switch l[:2] {
-		case "+ ":
-			lines = append(lines, "+"+l[2:])
-		case "- ":
-			lines = append(lines, "-"+l[2:])
-		case "  ":
-			lines = append(lines, " "+l[2:])
+	// Trim leading/trailing equal blocks to n lines.
+	trimmed := make([][5]interface{}, len(ops))
+	copy(trimmed, ops)
+	if len(trimmed) > 0 && trimmed[0][0] == "equal" {
+		op := trimmed[0]
+		i1, i2, _, j2 := op[1].(int), op[2].(int), op[3].(int), op[4].(int)
+		if i2-i1 > n {
+			trimmed[0] = [5]interface{}{"equal", i2 - n, i2, j2 - n, j2}
+		}
+	}
+	if len(trimmed) > 0 && trimmed[len(trimmed)-1][0] == "equal" {
+		op := trimmed[len(trimmed)-1]
+		i1, i2, j1, _ := op[1].(int), op[2].(int), op[3].(int), op[4].(int)
+		if i2-i1 > n {
+			trimmed[len(trimmed)-1] = [5]interface{}{"equal", i1, i1 + n, j1, j1 + n}
+		}
+	}
+	var groups [][][5]interface{}
+	var group [][5]interface{}
+	for _, op := range trimmed {
+		if op[0] == "equal" && op[2].(int)-op[1].(int) > 2*n {
+			// Split large equal block: flush current group, start new one.
+			i1, i2, j1, j2 := op[1].(int), op[2].(int), op[3].(int), op[4].(int)
+			group = append(group, [5]interface{}{"equal", i1, i1 + n, j1, j1 + n})
+			groups = append(groups, group)
+			group = [][5]interface{}{{op[0], i2 - n, i2, j2 - n, j2}}
+		} else {
+			group = append(group, op)
+		}
+	}
+	if len(group) > 0 {
+		// Only flush if there's at least one non-equal op in the group.
+		hasChange := false
+		for _, op := range group {
+			if op[0] != "equal" {
+				hasChange = true
+				break
+			}
+		}
+		if hasChange {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+// unifiedDiff produces CPython-compatible unified diff output with n context lines.
+func unifiedDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int, lineterm string) []string {
+	sm := &object.SequenceMatcher{SeqA: strSliceToObjs(a), SeqB: strSliceToObjs(b)}
+	ops := smGetOpcodes(sm)
+	groups := groupOpcodes(ops, n)
+	if len(groups) == 0 {
+		return nil
+	}
+	var lines []string
+	fromhdr := fromfile
+	if fromdate != "" { fromhdr += "\t" + fromdate }
+	tohdr := tofile
+	if todate != "" { tohdr += "\t" + todate }
+	lines = append(lines, "--- "+fromhdr+lineterm)
+	lines = append(lines, "+++ "+tohdr+lineterm)
+	for _, g := range groups {
+		first, last := g[0], g[len(g)-1]
+		i1 := first[1].(int)
+		i2 := last[2].(int)
+		j1 := first[3].(int)
+		j2 := last[4].(int)
+		lines = append(lines, fmt.Sprintf("@@ -%d,%d +%d,%d @@%s", i1+1, i2-i1, j1+1, j2-j1, lineterm))
+		for _, op := range g {
+			tag := op[0].(string)
+			oi1, oi2, oj1, oj2 := op[1].(int), op[2].(int), op[3].(int), op[4].(int)
+			switch tag {
+			case "equal":
+				for _, l := range a[oi1:oi2] { lines = append(lines, " "+l) }
+			case "replace":
+				for _, l := range a[oi1:oi2] { lines = append(lines, "-"+l) }
+				for _, l := range b[oj1:oj2] { lines = append(lines, "+"+l) }
+			case "delete":
+				for _, l := range a[oi1:oi2] { lines = append(lines, "-"+l) }
+			case "insert":
+				for _, l := range b[oj1:oj2] { lines = append(lines, "+"+l) }
+			}
 		}
 	}
 	return lines
+}
+
+// contextDiff produces CPython-compatible context diff output.
+func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int, lineterm string) []string {
+	sm := &object.SequenceMatcher{SeqA: strSliceToObjs(a), SeqB: strSliceToObjs(b)}
+	ops := smGetOpcodes(sm)
+	groups := groupOpcodes(ops, n)
+	if len(groups) == 0 {
+		return nil
+	}
+	var lines []string
+	fromhdr := fromfile
+	if fromdate != "" { fromhdr += "\t" + fromdate }
+	tohdr := tofile
+	if todate != "" { tohdr += "\t" + todate }
+	lines = append(lines, "*** "+fromhdr+lineterm)
+	lines = append(lines, "--- "+tohdr+lineterm)
+	for _, g := range groups {
+		first, last := g[0], g[len(g)-1]
+		i1 := first[1].(int) + 1
+		i2 := last[2].(int)
+		j1 := first[3].(int) + 1
+		j2 := last[4].(int)
+		lines = append(lines, "***************"+lineterm)
+		lines = append(lines, fmt.Sprintf("*** %d,%d ****%s", i1, i2, lineterm))
+		// from side
+		hasChange := false
+		for _, op := range g {
+			if op[0].(string) != "insert" { hasChange = true; break }
+		}
+		if hasChange {
+			for _, op := range g {
+				tag := op[0].(string)
+				oi1, oi2 := op[1].(int), op[2].(int)
+				switch tag {
+				case "equal":
+					for _, l := range a[oi1:oi2] { lines = append(lines, "  "+l) }
+				case "replace", "delete":
+					for _, l := range a[oi1:oi2] { lines = append(lines, "! "+l) }
+				}
+			}
+		}
+		lines = append(lines, fmt.Sprintf("--- %d,%d ----%s", j1, j2, lineterm))
+		// to side
+		hasChange2 := false
+		for _, op := range g {
+			if op[0].(string) != "delete" { hasChange2 = true; break }
+		}
+		if hasChange2 {
+			for _, op := range g {
+				tag := op[0].(string)
+				oj1, oj2 := op[3].(int), op[4].(int)
+				switch tag {
+				case "equal":
+					for _, l := range b[oj1:oj2] { lines = append(lines, "  "+l) }
+				case "replace", "insert":
+					for _, l := range b[oj1:oj2] { lines = append(lines, "! "+l) }
+				}
+			}
+		}
+	}
+	return lines
+}
+
+// strSliceToObjs converts a []string to []object.Object for use with SequenceMatcher.
+func strSliceToObjs(ss []string) []object.Object {
+	out := make([]object.Object, len(ss))
+	for k, s := range ss {
+		out[k] = &object.Str{V: s}
+	}
+	return out
 }
 
 // --- shlex module ----------------------------------------------------------
