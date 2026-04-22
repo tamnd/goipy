@@ -103,6 +103,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCodecs(), true
 	case "datetime":
 		return i.buildDatetime(), true
+	case "zoneinfo":
+		return i.buildZoneinfo(), true
 	}
 	return nil, false
 }
