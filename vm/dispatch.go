@@ -328,26 +328,31 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				if _, inInst := inst.Dict.GetStr(name); inInst {
 					// But only if no data descriptor on class would override
 					// next time. Cheap check.
-					if raw, ok := classLookup(inst.Class, name); !ok || !isDataDescriptor(raw) {
+					if inst.Class == nil {
+						entry.Cls = nil
+						entry.Kind = object.AttrCacheInstDict
+					} else if raw, ok := classLookup(inst.Class, name); !ok || !isDataDescriptor(raw) {
 						entry.Cls = inst.Class
 						entry.Kind = object.AttrCacheInstDict
 					}
-				} else if raw, ok := classLookup(inst.Class, name); ok {
-					switch fn := raw.(type) {
-					case *object.Function:
-						entry.Cls = inst.Class
-						entry.Kind = object.AttrCacheClassMethod
-						entry.Val = fn
-					default:
-						// Only cache when the descriptor protocol would not
-						// produce a different value for other instances.
-						if !isDataDescriptor(raw) {
-							switch raw.(type) {
-							case *object.Int, *object.Str, *object.Float, *object.Bool,
-								*object.Tuple, *object.NoneType, *object.BuiltinFunc:
-								entry.Cls = inst.Class
-								entry.Kind = object.AttrCacheClassValue
-								entry.Val = raw
+				} else if inst.Class != nil {
+					if raw, ok := classLookup(inst.Class, name); ok {
+						switch fn := raw.(type) {
+						case *object.Function:
+							entry.Cls = inst.Class
+							entry.Kind = object.AttrCacheClassMethod
+							entry.Val = fn
+						default:
+							// Only cache when the descriptor protocol would not
+							// produce a different value for other instances.
+							if !isDataDescriptor(raw) {
+								switch raw.(type) {
+								case *object.Int, *object.Str, *object.Float, *object.Bool,
+									*object.Tuple, *object.NoneType, *object.BuiltinFunc:
+									entry.Cls = inst.Class
+									entry.Kind = object.AttrCacheClassValue
+									entry.Val = raw
+								}
 							}
 						}
 					}
@@ -1705,8 +1710,10 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			var method object.Object
 			if inst2, ok := inst.(*object.Instance); ok {
-				if v, ok := classLookup(inst2.Class, name); ok {
-					method = v
+				if inst2.Class != nil {
+					if v, ok := classLookup(inst2.Class, name); ok {
+						method = v
+					}
 				}
 			}
 			if method == nil {

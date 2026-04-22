@@ -2089,7 +2089,31 @@ func memoryviewAttr(mv *object.Memoryview, name string) (object.Object, bool) {
 		}}, true
 	case "release":
 		return &object.BuiltinFunc{Name: "release", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba, ok := mv.Backing.(*object.Bytearray); ok && ba.Views > 0 {
+				ba.Views--
+			}
 			return object.None, nil
+		}}, true
+	case "shape":
+		n := int64(mv.Stop - mv.Start)
+		return &object.Tuple{V: []object.Object{object.NewInt(n)}}, true
+	case "ndim":
+		return object.NewInt(1), true
+	case "strides":
+		return &object.Tuple{V: []object.Object{object.NewInt(1)}}, true
+	case "suboffsets":
+		return &object.Tuple{}, true
+	case "c_contiguous":
+		return object.True, true
+	case "f_contiguous":
+		return object.True, true
+	case "contiguous":
+		return object.True, true
+	case "cast":
+		return &object.BuiltinFunc{Name: "cast", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			// Returns a new memoryview with the requested format; for
+			// simple byte buffers format "B" or "b" or "c" is fine.
+			return mv, nil
 		}}, true
 	}
 	return nil, false
@@ -2108,13 +2132,19 @@ func bytesMethod(b *object.Bytes, name string) (object.Object, bool) {
 	return nil, false
 }
 
-func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
+func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.Object, bool) {
 	if m, ok := bytesSubMethod(func() []byte { return ba.V }, true, name); ok {
 		return m, true
+	}
+	bufErr := func() error {
+		return object.Errorf(interp.bufferErr, "Existing exports of data: object cannot be re-sized")
 	}
 	switch name {
 	case "clear":
 		return &object.BuiltinFunc{Name: "clear", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			ba.V = ba.V[:0]
 			return object.None, nil
 		}}, true
@@ -2127,6 +2157,9 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		}}, true
 	case "insert":
 		return &object.BuiltinFunc{Name: "insert", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			n, ok := toInt64(a[0])
 			if !ok {
 				return nil, object.Errorf(ii.(*Interp).typeErr, "bytearray indices must be integers")
@@ -2153,6 +2186,9 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		}}, true
 	case "remove":
 		return &object.BuiltinFunc{Name: "remove", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			v, ok := toInt64(a[0])
 			if !ok || v < 0 || v > 255 {
 				return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
@@ -2168,6 +2204,9 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		}}, true
 	case "append":
 		return &object.BuiltinFunc{Name: "append", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			n, ok := toInt64(a[0])
 			if !ok || n < 0 || n > 255 {
 				return nil, object.Errorf(ii.(*Interp).valueErr, "byte must be in range(0, 256)")
@@ -2177,6 +2216,9 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		}}, true
 	case "extend":
 		return &object.BuiltinFunc{Name: "extend", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			if bb, ok := bytesBytesOrArray(a[0]); ok {
 				ba.V = append(ba.V, bb...)
 				return object.None, nil
@@ -2196,6 +2238,9 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 		}}, true
 	case "pop":
 		return &object.BuiltinFunc{Name: "pop", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if ba.Views > 0 {
+				return nil, bufErr()
+			}
 			idx := len(ba.V) - 1
 			if len(a) > 0 {
 				n, ok := toInt64(a[0])
@@ -2217,6 +2262,12 @@ func bytearrayMethod(ba *object.Bytearray, name string) (object.Object, bool) {
 	case "decode":
 		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return &object.Str{V: string(ba.V)}, nil
+		}}, true
+	case "copy":
+		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			out := make([]byte, len(ba.V))
+			copy(out, ba.V)
+			return &object.Bytearray{V: out}, nil
 		}}, true
 	}
 	return nil, false
