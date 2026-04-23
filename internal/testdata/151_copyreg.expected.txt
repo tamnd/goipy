@@ -1,0 +1,30 @@
+True
+True
+True
+True
+True
+True
+constructor ok
+TypeError for non-callable constructor
+TypeError for str constructor
+True
+True
+TypeError for non-callable reducer
+TypeError for non-callable constructor_ob
+pickle with constructor ok
+True
+True
+add_extension ok
+add_extension idempotent ok
+ValueError code 0
+ValueError negative code
+ValueError code conflict
+ValueError name conflict
+remove_extension ok
+re-add after remove ok
+ValueError remove non-existent
+clear_extension_cache ok
+remove after clear cache ok
+mod2 correctly removed
+multi extension ok
+done
