@@ -127,6 +127,10 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildDecimal(), true
 	case "fractions":
 		return i.buildFractions(), true
+	case "pathlib":
+		return i.buildPathlib(), true
+	case "tempfile":
+		return i.buildTempfile(), true
 	}
 	return nil, false
 }
