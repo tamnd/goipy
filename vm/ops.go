@@ -406,6 +406,10 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(x.D.Len()), nil
 	case *object.OrderedDict:
 		return int64(x.D.Len()), nil
+	case *object.Class:
+		if x.EnumData != nil {
+			return int64(len(x.EnumData.Members)), nil
+		}
 	}
 	return 0, object.Errorf(i.typeErr, "object of type '%s' has no len()", object.TypeName(v))
 }
@@ -1409,6 +1413,19 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			pos++
 			return r, true, nil
 		}}, nil
+	case *object.Class:
+		if x.EnumData != nil {
+			idx := 0
+			members := x.EnumData.Members
+			return &object.Iter{Next: func() (object.Object, bool, error) {
+				if idx >= len(members) {
+					return nil, false, nil
+				}
+				r := members[idx]
+				idx++
+				return r, true, nil
+			}}, nil
+		}
 	}
 	return nil, object.Errorf(i.typeErr, "'%s' object is not iterable", object.TypeName(v))
 }

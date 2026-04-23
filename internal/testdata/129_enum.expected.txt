@@ -1,0 +1,52 @@
+Color.RED
+<Color.RED: 1>
+RED
+1
+Color.GREEN
+Color.BLUE
+Color.RED
+Color.GREEN
+Color.BLUE
+3
+True
+['RED', 'GREEN', 'BLUE']
+True
+False
+True
+1
+2
+3
+True
+[<Shape.SQUARE: 2>]
+1
+['SQUARE', 'QUAD']
+ValueError raised
+True
+True
+False
+1
+<Number.ONE: 1>
+True
+True
+2
+happy
+<Mood.HAPPY: 'happy'>
+happy
+True
+True
+1
+2
+4
+<Perm.READ: 1>
+3
+<Perm.READ|WRITE: 3>
+True
+False
+1
+BEE
+3
+1
+4
+200
+404
+done
