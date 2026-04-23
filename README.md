@@ -107,7 +107,9 @@ A few things worth knowing:
 | `with` / `async with` | works | `__enter__`/`__exit__`, `__aenter__`/`__aexit__` |
 | `match` statement | works | class, sequence, mapping patterns, guards |
 | `import` of `.pyc` on disk | works | `Interp.SearchPath` for resolution |
-| Stdlib subset | partial | sys, math, time, io, json, re, hashlib, pathlib, functools, operator, collections, itertools, and more |
+| `pathlib` | works | `PurePosixPath`, `Path`/`PosixPath`, full I/O, glob, rglob, walk, stat |
+| `tempfile` | works | `TemporaryDirectory`, `mkdtemp`, `mkstemp`, `gettempdir` |
+| Stdlib subset | partial | 60+ modules — sys, math, time, io, json, re, hashlib, datetime, collections, itertools, and more |
 | C extensions | no | no `PyObject*` ABI; out of scope |
 
 Stdlib coverage moves the most often. Check `vm/stdlib_*.go` for the current set.
@@ -134,17 +136,19 @@ Captured 2026-04-21, Apple M4, Go 1.26.2 vs CPython 3.14.4. All 24 cases produce
 ## Project layout
 
 ```text
-cmd/goipy/      CLI: load a .pyc and run it
-marshal/        .pyc header + marshal decoder
-op/             opcode table, generated from CPython's opcode.py
-object/         Python object model (Int, Str, Dict, Class, Exception, ...)
-vm/interp.go    Interp struct; Run, RunPyc, module frame setup
-vm/dispatch.go  opcode dispatch switch
-vm/call.go      argument binding, *args, **kwargs, defaults
-vm/generator.go generators and coroutines (goroutine + channel)
-vm/stdlib_*.go  built-in modules (math, re, hashlib, asyncio, pathlib, ...)
-testdata/       .pyc fixtures with expected stdout
-bench/          benchmark cases and CPython comparison runner
+cmd/goipy/           CLI: load a .pyc and run it
+marshal/             .pyc header + marshal decoder
+op/                  opcode table, generated from CPython's opcode.py
+object/              Python object model (Int, Str, Dict, Class, Exception, ...)
+vm/interp.go         Interp struct; Run, RunPyc, module frame setup
+vm/asyncio.go        builtinModule() registry; minimal asyncio event loop
+vm/dispatch.go       opcode dispatch switch
+vm/call.go           argument binding, *args, **kwargs, defaults
+vm/generator.go      generators and coroutines (goroutine + channel)
+vm/stdlib_*.go       60+ built-in modules across 38 files (math, re, hashlib,
+                     pathlib, tempfile, datetime, collections, ...)
+internal/testdata/   145 Python fixtures with expected stdout
+bench/               benchmark cases and CPython comparison runner
 ```
 
 ## FAQ

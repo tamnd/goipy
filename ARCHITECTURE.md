@@ -283,25 +283,27 @@ globals.
 
 ### What works today
 
-| Area                                         | Status  | Notes                                                      |
-|----------------------------------------------|---------|------------------------------------------------------------|
-| `int`, `float`, `bool`, `bytes`, `str`       | works   | `int` is arbitrary precision via `math/big`                |
-| `list`, `tuple`, `dict`, `set`, `frozenset`  | works   | Dicts are insertion-ordered                                |
-| Control flow, comprehensions                 | works   | `for`, `while`, `break`, `continue`                        |
-| Functions, closures, decorators              | works   | Positional, keyword, `*args`, `**kwargs`, defaults         |
-| Classes, MRO, `super()`                      | works   | C3 linearisation, memoised attribute lookup                |
-| Exceptions, traceback                        | works   | `try/except/finally`, chained `raise`, exception groups    |
-| Generators, `yield`, `yield from`            | works   | Exercised in the bench suite                               |
-| `async`, `await`, `asyncio.run`              | works   | Driver covers `asyncio.sleep` and `gather`                 |
-| `with` / `async with`                        | works   | `__enter__`/`__exit__`, `__aenter__`/`__aexit__`           |
-| `match` statement                            | works   | Class, sequence, mapping patterns, guards                  |
-| `import` of `.pyc` on disk                   | works   | `SearchPath` seeded from the entry script's directory      |
-| Stdlib subset                                | partial | `sys`, `math`, `time`, `io`, `json`, `re`, `hashlib`, ~20  |
-| C extensions                                 | out     | No `PyObject*` ABI; not planned                            |
+| Area                                         | Status  | Notes                                                                     |
+|----------------------------------------------|---------|---------------------------------------------------------------------------|
+| `int`, `float`, `bool`, `bytes`, `str`       | works   | `int` is arbitrary precision via `math/big`                               |
+| `list`, `tuple`, `dict`, `set`, `frozenset`  | works   | Dicts are insertion-ordered                                                |
+| Control flow, comprehensions                 | works   | `for`, `while`, `break`, `continue`                                       |
+| Functions, closures, decorators              | works   | Positional, keyword, `*args`, `**kwargs`, defaults                        |
+| Classes, MRO, `super()`                      | works   | C3 linearisation, memoised attribute lookup                               |
+| Exceptions, traceback                        | works   | `try/except/finally`, chained `raise`, exception groups                   |
+| Generators, `yield`, `yield from`            | works   | Exercised in the bench suite                                              |
+| `async`, `await`, `asyncio.run`              | works   | Driver covers `asyncio.sleep` and `gather`                                |
+| `with` / `async with`                        | works   | `__enter__`/`__exit__`, `__aenter__`/`__aexit__`                          |
+| `match` statement                            | works   | Class, sequence, mapping patterns, guards                                 |
+| `import` of `.pyc` on disk                   | works   | `SearchPath` seeded from the entry script's directory                     |
+| `pathlib`                                    | works   | `PurePosixPath`, `Path`/`PosixPath`, full I/O, glob, rglob, walk, stat   |
+| `tempfile`                                   | works   | `TemporaryDirectory`, `mkdtemp`, `mkstemp`, `gettempdir`                  |
+| Stdlib subset                                | partial | 60+ modules across 38 files — see `vm/stdlib_*.go` for current list      |
+| C extensions                                 | out     | No `PyObject*` ABI; not planned                                           |
 
-The stdlib column is the one that moves most often. See
-`vm/stdlib_*.go` for the current coverage, and the per-module test
-files under `vm/*_test.go`.
+The stdlib coverage moves the most often. Check `vm/stdlib_*.go` for
+the current set. The 145 test fixtures under `internal/testdata/`
+anchor every module's behaviour against CPython 3.14 output.
 
 ### Performance
 
@@ -494,8 +496,8 @@ behaviour close to what Go already ships.
 - **`async` beyond asyncio basics.** `asyncio.sleep`, `gather`, and
   `run` work today. `asyncio.subprocess`, `asyncio.streams`, and
   the network stack are still on the to-do list.
-- **The tail of the stdlib.** Around 20 modules are implemented;
-  CPython ships hundreds. Each new module is additive and fairly
+- **The tail of the stdlib.** 60+ modules are implemented across 38
+  files; CPython ships hundreds. Each new module is additive and fairly
   mechanical; prioritisation follows user demand.
 - **Unicode edge cases.** Go's `unicode` and `strings` packages
   cover the common paths. Python has corners around normalisation
@@ -546,24 +548,26 @@ not enough to land a VM change.
 ### Project layout
 
 ```
-cmd/goipy/           CLI: load a .pyc and run it.
-marshal/             .pyc header reader and marshal-format decoder.
-op/                  Opcode table, regenerated from CPython's opcode.py.
-object/              Python object model: Int, Float, Str, List, Dict, Class,
-                     Exception, Module, Code, Frame, Generator, descriptors.
-vm/interp.go         Interp struct; Run, RunPyc, module frame setup.
-vm/frame.go          Call frame layout.
-vm/dispatch.go       The opcode dispatch switch.
-vm/call.go           Function-call machinery: argument binding, defaults,
-                     *args/**kwargs.
-vm/dunder.go         Attribute access, MRO walk, descriptor protocol.
-vm/generator.go      Generators and coroutines (goroutine + channel based).
-vm/exctable.go       Exception-table decoding and handler lookup.
-vm/traceback.go      Python-style traceback formatting.
-vm/stdlib_*.go       Built-in modules (math, re, hashlib, asyncio, ...).
-vm/ARCHITECTURE.md   Low-level design notes for the VM.
-testdata/            .pyc fixtures with expected stdout.
-bench/               Benchmark cases, CPython comparison, results table.
+cmd/goipy/              CLI: load a .pyc and run it.
+marshal/                .pyc header reader and marshal-format decoder.
+op/                     Opcode table, regenerated from CPython's opcode.py.
+object/                 Python object model: Int, Float, Str, List, Dict, Class,
+                        Exception, Module, Code, Frame, Generator, descriptors.
+vm/interp.go            Interp struct; Run, RunPyc, module frame setup.
+vm/asyncio.go           builtinModule() registry; minimal asyncio event loop.
+vm/frame.go             Call frame layout.
+vm/dispatch.go          The opcode dispatch switch.
+vm/call.go              Function-call machinery: argument binding, defaults,
+                        *args/**kwargs.
+vm/dunder.go            Attribute access, MRO walk, descriptor protocol.
+vm/generator.go         Generators and coroutines (goroutine + channel based).
+vm/exctable.go          Exception-table decoding and handler lookup.
+vm/traceback.go         Python-style traceback formatting.
+vm/stdlib_*.go          60+ built-in modules across 38 files (math, re, hashlib,
+                        pathlib, tempfile, datetime, json, collections, ...).
+internal/testdata/      145 Python fixtures with expected stdout, verified against
+                        CPython 3.14 at test time.
+bench/                  Benchmark cases, CPython comparison, results table.
 ```
 
 ### FAQ
@@ -627,17 +631,23 @@ arithmetic. Once control flow and function calls worked, the project
 picked up classes, then exceptions, then generators, then
 `async`/`await`, adding each layer once the lower one was stable.
 
-Standard-library modules came in waves (math/heapq/bisect, then
-json/re, then hashlib/base64, then a long tail), each landed with
-tests and fixtures. The most recent rounds of work have been about
-closing gaps in behaviour that only show up under real programs:
-line-table decoding so tracebacks read right, exception groups,
-`match` pattern matching, and a benchmark harness that compares
-goipy's output against CPython on a varied suite.
+Standard-library modules came in waves: math/heapq/bisect first,
+then json/re, then hashlib/base64, then a long tail covering
+datetime, decimal, fractions, enum, pathlib, tempfile, and more.
+Each round landed with test fixtures verified byte-for-byte against
+CPython 3.14. The project now registers 60+ modules across 38 Go
+files, supported by 145 fixture tests.
 
-The project is now past the "does it run?" stage and into the "how
-does it behave on real programs?" stage. The direction from here is
-more stdlib coverage and a closer look at the performance gap.
+The most recent work closed gaps that only show up under real
+programs: `pathlib` and `tempfile` with full file-system I/O,
+traceback position underlines from CPython's `co_linetable`, and a
+style pass (gofmt + gocyclo) that keeps the codebase clean for
+`goreportcard`.
+
+The project is past the "does it run?" stage and into the "does it
+behave correctly under real scripts?" stage. The direction from here
+is broader stdlib coverage, tighter parity on edge cases, and
+closing the remaining performance gap on small-int arithmetic.
 
 ### License
 
