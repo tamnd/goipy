@@ -137,6 +137,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildStat(), true
 	case "filecmp":
 		return i.buildFilecmp(), true
+	case "linecache":
+		return i.buildLinecache(), true
 	}
 	return nil, false
 }
