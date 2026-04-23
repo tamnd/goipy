@@ -45,7 +45,7 @@ python3.14 -m py_compile hello.py
 go run ./cmd/goipy __pycache__/hello.cpython-314.pyc
 ```
 
-```
+```text
 hello from goipy
 45
 ```
@@ -133,7 +133,7 @@ Captured 2026-04-21, Apple M4, Go 1.26.2 vs CPython 3.14.4. All 24 cases produce
 
 ## Project layout
 
-```
+```text
 cmd/goipy/      CLI: load a .pyc and run it
 marshal/        .pyc header + marshal decoder
 op/             opcode table, generated from CPython's opcode.py
