@@ -79,6 +79,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildGzip(), true
 	case "fnmatch":
 		return i.buildFnmatch(), true
+	case "glob":
+		return i.buildGlob(), true
 	case "statistics":
 		return i.buildStatistics(), true
 	case "calendar":

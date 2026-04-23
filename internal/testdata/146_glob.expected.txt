@@ -1,0 +1,41 @@
+hello
+[[]test]
+[*].txt
+file[?].py
+/path/to/[[]dir]
+no_special
+True
+True
+False
+False
+True
+True
+['a.txt', 'b.txt']
+['c.py']
+['a.txt', 'b.txt', 'c.py', 'sub', 'sub2']
+['a.txt', 'b.txt']
+['sub/d.txt', 'sub/e.txt']
+['.hidden', '.hidden.txt']
+['.hidden.txt']
+['a.txt', 'b.txt']
+['.hidden.txt', 'a.txt', 'b.txt']
+['sub/', 'sub2/']
+[]
+[]
+['a.txt', 'b.txt']
+['b.txt']
+['a.txt', 'b.txt', 'sub/d.txt', 'sub/deep/f.txt', 'sub/e.txt', 'sub2/g.txt']
+['a.txt', 'b.txt', 'c.py', 'sub', 'sub/d.txt', 'sub/deep', 'sub/deep/f.txt', 'sub/e.txt', 'sub2', 'sub2/g.txt']
+['sub/d.txt', 'sub/e.txt', 'sub2/g.txt']
+['a.txt', 'b.txt']
+['sub/d.txt', 'sub/e.txt']
+['a.txt', 'b.txt']
+['a.txt', 'b.txt', 'sub/d.txt', 'sub/deep/f.txt', 'sub/e.txt', 'sub2/g.txt']
+True
+True
+['c.py']
+[]
+True
+True
+True
+done
