@@ -1,0 +1,61 @@
+True
+True
+True
+True
+42
+hello
+[1, 2, 3]
+True
+True
+True
+False
+2
+False
+1
+True
+True
+True
+-999
+1099511627776
+3.14
+unicode é
+b'\x00\xff'
+[1, 'a', None]
+(1, 2, 3)
+{'k': 'v'}
+{'a': [1, (2,), {'b': True}]}
+set
+[1, 2, 3]
+frozenset
+[4, 5]
+['one', 'two']
+[1, 2]
+[('one', 1), ('two', 2)]
+['a', 'b']
+99
+None
+0
+99
+False
+42
+42
+42
+['aa', 'bb', 'new']
+default
+KeyError on pop missing
+KeyError missing key
+0
+False
+v
+error on read-only write
+synced
+also
+[1, 2, 3, 4]
+ValueError on closed get
+ValueError on closed set
+ValueError on closed len
+1
+2
+[1, 2, 3]
+KeyError del missing
+done

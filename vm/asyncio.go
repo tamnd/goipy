@@ -145,6 +145,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPickle(), true
 	case "copyreg":
 		return i.buildCopyreg(), true
+	case "shelve":
+		return i.buildShelve(), true
 	}
 	return nil, false
 }
