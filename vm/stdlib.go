@@ -926,6 +926,52 @@ func (i *Interp) buildItertools() *object.Module {
 		}}, nil
 	}})
 
+	m.Dict.SetStr("batched", &object.BuiltinFunc{Name: "batched", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "batched() requires iterable and n")
+		}
+		it, err := i.getIter(a[0])
+		if err != nil {
+			return nil, err
+		}
+		n, ok := toInt64(a[1])
+		if !ok || n < 1 {
+			return nil, object.Errorf(i.valueErr, "batched() n must be a positive integer")
+		}
+		strict := false
+		if kw != nil {
+			if v, ok2 := kw.GetStr("strict"); ok2 {
+				strict = object.Truthy(v)
+			}
+		}
+		batchSize := int(n)
+		done := false
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if done {
+				return nil, false, nil
+			}
+			batch := make([]object.Object, 0, batchSize)
+			for len(batch) < batchSize {
+				v, ok, err := it.Next()
+				if err != nil {
+					return nil, false, err
+				}
+				if !ok {
+					done = true
+					break
+				}
+				batch = append(batch, v)
+			}
+			if len(batch) == 0 {
+				return nil, false, nil
+			}
+			if strict && len(batch) < batchSize {
+				return nil, false, object.Errorf(i.valueErr, "batched(): incomplete batch")
+			}
+			return &object.Tuple{V: batch}, true, nil
+		}}, nil
+	}})
+
 	return m
 }
 
