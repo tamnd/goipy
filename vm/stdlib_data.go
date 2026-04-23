@@ -1087,28 +1087,58 @@ func groupIndex(i *Interp, mt *object.Match, a []object.Object) (int, error) {
 func (i *Interp) buildCopy() *object.Module {
 	m := &object.Module{Name: "copy", Dict: object.NewDict()}
 
+	// copy.error / copy.Error — exception class
+	copyErr := &object.Class{Name: "Error", Bases: []*object.Class{i.exception}, Dict: object.NewDict()}
+	m.Dict.SetStr("error", copyErr)
+	m.Dict.SetStr("Error", copyErr)
+
 	m.Dict.SetStr("copy", &object.BuiltinFunc{Name: "copy", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) != 1 {
+		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "copy() takes 1 argument")
 		}
-		return shallowCopy(a[0]), nil
+		return i.shallowCopy(a[0])
 	}})
 
 	m.Dict.SetStr("deepcopy", &object.BuiltinFunc{Name: "deepcopy", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) != 1 {
+		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "deepcopy() takes 1 argument")
 		}
+		// optional second arg: memo dict (we use it as our seen map)
 		seen := map[any]object.Object{}
-		return deepCopy(a[0], seen), nil
+		return i.deepCopy(a[0], seen)
+	}})
+
+	// copy.replace (Python 3.13+): create a modified copy via __replace__
+	m.Dict.SetStr("replace", &object.BuiltinFunc{Name: "replace", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "replace() requires at least 1 argument")
+		}
+		obj := a[0]
+		// Try __replace__ protocol
+		if inst, ok := obj.(*object.Instance); ok {
+			if fn, found := classLookup(inst.Class, "__replace__"); found {
+				return i.callObject(fn, []object.Object{inst}, kw)
+			}
+		}
+		return nil, object.Errorf(i.typeErr, "replace() argument must support __replace__ protocol")
 	}})
 
 	return m
 }
 
-// shallowCopy mirrors CPython's copy.copy: scalar/immutable values share
-// identity; mutable containers get a new top-level shell whose elements
-// still alias the originals.
-func shallowCopy(o object.Object) object.Object {
+// shallowCopy implements copy.copy with __copy__ protocol support.
+func (i *Interp) shallowCopy(o object.Object) (object.Object, error) {
+	// __copy__ protocol
+	if inst, ok := o.(*object.Instance); ok {
+		if fn, found := classLookup(inst.Class, "__copy__"); found {
+			return i.callObject(fn, []object.Object{inst}, nil)
+		}
+	}
+	return shallowCopyPlain(o), nil
+}
+
+// shallowCopyPlain is the pure-Go shallow copy without protocol dispatch.
+func shallowCopyPlain(o object.Object) object.Object {
 	switch v := o.(type) {
 	case *object.List:
 		out := make([]object.Object, len(v.V))
@@ -1127,10 +1157,20 @@ func shallowCopy(o object.Object) object.Object {
 			ns.Add(it)
 		}
 		return ns
+	case *object.Frozenset:
+		nf := object.NewFrozenset()
+		for _, it := range v.Items() {
+			nf.Add(it)
+		}
+		return nf
 	case *object.Tuple:
 		out := make([]object.Object, len(v.V))
 		copy(out, v.V)
 		return &object.Tuple{V: out}
+	case *object.Bytearray:
+		out := make([]byte, len(v.V))
+		copy(out, v.V)
+		return &object.Bytearray{V: out}
 	case *object.Instance:
 		nd := object.NewDict()
 		keys, vals := v.Dict.Items()
@@ -1142,7 +1182,23 @@ func shallowCopy(o object.Object) object.Object {
 	return o
 }
 
-func deepCopy(o object.Object, seen map[any]object.Object) object.Object {
+// deepCopy implements copy.deepcopy with __deepcopy__ protocol and cycle detection.
+func (i *Interp) deepCopy(o object.Object, seen map[any]object.Object) (object.Object, error) {
+	// __deepcopy__ protocol
+	if inst, ok := o.(*object.Instance); ok {
+		if c, ok := seen[inst]; ok {
+			return c, nil
+		}
+		if fn, found := classLookup(inst.Class, "__deepcopy__"); found {
+			// Pass memo as an empty dict (goipy doesn't need real memo for protocol)
+			memo := object.NewDict()
+			return i.callObject(fn, []object.Object{inst, memo}, nil)
+		}
+	}
+	return deepCopyPlain(o, seen), nil
+}
+
+func deepCopyPlain(o object.Object, seen map[any]object.Object) object.Object {
 	switch v := o.(type) {
 	case *object.List:
 		if c, ok := seen[v]; ok {
@@ -1151,7 +1207,7 @@ func deepCopy(o object.Object, seen map[any]object.Object) object.Object {
 		out := &object.List{V: make([]object.Object, len(v.V))}
 		seen[v] = out
 		for k, x := range v.V {
-			out.V[k] = deepCopy(x, seen)
+			out.V[k] = deepCopyPlain(x, seen)
 		}
 		return out
 	case *object.Dict:
@@ -1162,7 +1218,7 @@ func deepCopy(o object.Object, seen map[any]object.Object) object.Object {
 		seen[v] = nd
 		keys, vals := v.Items()
 		for k, key := range keys {
-			nd.Set(deepCopy(key, seen), deepCopy(vals[k], seen))
+			nd.Set(deepCopyPlain(key, seen), deepCopyPlain(vals[k], seen))
 		}
 		return nd
 	case *object.Set:
@@ -1172,15 +1228,25 @@ func deepCopy(o object.Object, seen map[any]object.Object) object.Object {
 		ns := object.NewSet()
 		seen[v] = ns
 		for _, it := range v.Items() {
-			ns.Add(deepCopy(it, seen))
+			ns.Add(deepCopyPlain(it, seen))
 		}
 		return ns
+	case *object.Frozenset:
+		nf := object.NewFrozenset()
+		for _, it := range v.Items() {
+			nf.Add(deepCopyPlain(it, seen))
+		}
+		return nf
 	case *object.Tuple:
 		out := &object.Tuple{V: make([]object.Object, len(v.V))}
 		for k, x := range v.V {
-			out.V[k] = deepCopy(x, seen)
+			out.V[k] = deepCopyPlain(x, seen)
 		}
 		return out
+	case *object.Bytearray:
+		out := make([]byte, len(v.V))
+		copy(out, v.V)
+		return &object.Bytearray{V: out}
 	case *object.Instance:
 		if c, ok := seen[v]; ok {
 			return c
@@ -1190,9 +1256,10 @@ func deepCopy(o object.Object, seen map[any]object.Object) object.Object {
 		seen[v] = ni
 		keys, vals := v.Dict.Items()
 		for k, key := range keys {
-			nd.Set(key, deepCopy(vals[k], seen))
+			nd.Set(key, deepCopyPlain(vals[k], seen))
 		}
 		return ni
 	}
 	return o
 }
+
