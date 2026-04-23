@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -1154,7 +1155,323 @@ func ppSafeRepr(o object.Object, seen map[any]bool) string {
 }
 
 func ptrID(v any) uintptr {
-	return uintptr(fmt.Sprintf("%p", v)[2]) // simplified; use reflect for real id
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr || rv.Kind() == reflect.UnsafePointer {
+		return rv.Pointer()
+	}
+	return 0
+}
+
+// objectID returns a stable uintptr identity for any object.Object pointer.
+func objectID(o object.Object) uintptr {
+	return reflect.ValueOf(o).Pointer()
+}
+
+// --- reprlib module ---------------------------------------------------------
+
+func (i *Interp) buildReprlib() *object.Module {
+	m := &object.Module{Name: "reprlib", Dict: object.NewDict()}
+
+	// Track objects currently being repr'd for recursive_repr decorator.
+	reprInProgress := map[uintptr]bool{}
+
+	// ---- helper: get int attribute from instance dict (with default) ----
+	getIntAttr := func(inst *object.Instance, name string, def int) int {
+		if v, ok := inst.Dict.GetStr(name); ok {
+			if n, ok := toInt64(v); ok {
+				return int(n)
+			}
+		}
+		return def
+	}
+	getStrAttr := func(inst *object.Instance, name string, def string) string {
+		if v, ok := inst.Dict.GetStr(name); ok {
+			if s, ok := v.(*object.Str); ok {
+				return s.V
+			}
+		}
+		return def
+	}
+
+	// ---- reprLibStr: string with Python-style truncation ----
+	reprLibStr := func(s string, maxstring int) string {
+		if len(s) <= maxstring {
+			return object.Repr(&object.Str{V: s})
+		}
+		ii := (maxstring - 3) / 2
+		j := maxstring - 3 - ii
+		if ii < 0 {
+			ii = 0
+		}
+		if j < 0 {
+			j = 0
+		}
+		var tail string
+		if j > 0 {
+			tail = s[len(s)-j:]
+		}
+		combined := object.Repr(&object.Str{V: s[:ii] + tail})
+		if len(combined) < ii+j {
+			return combined
+		}
+		return combined[:ii] + "..." + combined[len(combined)-j:]
+	}
+
+	// ---- reprLibInt: long int truncation ----
+	reprLibInt := func(s string, maxlong int) string {
+		if len(s) <= maxlong {
+			return s
+		}
+		half := (maxlong - 3) / 2
+		rest := maxlong - 3 - half
+		return s[:half] + "..." + s[len(s)-rest:]
+	}
+
+	// ---- reprLibObj: recursive repr dispatcher ----
+	var reprLibObj func(inst *object.Instance, o object.Object, level int) string
+	reprLibObj = func(inst *object.Instance, o object.Object, level int) string {
+		fv := getStrAttr(inst, "fillvalue", "...")
+
+		seqRepr := func(items []object.Object, open, close string, maxN int) string {
+			if len(items) == 0 {
+				return open + close
+			}
+			if level <= 0 {
+				return open + fv + close
+			}
+			var parts []string
+			for idx, it := range items {
+				if idx >= maxN {
+					parts = append(parts, fv)
+					break
+				}
+				parts = append(parts, reprLibObj(inst, it, level-1))
+			}
+			return open + strings.Join(parts, ", ") + close
+		}
+
+		switch v := o.(type) {
+		case *object.List:
+			maxlist := getIntAttr(inst, "maxlist", 6)
+			return seqRepr(v.V, "[", "]", maxlist)
+		case *object.Tuple:
+			maxtuple := getIntAttr(inst, "maxtuple", 6)
+			if len(v.V) == 0 {
+				return "()"
+			}
+			if level <= 0 {
+				return "(" + fv + ")"
+			}
+			if len(v.V) == 1 {
+				return "(" + reprLibObj(inst, v.V[0], level-1) + ",)"
+			}
+			var parts []string
+			for idx, it := range v.V {
+				if idx >= maxtuple {
+					parts = append(parts, fv)
+					break
+				}
+				parts = append(parts, reprLibObj(inst, it, level-1))
+			}
+			return "(" + strings.Join(parts, ", ") + ")"
+		case *object.Dict:
+			maxdict := getIntAttr(inst, "maxdict", 4)
+			keys, vals := v.Items()
+			if len(keys) == 0 {
+				return "{}"
+			}
+			if level <= 0 {
+				return "{" + fv + "}"
+			}
+			var parts []string
+			for idx := range keys {
+				if idx >= maxdict {
+					parts = append(parts, fv)
+					break
+				}
+				kRepr := reprLibObj(inst, keys[idx], level-1)
+				vRepr := reprLibObj(inst, vals[idx], level-1)
+				parts = append(parts, kRepr+": "+vRepr)
+			}
+			return "{" + strings.Join(parts, ", ") + "}"
+		case *object.Set:
+			maxset := getIntAttr(inst, "maxset", 6)
+			items := v.Items()
+			return seqRepr(items, "{", "}", maxset)
+		case *object.Frozenset:
+			maxfrozenset := getIntAttr(inst, "maxfrozenset", 6)
+			items := v.Items()
+			if len(items) == 0 {
+				return "frozenset()"
+			}
+			inner := seqRepr(items, "{", "}", maxfrozenset)
+			return "frozenset(" + inner + ")"
+		case *object.Str:
+			maxstring := getIntAttr(inst, "maxstring", 30)
+			return reprLibStr(v.V, maxstring)
+		case *object.Int:
+			maxlong := getIntAttr(inst, "maxlong", 40)
+			return reprLibInt(v.V.String(), maxlong)
+		case *object.Deque:
+			maxdeque := getIntAttr(inst, "maxdeque", 6)
+			return seqRepr(v.V, "[", "]", maxdeque)
+		case *object.PyArray:
+			maxarray := getIntAttr(inst, "maxarray", 5)
+			return seqRepr(v.V, "[", "]", maxarray)
+		default:
+			maxother := getIntAttr(inst, "maxother", 30)
+			s := object.Repr(o)
+			if len(s) > maxother {
+				half := (maxother - 3) / 2
+				rest := maxother - 3 - half
+				return s[:half] + "..." + s[len(s)-rest:]
+			}
+			return s
+		}
+	}
+
+	// ---- Repr class ----
+	reprClass := &object.Class{Name: "Repr", Dict: object.NewDict()}
+
+	reprClass.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "Repr.__init__ requires self")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "Repr.__init__: self must be Instance")
+		}
+		// Set defaults.
+		inst.Dict.SetStr("maxlevel", object.NewInt(6))
+		inst.Dict.SetStr("maxdict", object.NewInt(4))
+		inst.Dict.SetStr("maxlist", object.NewInt(6))
+		inst.Dict.SetStr("maxtuple", object.NewInt(6))
+		inst.Dict.SetStr("maxset", object.NewInt(6))
+		inst.Dict.SetStr("maxfrozenset", object.NewInt(6))
+		inst.Dict.SetStr("maxdeque", object.NewInt(6))
+		inst.Dict.SetStr("maxarray", object.NewInt(5))
+		inst.Dict.SetStr("maxstring", object.NewInt(30))
+		inst.Dict.SetStr("maxlong", object.NewInt(40))
+		inst.Dict.SetStr("maxother", object.NewInt(30))
+		inst.Dict.SetStr("fillvalue", &object.Str{V: "..."})
+		inst.Dict.SetStr("indent", object.None)
+		// Apply keyword arguments.
+		if kw != nil {
+			for _, name := range []string{"maxlevel", "maxdict", "maxlist", "maxtuple", "maxset",
+				"maxfrozenset", "maxdeque", "maxarray", "maxstring", "maxlong", "maxother"} {
+				if v, ok := kw.GetStr(name); ok {
+					inst.Dict.SetStr(name, v)
+				}
+			}
+			if v, ok := kw.GetStr("fillvalue"); ok {
+				inst.Dict.SetStr("fillvalue", v)
+			}
+			if v, ok := kw.GetStr("indent"); ok {
+				inst.Dict.SetStr("indent", v)
+			}
+		}
+		return object.None, nil
+	}})
+
+	reprClass.Dict.SetStr("repr1", &object.BuiltinFunc{Name: "repr1", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return nil, object.Errorf(i.typeErr, "repr1() requires self, obj, level")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "repr1: self must be Instance")
+		}
+		obj := a[1]
+		level, _ := toInt64(a[2])
+		return &object.Str{V: reprLibObj(inst, obj, int(level))}, nil
+	}})
+
+	reprClass.Dict.SetStr("repr", &object.BuiltinFunc{Name: "repr", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "repr() requires self, obj")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "repr: self must be Instance")
+		}
+		maxlevel := getIntAttr(inst, "maxlevel", 6)
+		return &object.Str{V: reprLibObj(inst, a[1], maxlevel)}, nil
+	}})
+
+	m.Dict.SetStr("Repr", reprClass)
+
+	// ---- Module-level aRepr instance ----
+	aRepr := &object.Instance{Class: reprClass, Dict: object.NewDict()}
+	// Initialize default attributes on aRepr.
+	aRepr.Dict.SetStr("maxlevel", object.NewInt(6))
+	aRepr.Dict.SetStr("maxdict", object.NewInt(4))
+	aRepr.Dict.SetStr("maxlist", object.NewInt(6))
+	aRepr.Dict.SetStr("maxtuple", object.NewInt(6))
+	aRepr.Dict.SetStr("maxset", object.NewInt(6))
+	aRepr.Dict.SetStr("maxfrozenset", object.NewInt(6))
+	aRepr.Dict.SetStr("maxdeque", object.NewInt(6))
+	aRepr.Dict.SetStr("maxarray", object.NewInt(5))
+	aRepr.Dict.SetStr("maxstring", object.NewInt(30))
+	aRepr.Dict.SetStr("maxlong", object.NewInt(40))
+	aRepr.Dict.SetStr("maxother", object.NewInt(30))
+	aRepr.Dict.SetStr("fillvalue", &object.Str{V: "..."})
+	aRepr.Dict.SetStr("indent", object.None)
+	m.Dict.SetStr("aRepr", aRepr)
+
+	// ---- Module-level repr() function ----
+	m.Dict.SetStr("repr", &object.BuiltinFunc{Name: "repr", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "repr() missing argument")
+		}
+		maxlevel := getIntAttr(aRepr, "maxlevel", 6)
+		return &object.Str{V: reprLibObj(aRepr, a[0], maxlevel)}, nil
+	}})
+
+	// ---- recursive_repr decorator ----
+	m.Dict.SetStr("recursive_repr", &object.BuiltinFunc{Name: "recursive_repr", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		// fillvalue argument (positional or keyword).
+		fillvalue := "..."
+		if len(a) > 0 {
+			if s, ok := a[0].(*object.Str); ok {
+				fillvalue = s.V
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("fillvalue"); ok {
+				if s, ok := v.(*object.Str); ok {
+					fillvalue = s.V
+				}
+			}
+		}
+		fv := fillvalue
+
+		// Return the decorator.
+		return &object.BuiltinFunc{Name: "recursive_repr_decorator", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "recursive_repr decorator requires a function")
+			}
+			fn := a[0]
+			// Return the wrapper function.
+			wrapName := "wrapper"
+			if pyFn, ok := fn.(*object.Function); ok {
+				wrapName = pyFn.Name
+			}
+			return &object.BuiltinFunc{Name: wrapName, Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+				if len(a) < 1 {
+					return nil, object.Errorf(i.typeErr, "recursive_repr wrapper requires self")
+				}
+				selfID := objectID(a[0])
+				if reprInProgress[selfID] {
+					return &object.Str{V: fv}, nil
+				}
+				reprInProgress[selfID] = true
+				defer delete(reprInProgress, selfID)
+				return i.callObject(fn, a, kw)
+			}}, nil
+		}}, nil
+	}})
+
+	return m
 }
 
 
