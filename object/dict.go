@@ -3,6 +3,7 @@ package object
 import (
 	"fmt"
 	"math/big"
+	"unsafe"
 )
 
 // Set inserts or replaces a value for key in the dict.
@@ -412,6 +413,11 @@ func Hash(o Object) (uint64, error) {
 			h ^= xh*0x100000001b3 + 0x9e3779b97f4a7c15
 		}
 		return h, nil
+	case *Class:
+		// Types are hashable by identity.
+		return uint64(uintptr(unsafe.Pointer(v))), nil
+	case *BuiltinFunc:
+		return uint64(uintptr(unsafe.Pointer(v))), nil
 	}
 	return 0, fmt.Errorf("TypeError: unhashable type: '%s'", TypeName(o))
 }
