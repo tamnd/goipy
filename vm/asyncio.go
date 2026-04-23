@@ -123,6 +123,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildZoneinfo(), true
 	case "types":
 		return i.buildTypes(), true
+	case "decimal":
+		return i.buildDecimal(), true
 	}
 	return nil, false
 }
