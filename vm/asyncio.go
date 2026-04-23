@@ -93,6 +93,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildGraphlib(), true
 	case "numbers":
 		return i.buildNumbers(), true
+	case "cmath":
+		return i.buildCmath(), true
 	case "html":
 		return i.buildHtml(), true
 	case "sys":
