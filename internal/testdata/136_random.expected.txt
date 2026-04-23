@@ -1,0 +1,55 @@
+True
+True
+True
+randint ok
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+binomialvariate ok
+True
+triangular ok
+True
+expovariate ok
+True
+True
+True
+True
+True
+lognormvariate ok
+gammavariate ok
+True
+True
+betavariate ok
+vonmisesvariate ok
+True
+paretovariate ok
+weibullvariate ok
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+done
