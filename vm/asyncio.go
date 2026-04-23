@@ -147,6 +147,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCopyreg(), true
 	case "shelve":
 		return i.buildShelve(), true
+	case "marshal":
+		return i.buildMarshal(), true
 	}
 	return nil, false
 }

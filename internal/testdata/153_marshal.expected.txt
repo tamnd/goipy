@@ -1,0 +1,33 @@
+True
+True
+True
+True
+True
+True
+int round-trips ok
+float round-trips ok
+complex round-trips ok
+str round-trips ok
+bytes round-trips ok
+tuple round-trips ok
+list round-trips ok
+dict round-trips ok
+set
+[1, 2, 3]
+set
+0
+frozenset
+[4, 5, 6]
+frozenset
+0
+True
+{'a': [1, (2, 3), {'b': True}], 'c': None}
+all versions ok
+42
+99
+EOFError empty
+ValueError unsupported
+{'key': 'value', 'n': 99}
+[1, 2, 3]
+42
+done
