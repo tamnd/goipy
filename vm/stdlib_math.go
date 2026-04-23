@@ -451,6 +451,146 @@ func (i *Interp) buildMath() *object.Module {
 		return &object.Float{V: math.Ldexp(x, int(n))}, nil
 	}})
 
+	// isqrt(n) — integer square root (floor of exact square root).
+	m.Dict.SetStr("isqrt", &object.BuiltinFunc{Name: "isqrt", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(i.typeErr, "isqrt() takes 1 argument")
+		}
+		n, ok := toBigInt(a[0])
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "isqrt() requires an integer")
+		}
+		if n.Sign() < 0 {
+			return nil, object.Errorf(i.valueErr, "isqrt() argument must be nonnegative")
+		}
+		r := new(big.Int).Sqrt(n)
+		return object.IntFromBig(r), nil
+	}})
+
+	// cbrt(x) — cube root (Python 3.11+).
+	f1("cbrt", math.Cbrt)
+
+	// exp2(x) — 2**x (Python 3.11+).
+	f1("exp2", math.Exp2)
+
+	// remainder(x, y) — IEEE 754 remainder.
+	m.Dict.SetStr("remainder", &object.BuiltinFunc{Name: "remainder", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 2 {
+			return nil, object.Errorf(i.typeErr, "remainder() takes 2 arguments")
+		}
+		x, okX := toFloat64Any(a[0])
+		y, okY := toFloat64Any(a[1])
+		if !okX || !okY {
+			return nil, object.Errorf(i.typeErr, "remainder() requires numbers")
+		}
+		if y == 0 {
+			return nil, object.Errorf(i.valueErr, "math domain error")
+		}
+		return &object.Float{V: math.Remainder(x, y)}, nil
+	}})
+
+	// nextafter(x, y, *, steps=1) — next float value after x toward y.
+	m.Dict.SetStr("nextafter", &object.BuiltinFunc{Name: "nextafter", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "nextafter() takes at least 2 arguments")
+		}
+		x, okX := toFloat64Any(a[0])
+		y, okY := toFloat64Any(a[1])
+		if !okX || !okY {
+			return nil, object.Errorf(i.typeErr, "nextafter() requires numbers")
+		}
+		steps := int64(1)
+		if kw != nil {
+			if v, ok := kw.GetStr("steps"); ok {
+				if n, ok := toInt64(v); ok {
+					steps = n
+				}
+			}
+		}
+		r := x
+		for k := int64(0); k < steps; k++ {
+			r = math.Nextafter(r, y)
+		}
+		return &object.Float{V: r}, nil
+	}})
+
+	// ulp(x) — unit in the last place (Python 3.9+).
+	m.Dict.SetStr("ulp", &object.BuiltinFunc{Name: "ulp", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(i.typeErr, "ulp() takes 1 argument")
+		}
+		x, ok := toFloat64Any(a[0])
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "ulp() requires a number")
+		}
+		if math.IsNaN(x) {
+			return &object.Float{V: math.NaN()}, nil
+		}
+		if math.IsInf(x, 0) {
+			return &object.Float{V: math.Inf(1)}, nil
+		}
+		x = math.Abs(x)
+		return &object.Float{V: math.Nextafter(x, math.Inf(1)) - x}, nil
+	}})
+
+	// sumprod(p, q) — sum of element-wise products (Python 3.12+).
+	m.Dict.SetStr("sumprod", &object.BuiltinFunc{Name: "sumprod", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 2 {
+			return nil, object.Errorf(i.typeErr, "sumprod() takes 2 arguments")
+		}
+		ps, err := iterate(i, a[0])
+		if err != nil {
+			return nil, err
+		}
+		qs, err := iterate(i, a[1])
+		if err != nil {
+			return nil, err
+		}
+		if len(ps) != len(qs) {
+			return nil, object.Errorf(i.valueErr, "sumprod() arguments must have the same length")
+		}
+		// Use integer accumulation if all values are int, else float.
+		allInt := true
+		for _, v := range append(ps, qs...) {
+			switch v.(type) {
+			case *object.Int, *object.Bool:
+			default:
+				allInt = false
+			}
+		}
+		if allInt {
+			acc := new(big.Int)
+			for k := range ps {
+				pn, _ := toBigInt(ps[k])
+				qn, _ := toBigInt(qs[k])
+				prod := new(big.Int).Mul(pn, qn)
+				acc.Add(acc, prod)
+			}
+			return object.IntFromBig(acc), nil
+		}
+		var sum float64
+		for k := range ps {
+			pf, _ := toFloat64Any(ps[k])
+			qf, _ := toFloat64Any(qs[k])
+			sum += pf * qf
+		}
+		return &object.Float{V: sum}, nil
+	}})
+
+	// fma(x, y, z) — fused multiply-add: x*y + z without intermediate rounding (Python 3.13+).
+	m.Dict.SetStr("fma", &object.BuiltinFunc{Name: "fma", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 3 {
+			return nil, object.Errorf(i.typeErr, "fma() takes 3 arguments")
+		}
+		x, okX := toFloat64Any(a[0])
+		y, okY := toFloat64Any(a[1])
+		z, okZ := toFloat64Any(a[2])
+		if !okX || !okY || !okZ {
+			return nil, object.Errorf(i.typeErr, "fma() requires numbers")
+		}
+		return &object.Float{V: math.FMA(x, y, z)}, nil
+	}})
+
 	return m
 }
 
