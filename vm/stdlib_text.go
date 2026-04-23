@@ -1275,18 +1275,34 @@ func fnmatchTranslateCore(pat string) string {
 			b.WriteString(".")
 			i++
 		case '[':
-			end := strings.IndexByte(pat[i+1:], ']')
-			if end < 0 {
+			// CPython algorithm: skip ] if it is the first char in the class
+			// (allowing ] as a literal class member), then find closing ].
+			j := i + 1
+			if j < len(pat) && pat[j] == '!' {
+				j++
+			}
+			if j < len(pat) && pat[j] == ']' {
+				j++ // ] right after [ (or [!) is part of the class, not the closer
+			}
+			for j < len(pat) && pat[j] != ']' {
+				j++
+			}
+			if j >= len(pat) {
+				// no closing ] — treat [ as literal
 				b.WriteString(`\[`)
 				i++
 				continue
 			}
-			class := pat[i+1 : i+1+end]
-			i += 2 + end
-			if len(class) > 0 && class[0] == '!' {
-				class = "^" + class[1:]
+			class := pat[i+1 : j]
+			i = j + 1
+			neg := len(class) > 0 && class[0] == '!'
+			if neg {
+				class = class[1:]
 			}
 			b.WriteByte('[')
+			if neg {
+				b.WriteByte('^')
+			}
 			b.WriteString(class)
 			b.WriteByte(']')
 		default:
