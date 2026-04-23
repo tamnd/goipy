@@ -272,6 +272,19 @@ func (i *Interp) buildOs() *object.Module {
 		return object.NewInt(int64(os.Getpid())), nil
 	}})
 
+	// close(fd) — close an OS-level file descriptor.
+	m.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "close() requires 1 argument")
+		}
+		n, ok := a[0].(*object.Int)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "close() fd must be int")
+		}
+		_ = tempfileClose(int(n.V.Int64()))
+		return object.None, nil
+	}})
+
 	// chdir(path) — change current working directory.
 	m.Dict.SetStr("chdir", &object.BuiltinFunc{Name: "chdir", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
