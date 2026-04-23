@@ -1248,9 +1248,9 @@ func (i *Interp) openFile(path, mode string) (object.Object, error) {
 	return &object.File{F: f, FilePath: path, Mode: mode, Binary: binary}, nil
 }
 
-// buildTempfile constructs a minimal tempfile module:
-// TemporaryDirectory(), mkdtemp(), mkstemp(), gettempdir(), NamedTemporaryFile().
-func (i *Interp) buildTempfile() *object.Module {
+// buildTempfileOld was the minimal tempfile; the full implementation is in stdlib_tempfile.go.
+// Kept here for reference but renamed to avoid collision.
+func (i *Interp) buildTempfileOld() *object.Module {
 	m := &object.Module{Name: "tempfile", Dict: object.NewDict()}
 
 	// gettempdir() — return the default temp directory

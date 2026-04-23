@@ -1,0 +1,60 @@
+True
+True
+True
+True
+tmp
+b'tmp'
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+False
+b'hello world'
+11
+b'world'
+11
+b'world'
+True
+hello text
+True
+True
+b'named data'
+False
+False
+True
+True
+True
+text mode
+True
+True
+True
+False
+b'spooled'
+7
+b'SPOOLED'
+b'SPOOLED'
+True
+text spool
+b'small'
+True
+False
+True
+False
+True
+True
+True
+False
+True
+done
