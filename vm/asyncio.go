@@ -131,6 +131,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPathlib(), true
 	case "tempfile":
 		return i.buildTempfile(), true
+	case "stat":
+		return i.buildStat(), true
 	}
 	return nil, false
 }
