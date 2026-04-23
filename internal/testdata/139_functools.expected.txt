@@ -1,0 +1,56 @@
+('__module__', '__name__', '__qualname__', '__doc__', '__annotate__', '__type_params__')
+('__dict__',)
+orig
+True
+10
+24
+5
+0
+reduce empty ok
+True
+()
+[('exp', 2)]
+9
+25
+(5,)
+8
+Hello World!
+8
+27
+6
+['date', 'apple', 'banana', 'cherry']
+[9, 5, 4, 3, 1, 1]
+True
+False
+True
+True
+True
+True
+True
+True
+True
+10
+15
+20
+int: 42
+str: hello
+default: list
+default: float
+tuple: 3
+process
+int: 99
+str: hi
+obj: [1, 2, 3]
+55
+4
+False
+16
+16.0
+10
+True
+6
+True
+compute
+True
+42
+done

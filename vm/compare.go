@@ -96,6 +96,16 @@ func setOrder(a, b object.Object, kind int, i *Interp) (object.Object, error) {
 }
 
 func (i *Interp) lt(a, b object.Object) (bool, error) {
+	// Instances with __lt__
+	if _, ok := a.(*object.Instance); ok {
+		if r, ok2, err := i.tryCompareDunder(a, b, cmpLT); ok2 {
+			return object.Truthy(r), err
+		}
+	} else if _, ok := b.(*object.Instance); ok {
+		if r, ok2, err := i.tryCompareDunder(a, b, cmpLT); ok2 {
+			return object.Truthy(r), err
+		}
+	}
 	// Both numeric?
 	if ai, af, aF, aok := asIntOrFloat(a); aok {
 		if bi, bf, bF, bok := asIntOrFloat(b); bok {
