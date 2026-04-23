@@ -141,6 +141,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildLinecache(), true
 	case "shutil":
 		return i.buildShutil(), true
+	case "pickle":
+		return i.buildPickle(), true
 	}
 	return nil, false
 }
