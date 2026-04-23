@@ -598,64 +598,66 @@ func intArg(i *Interp, a []object.Object, fn string) (int64, error) {
 func (i *Interp) buildPprint() *object.Module {
 	m := &object.Module{Name: "pprint", Dict: object.NewDict()}
 
-	doFormat := func(o object.Object, kw *object.Dict) (string, error) {
-		opts := pformatOpts{
-			indent:    1,
-			width:     80,
-			depth:     -1,
-			compact:   false,
-			sortDicts: true,
+	parseOpts := func(defaultSortDicts bool, kw *object.Dict) pformatOpts {
+		opts := pformatOpts{indent: 1, width: 80, depth: -1, sortDicts: defaultSortDicts}
+		if kw == nil {
+			return opts
 		}
-		if kw != nil {
-			if v, ok := kw.GetStr("indent"); ok {
-				if iv, ok := toInt64(v); ok {
-					opts.indent = int(iv)
-				}
-			}
-			if v, ok := kw.GetStr("width"); ok {
-				if iv, ok := toInt64(v); ok {
-					opts.width = int(iv)
-				}
-			}
-			if v, ok := kw.GetStr("depth"); ok {
-				if iv, ok := toInt64(v); ok {
-					opts.depth = int(iv)
-				}
-			}
-			if v, ok := kw.GetStr("compact"); ok {
-				if b, ok := v.(*object.Bool); ok {
-					opts.compact = b.V
-				}
-			}
-			if v, ok := kw.GetStr("sort_dicts"); ok {
-				if b, ok := v.(*object.Bool); ok {
-					opts.sortDicts = b.V
-				}
+		if v, ok := kw.GetStr("indent"); ok {
+			if iv, ok := toInt64(v); ok {
+				opts.indent = int(iv)
 			}
 		}
-		return pformat(o, opts), nil
+		if v, ok := kw.GetStr("width"); ok {
+			if iv, ok := toInt64(v); ok {
+				opts.width = int(iv)
+			}
+		}
+		if v, ok := kw.GetStr("depth"); ok {
+			if iv, ok := toInt64(v); ok {
+				opts.depth = int(iv)
+			}
+		}
+		if v, ok := kw.GetStr("compact"); ok {
+			if b, ok := v.(*object.Bool); ok {
+				opts.compact = b.V
+			}
+		}
+		if v, ok := kw.GetStr("sort_dicts"); ok {
+			if b, ok := v.(*object.Bool); ok {
+				opts.sortDicts = b.V
+			}
+		}
+		return opts
 	}
 
+	// pformat — sort_dicts=True by default
 	m.Dict.SetStr("pformat", &object.BuiltinFunc{Name: "pformat", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "pformat() missing argument")
 		}
-		s, err := doFormat(a[0], kw)
-		if err != nil {
-			return nil, err
-		}
-		return &object.Str{V: s}, nil
+		opts := parseOpts(true, kw)
+		return &object.Str{V: pformat(a[0], opts)}, nil
 	}})
 
+	// pprint — sort_dicts=True by default
 	m.Dict.SetStr("pprint", &object.BuiltinFunc{Name: "pprint", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "pprint() missing argument")
 		}
-		s, err := doFormat(a[0], kw)
-		if err != nil {
-			return nil, err
+		opts := parseOpts(true, kw)
+		// stream kwarg (ignored: always write to stdout)
+		fmt.Fprintln(i.Stdout, pformat(a[0], opts))
+		return object.None, nil
+	}})
+
+	// pp — sort_dicts=False by default (Python 3.8+)
+	m.Dict.SetStr("pp", &object.BuiltinFunc{Name: "pp", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "pp() missing argument")
 		}
-		fmt.Fprintln(i.Stdout, s)
+		opts := parseOpts(false, kw)
+		fmt.Fprintln(i.Stdout, pformat(a[0], opts))
 		return object.None, nil
 	}})
 
@@ -663,19 +665,178 @@ func (i *Interp) buildPprint() *object.Module {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "isreadable() missing argument")
 		}
-		return object.BoolOf(isReadable(a[0])), nil
+		return object.BoolOf(ppIsReadable(a[0], map[any]bool{})), nil
 	}})
 
 	m.Dict.SetStr("isrecursive", &object.BuiltinFunc{Name: "isrecursive", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.False, nil
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "isrecursive() missing argument")
+		}
+		return object.BoolOf(ppIsRecursive(a[0], map[any]bool{})), nil
 	}})
 
 	m.Dict.SetStr("saferepr", &object.BuiltinFunc{Name: "saferepr", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "saferepr() missing argument")
 		}
-		return &object.Str{V: object.Repr(a[0])}, nil
+		return &object.Str{V: ppSafeRepr(a[0], map[any]bool{})}, nil
 	}})
+
+	// PrettyPrinter class
+	ppClass := &object.Class{Name: "PrettyPrinter", Dict: object.NewDict()}
+
+	ppClass.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		opts := pformatOpts{indent: 1, width: 80, depth: -1, sortDicts: true}
+		// positional args: indent, width, depth, stream
+		if len(a) >= 2 {
+			if iv, ok := toInt64(a[1]); ok {
+				opts.indent = int(iv)
+			}
+		}
+		if len(a) >= 3 {
+			if iv, ok := toInt64(a[2]); ok {
+				opts.width = int(iv)
+			}
+		}
+		if len(a) >= 4 {
+			if iv, ok := toInt64(a[3]); ok {
+				opts.depth = int(iv)
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("indent"); ok {
+				if iv, ok2 := toInt64(v); ok2 {
+					opts.indent = int(iv)
+				}
+			}
+			if v, ok := kw.GetStr("width"); ok {
+				if iv, ok2 := toInt64(v); ok2 {
+					opts.width = int(iv)
+				}
+			}
+			if v, ok := kw.GetStr("depth"); ok {
+				if iv, ok2 := toInt64(v); ok2 {
+					opts.depth = int(iv)
+				}
+			}
+			if v, ok := kw.GetStr("compact"); ok {
+				if b, ok2 := v.(*object.Bool); ok2 {
+					opts.compact = b.V
+				}
+			}
+			if v, ok := kw.GetStr("sort_dicts"); ok {
+				if b, ok2 := v.(*object.Bool); ok2 {
+					opts.sortDicts = b.V
+				}
+			}
+		}
+		// store opts fields in inst dict
+		inst.Dict.SetStr("_indent", object.NewInt(int64(opts.indent)))
+		inst.Dict.SetStr("_width", object.NewInt(int64(opts.width)))
+		inst.Dict.SetStr("_depth", object.NewInt(int64(opts.depth)))
+		inst.Dict.SetStr("_compact", object.BoolOf(opts.compact))
+		inst.Dict.SetStr("_sort_dicts", object.BoolOf(opts.sortDicts))
+		return object.None, nil
+	}})
+
+	ppGetOpts := func(inst *object.Instance) pformatOpts {
+		opts := pformatOpts{indent: 1, width: 80, depth: -1, sortDicts: true}
+		if v, ok := inst.Dict.GetStr("_indent"); ok {
+			if iv, ok2 := toInt64(v); ok2 {
+				opts.indent = int(iv)
+			}
+		}
+		if v, ok := inst.Dict.GetStr("_width"); ok {
+			if iv, ok2 := toInt64(v); ok2 {
+				opts.width = int(iv)
+			}
+		}
+		if v, ok := inst.Dict.GetStr("_depth"); ok {
+			if iv, ok2 := toInt64(v); ok2 {
+				opts.depth = int(iv)
+			}
+		}
+		if v, ok := inst.Dict.GetStr("_compact"); ok {
+			if b, ok2 := v.(*object.Bool); ok2 {
+				opts.compact = b.V
+			}
+		}
+		if v, ok := inst.Dict.GetStr("_sort_dicts"); ok {
+			if b, ok2 := v.(*object.Bool); ok2 {
+				opts.sortDicts = b.V
+			}
+		}
+		return opts
+	}
+
+	ppClass.Dict.SetStr("pformat", &object.BuiltinFunc{Name: "pformat", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "pformat() missing argument")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "self must be PrettyPrinter")
+		}
+		opts := ppGetOpts(inst)
+		return &object.Str{V: pformat(a[1], opts)}, nil
+	}})
+
+	ppClass.Dict.SetStr("pprint", &object.BuiltinFunc{Name: "pprint", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "pprint() missing argument")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "self must be PrettyPrinter")
+		}
+		opts := ppGetOpts(inst)
+		fmt.Fprintln(i.Stdout, pformat(a[1], opts))
+		return object.None, nil
+	}})
+
+	ppClass.Dict.SetStr("isreadable", &object.BuiltinFunc{Name: "isreadable", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		return object.BoolOf(ppIsReadable(a[1], map[any]bool{})), nil
+	}})
+
+	ppClass.Dict.SetStr("isrecursive", &object.BuiltinFunc{Name: "isrecursive", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		return object.BoolOf(ppIsRecursive(a[1], map[any]bool{})), nil
+	}})
+
+	// format(obj, context, maxlevels, level) → (repr, readable, recursive)
+	ppClass.Dict.SetStr("format", &object.BuiltinFunc{Name: "format", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "format() requires object argument")
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "self must be PrettyPrinter")
+		}
+		obj := a[1]
+		opts := ppGetOpts(inst)
+		repr := pformat(obj, opts)
+		readable := ppIsReadable(obj, map[any]bool{})
+		recursive := ppIsRecursive(obj, map[any]bool{})
+		return &object.Tuple{V: []object.Object{
+			&object.Str{V: repr},
+			object.BoolOf(readable),
+			object.BoolOf(recursive),
+		}}, nil
+	}})
+
+	m.Dict.SetStr("PrettyPrinter", ppClass)
 
 	return m
 }
@@ -692,11 +853,20 @@ func pformat(o object.Object, opts pformatOpts) string {
 	return pformatAt(o, opts, 0, 0)
 }
 
-// pformatAt formats at the given column position; returns a possibly multi-line
-// string whose first line starts at col.
 func pformatAt(o object.Object, opts pformatOpts, col, depth int) string {
-	if opts.depth >= 0 && depth > opts.depth {
-		return "..."
+	if opts.depth >= 0 && depth >= opts.depth {
+		switch o.(type) {
+		case *object.List:
+			return "[...]"
+		case *object.Tuple:
+			return "(...)"
+		case *object.Set, *object.Frozenset:
+			return "{...}"
+		case *object.Dict:
+			return "{...}"
+		default:
+			return "..."
+		}
 	}
 	switch v := o.(type) {
 	case *object.List:
@@ -731,28 +901,57 @@ func formatSeq(items []object.Object, open, close string, opts pformatOpts, col,
 	if len(items) == 0 {
 		return open + close
 	}
-	// Attempt single-line.
+	itemCol := col + opts.indent
+	// Build repr of each item at next depth.
 	parts := make([]string, len(items))
-	total := 0
 	for idx, it := range items {
-		parts[idx] = object.Repr(it)
-		total += len(parts[idx])
+		parts[idx] = pformatAt(it, opts, itemCol, depth+1)
 	}
-	total += 2 * (len(items) - 1)
+	// Try single-line.
 	oneLine := open + strings.Join(parts, ", ") + close
 	if col+len(oneLine) <= opts.width {
 		return oneLine
 	}
-	// Multi-line: one item per line, aligned under opening delimiter.
-	pad := strings.Repeat(" ", col+len(open))
+	// Multi-line: firstPad aligns first item after open bracket; contPad for continuation lines.
+	firstPad := strings.Repeat(" ", max(0, opts.indent-len(open)))
+	contPad := strings.Repeat(" ", itemCol)
+	if opts.compact {
+		// Pack multiple items per line up to width.
+		var b strings.Builder
+		b.WriteString(open)
+		b.WriteString(firstPad)
+		lineCol := itemCol
+		for idx, p := range parts {
+			if idx == 0 {
+				b.WriteString(p)
+				lineCol += len(p)
+			} else {
+				needed := 2 + len(p)
+				if lineCol+needed <= opts.width {
+					b.WriteString(", ")
+					b.WriteString(p)
+					lineCol += 2 + len(p)
+				} else {
+					b.WriteString(",\n")
+					b.WriteString(contPad)
+					b.WriteString(p)
+					lineCol = itemCol + len(p)
+				}
+			}
+		}
+		b.WriteString(close)
+		return b.String()
+	}
+	// compact=False: one item per line.
 	var b strings.Builder
 	b.WriteString(open)
-	for idx, it := range items {
+	b.WriteString(firstPad)
+	for idx, p := range parts {
 		if idx > 0 {
 			b.WriteString(",\n")
-			b.WriteString(pad)
+			b.WriteString(contPad)
 		}
-		b.WriteString(pformatAt(it, opts, col+len(open), depth+1))
+		b.WriteString(p)
 	}
 	b.WriteString(close)
 	return b.String()
@@ -763,22 +962,28 @@ func formatDict(d *object.Dict, opts pformatOpts, col, depth int) string {
 	if len(keys) == 0 {
 		return "{}"
 	}
-	type kv struct {
-		k, v object.Object
-	}
+	type kv struct{ k, v object.Object }
 	pairs := make([]kv, len(keys))
-	for i := range keys {
-		pairs[i] = kv{keys[i], vals[i]}
+	for j := range keys {
+		pairs[j] = kv{keys[j], vals[j]}
 	}
 	if opts.sortDicts {
 		sort.SliceStable(pairs, func(a, b int) bool {
 			return dictKeyLess(pairs[a].k, pairs[b].k)
 		})
 	}
-	// Try single-line.
-	parts := make([]string, len(pairs))
+	// Build kRepr and vRepr using pformatAt so depth truncation applies.
+	type fmtPair struct{ kRepr, vRepr string }
+	fpairs := make([]fmtPair, len(pairs))
 	for idx, p := range pairs {
-		parts[idx] = object.Repr(p.k) + ": " + object.Repr(p.v)
+		kRepr := object.Repr(p.k)
+		vRepr := pformatAt(p.v, opts, col+1+len(kRepr)+2, depth+1)
+		fpairs[idx] = fmtPair{kRepr, vRepr}
+	}
+	// Try single-line.
+	parts := make([]string, len(fpairs))
+	for idx, fp := range fpairs {
+		parts[idx] = fp.kRepr + ": " + fp.vRepr
 	}
 	oneLine := "{" + strings.Join(parts, ", ") + "}"
 	if col+len(oneLine) <= opts.width {
@@ -787,15 +992,14 @@ func formatDict(d *object.Dict, opts pformatOpts, col, depth int) string {
 	pad := strings.Repeat(" ", col+1)
 	var b strings.Builder
 	b.WriteString("{")
-	for idx, p := range pairs {
+	for idx, fp := range fpairs {
 		if idx > 0 {
 			b.WriteString(",\n")
 			b.WriteString(pad)
 		}
-		kRepr := object.Repr(p.k)
-		b.WriteString(kRepr)
+		b.WriteString(fp.kRepr)
 		b.WriteString(": ")
-		b.WriteString(pformatAt(p.v, opts, col+1+len(kRepr)+2, depth+1))
+		b.WriteString(fp.vRepr)
 	}
 	b.WriteString("}")
 	return b.String()
@@ -811,35 +1015,148 @@ func dictKeyLess(a, b object.Object) bool {
 	return object.Repr(a) < object.Repr(b)
 }
 
-func isReadable(o object.Object) bool {
+// ppIsReadable returns true if o can be reconstructed via eval().
+func ppIsReadable(o object.Object, seen map[any]bool) bool {
 	switch v := o.(type) {
 	case *object.List:
+		if seen[v] {
+			return false
+		}
+		seen[v] = true
+		defer delete(seen, v)
 		for _, x := range v.V {
-			if !isReadable(x) {
+			if !ppIsReadable(x, seen) {
 				return false
 			}
 		}
 		return true
 	case *object.Tuple:
 		for _, x := range v.V {
-			if !isReadable(x) {
+			if !ppIsReadable(x, seen) {
 				return false
 			}
 		}
 		return true
 	case *object.Dict:
-		_, vals := v.Items()
-		for _, x := range vals {
-			if !isReadable(x) {
+		if seen[v] {
+			return false
+		}
+		seen[v] = true
+		defer delete(seen, v)
+		ks, vs := v.Items()
+		for j := range ks {
+			if !ppIsReadable(ks[j], seen) || !ppIsReadable(vs[j], seen) {
 				return false
 			}
 		}
 		return true
-	case *object.Set, *object.Frozenset, *object.NoneType, *object.Bool, *object.Int, *object.Float, *object.Str, *object.Bytes, *object.Range:
+	case *object.Set, *object.Frozenset, *object.NoneType, *object.Bool,
+		*object.Int, *object.Float, *object.Complex, *object.Str,
+		*object.Bytes, *object.Range:
 		return true
 	}
 	return false
 }
+
+// ppIsRecursive detects cyclic references via DFS.
+func ppIsRecursive(o object.Object, inProgress map[any]bool) bool {
+	switch v := o.(type) {
+	case *object.List:
+		if inProgress[v] {
+			return true
+		}
+		inProgress[v] = true
+		defer delete(inProgress, v)
+		for _, x := range v.V {
+			if ppIsRecursive(x, inProgress) {
+				return true
+			}
+		}
+		return false
+	case *object.Tuple:
+		for _, x := range v.V {
+			if ppIsRecursive(x, inProgress) {
+				return true
+			}
+		}
+		return false
+	case *object.Dict:
+		if inProgress[v] {
+			return true
+		}
+		inProgress[v] = true
+		defer delete(inProgress, v)
+		ks, vs := v.Items()
+		for j := range ks {
+			if ppIsRecursive(ks[j], inProgress) || ppIsRecursive(vs[j], inProgress) {
+				return true
+			}
+		}
+		return false
+	case *object.Set:
+		for _, x := range v.Items() {
+			if ppIsRecursive(x, inProgress) {
+				return true
+			}
+		}
+		return false
+	case *object.Frozenset:
+		for _, x := range v.Items() {
+			if ppIsRecursive(x, inProgress) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// ppSafeRepr produces a safe repr that marks recursive objects.
+func ppSafeRepr(o object.Object, seen map[any]bool) string {
+	switch v := o.(type) {
+	case *object.List:
+		if seen[v] {
+			return fmt.Sprintf("<Recursion on list with id=%d>", ptrID(v))
+		}
+		seen[v] = true
+		defer delete(seen, v)
+		parts := make([]string, len(v.V))
+		for idx, x := range v.V {
+			parts[idx] = ppSafeRepr(x, seen)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case *object.Tuple:
+		if len(v.V) == 0 {
+			return "()"
+		}
+		parts := make([]string, len(v.V))
+		for idx, x := range v.V {
+			parts[idx] = ppSafeRepr(x, seen)
+		}
+		if len(parts) == 1 {
+			return "(" + parts[0] + ",)"
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
+	case *object.Dict:
+		if seen[v] {
+			return fmt.Sprintf("<Recursion on dict with id=%d>", ptrID(v))
+		}
+		seen[v] = true
+		defer delete(seen, v)
+		ks, vs := v.Items()
+		parts := make([]string, len(ks))
+		for j := range ks {
+			parts[j] = ppSafeRepr(ks[j], seen) + ": " + ppSafeRepr(vs[j], seen)
+		}
+		return "{" + strings.Join(parts, ", ") + "}"
+	}
+	return object.Repr(o)
+}
+
+func ptrID(v any) uintptr {
+	return uintptr(fmt.Sprintf("%p", v)[2]) // simplified; use reflect for real id
+}
+
 
 // --- html module -----------------------------------------------------------
 
