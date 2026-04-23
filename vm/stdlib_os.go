@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -295,6 +296,24 @@ func (i *Interp) buildOs() *object.Module {
 			return nil, object.Errorf(i.typeErr, "chdir() path must be str")
 		}
 		if err := os.Chdir(p.V); err != nil {
+			return nil, object.Errorf(i.osErr, "%v", err)
+		}
+		return object.None, nil
+	}})
+
+	m.Dict.SetStr("chmod", &object.BuiltinFunc{Name: "chmod", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "chmod() requires path and mode")
+		}
+		p, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "chmod() path must be str")
+		}
+		mode, ok2 := a[1].(*object.Int)
+		if !ok2 {
+			return nil, object.Errorf(i.typeErr, "chmod() mode must be int")
+		}
+		if err := os.Chmod(p.V, fs.FileMode(mode.Int64())); err != nil {
 			return nil, object.Errorf(i.osErr, "%v", err)
 		}
 		return object.None, nil

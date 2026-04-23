@@ -1,0 +1,76 @@
+b'binary content here'
+text content
+copyfile test
+
+SameFileError
+0o644
+0o755
+copy content
+
+0o644
+copy_src.txt
+copy2 content
+
+0o600
+True
+True
+True
+True
+hello
+
+deep file
+
+True
+False
+True
+True
+False
+rmtree ignore_errors ok
+False
+move me
+
+False
+True
+True
+mv_into_src.txt
+False
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+['a.txt', 'b.py', 'd.txt']
+['sub', 'sub2', 'subdir']
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+archive content
+
+True
+True
+True
+archive content
+
+True
+True
+True
+done
