@@ -1,0 +1,76 @@
+/usr/local/bin/python
+python
+python
+
+[]
+/usr/local/bin
+
+/
+/
+('/', 'usr', 'local', 'bin', 'python')
+True
+a/b/c
+False
+('a', 'b', 'c')
+PurePosixPath('/tmp')
+archive.tar.gz
+archive.tar
+.gz
+['.tar', '.gz']
+/home/user/new.txt
+/home/user/new.txt
+/home/user/file.md
+/home/user/file
+/home/user/docs
+/a/b/c/d
+c/d
+True
+False
+True
+False
+True
+False
+/home/user/file.txt
+['/a/b/c', '/a/b', '/a', '/']
+PosixPath
+PosixPath('/tmp/hello.txt')
+True
+False
+True
+True
+11
+hello world
+True
+True
+False
+b'abc'
+True
+True
+True
+True
+True
+['a', 'data.bin', 'empty.txt', 'hello.txt', 'subdir']
+['x.py', 'y.py']
+['x.py', 'y.py', 'z.py']
+False
+hello2.txt
+False
+True
+False
+FileNotFoundError ok
+stat_result
+True
+True
+3
+True
+/x/y
+('inner', [], ['file2.txt'])
+('walkdir', ['inner'], ['file1.txt'])
+True
+True
+True
+True
+True
+False
+target.txt
+done
