@@ -6,7 +6,14 @@
 
 <p align="center">Pure-Go interpreter for CPython 3.14 bytecode.<br>One binary. No cgo. No Python on the box.</p>
 
----
+<p align="center">
+  <a href="https://pkg.go.dev/github.com/tamnd/goipy"><img src="https://pkg.go.dev/badge/github.com/tamnd/goipy.svg" alt="Go Reference"></a>
+  <a href="https://github.com/tamnd/goipy/actions"><img src="https://github.com/tamnd/goipy/actions/workflows/go.yml/badge.svg" alt="Build"></a>
+  <a href="https://goreportcard.com/report/github.com/tamnd/goipy"><img src="https://goreportcard.com/badge/github.com/tamnd/goipy" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white" alt="Python 3.14">
+  <img src="https://img.shields.io/badge/go-1.26+-00ADD8?logo=go&logoColor=white" alt="Go 1.26+">
+</p>
 
 ```sh
 python3.14 -m py_compile hello.py
