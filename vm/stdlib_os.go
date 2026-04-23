@@ -285,7 +285,6 @@ func osStatResult(i *Interp, info os.FileInfo) object.Object {
 	inst := &object.Instance{Class: cls, Dict: object.NewDict()}
 	mtime := float64(info.ModTime().UnixNano()) / 1e9
 	inst.Dict.SetStr("st_size", object.NewInt(info.Size()))
-	inst.Dict.SetStr("st_mode", object.NewInt(int64(info.Mode())))
 	inst.Dict.SetStr("st_mtime", &object.Float{V: mtime})
 	inst.Dict.SetStr("st_atime", &object.Float{V: mtime})
 	inst.Dict.SetStr("st_ctime", &object.Float{V: mtime})
@@ -296,6 +295,9 @@ func osStatResult(i *Interp, info os.FileInfo) object.Object {
 	inst.Dict.SetStr("st_dev", object.NewInt(0))
 
 	if sys, ok := info.Sys().(*syscall.Stat_t); ok {
+		// Use the raw POSIX mode (syscall.Stat_t.Mode) so that file type bits
+		// like S_IFREG/S_IFDIR are present, matching CPython's st_mode layout.
+		inst.Dict.SetStr("st_mode", object.NewInt(int64(sys.Mode)))
 		inst.Dict.SetStr("st_ino", object.NewInt(int64(sys.Ino)))
 		inst.Dict.SetStr("st_dev", object.NewInt(int64(sys.Dev)))
 		inst.Dict.SetStr("st_nlink", object.NewInt(int64(sys.Nlink)))
@@ -305,6 +307,9 @@ func osStatResult(i *Interp, info os.FileInfo) object.Object {
 		ctimeSec, ctimeNsec := statCtime(sys)
 		inst.Dict.SetStr("st_atime", &object.Float{V: float64(atimeSec) + float64(atimeNsec)/1e9})
 		inst.Dict.SetStr("st_ctime", &object.Float{V: float64(ctimeSec) + float64(ctimeNsec)/1e9})
+	} else {
+		// Fallback: convert Go's fs.FileMode to POSIX mode bits.
+		inst.Dict.SetStr("st_mode", object.NewInt(goModeToPosix(info.Mode())))
 	}
 	return inst
 }
@@ -953,4 +958,38 @@ func osName() string {
 		return "nt"
 	}
 	return "posix"
+}
+
+// goModeToPosix converts Go's fs.FileMode to POSIX st_mode bits.
+// Used as a fallback when syscall.Stat_t is unavailable.
+func goModeToPosix(m os.FileMode) int64 {
+	perm := int64(m.Perm()) // low 9 bits
+	switch {
+	case m&os.ModeDir != 0:
+		perm |= 0o040000
+	case m&os.ModeSymlink != 0:
+		perm |= 0o120000
+	case m&os.ModeNamedPipe != 0:
+		perm |= 0o010000
+	case m&os.ModeSocket != 0:
+		perm |= 0o140000
+	case m&os.ModeDevice != 0:
+		if m&os.ModeCharDevice != 0 {
+			perm |= 0o020000
+		} else {
+			perm |= 0o060000
+		}
+	default:
+		perm |= 0o100000 // regular file
+	}
+	if m&os.ModeSetuid != 0 {
+		perm |= 0o4000
+	}
+	if m&os.ModeSetgid != 0 {
+		perm |= 0o2000
+	}
+	if m&os.ModeSticky != 0 {
+		perm |= 0o1000
+	}
+	return perm
 }
