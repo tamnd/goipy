@@ -1,0 +1,95 @@
+/
+.
+..
+.
+None
+:
+/bin:/usr/bin
+/dev/null
+True
+True
+False
+False
+True
+True
+baz.txt
+''
+''
+file.txt
+/foo/bar
+/foo/bar
+''
+/
+('/foo/bar', 'baz.txt')
+('/foo/bar', '')
+('', '')
+('', 'file.txt')
+('/foo/bar', '.txt')
+('/foo/bar', '')
+('/foo/.bar', '')
+('/foo/bar.tar', '.gz')
+('', '/foo/bar')
+('', 'foo/bar')
+('', '')
+('', '/', 'foo/bar')
+('', '', 'foo/bar')
+('', '/', '')
+('', '', '')
+/a/b/c
+/b
+/d
+a/b
+a/
+b
+/a/b/
+/a/c
+/a/b
+a/b
+/
+.
+c
+/FOO/Bar
+''
+/usr/l
+/usr
+''
+''
+abc
+/usr
+/usr
+a/b
+b/c
+c
+..
+../../a/b/c
+hello world
+hello!
+no_var
+$_NONEXISTENT_VAR_XYZ
+True
+True
+/no/expand
+True
+False
+True
+False
+True
+True
+False
+5
+True
+True
+True
+True
+False
+True
+False
+True
+False
+True
+True
+True
+False
+True
+False
+done
