@@ -372,6 +372,10 @@ type Class struct {
 	// ABCCheck is set on abstract base classes (collections.abc). When
 	// non-nil, isinstance() calls it before the normal MRO walk.
 	ABCCheck func(o Object) bool
+
+	// EnumData is non-nil for enum subclasses (Color, Number, etc.).
+	// It holds the member list, value map, and iteration order.
+	EnumData *EnumData
 }
 
 // MethodCacheEntry stores one cached classLookup result.

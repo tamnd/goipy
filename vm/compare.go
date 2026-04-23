@@ -326,6 +326,14 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 		diff := new(big.Int).Sub(n, start)
 		rem := new(big.Int).Mod(diff, step)
 		return rem.Sign() == 0, nil
+	case *object.Class:
+		// Enum class containment: `Color.RED in Color` checks if needle is a member.
+		if c.EnumData != nil {
+			if inst, ok := needle.(*object.Instance); ok {
+				return object.IsSubclass(inst.Class, c), nil
+			}
+			return false, nil
+		}
 	}
 	return false, object.Errorf(i.typeErr, "argument of type '%s' is not iterable", object.TypeName(container))
 }

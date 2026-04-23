@@ -36,6 +36,36 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 			}
 			return exc, nil
 		}
+		// __new__ support: if the class defines __new__, call it first.
+		// If __new__ returns an instance of the class (or subclass), call __init__
+		// on it; otherwise return the result directly (e.g. for enum functional API
+		// or value lookup which returns an existing member / a new class).
+		if newFn, ok := classLookup(fn, "__new__"); ok {
+			newArgs := make([]object.Object, 0, len(args)+1)
+			newArgs = append(newArgs, fn)
+			newArgs = append(newArgs, args...)
+			result, err := i.callObject(newFn, newArgs, kwargs)
+			if err != nil {
+				return nil, err
+			}
+			if inst, isInst := result.(*object.Instance); isInst && object.IsSubclass(inst.Class, fn) {
+				if init, ok := classLookup(fn, "__init__"); ok {
+					initArgs := make([]object.Object, 0, len(args)+1)
+					initArgs = append(initArgs, inst)
+					initArgs = append(initArgs, args...)
+					ret, err2 := i.callObject(init, initArgs, kwargs)
+					if err2 != nil {
+						return nil, err2
+					}
+					if ret != nil && ret != object.None {
+						if _, isNone := ret.(*object.NoneType); !isNone {
+							return nil, object.Errorf(i.typeErr, "__init__() should return None, not '%s'", object.TypeName(ret))
+						}
+					}
+				}
+			}
+			return result, nil
+		}
 		inst := &object.Instance{Class: fn, Dict: object.NewDict()}
 		if init, ok := classLookup(fn, "__init__"); ok {
 			initArgs := append([]object.Object{inst}, args...)

@@ -832,6 +832,16 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		}
 	}
 	if cls, ok := container.(*object.Class); ok {
+		if cls.EnumData != nil {
+			nameStr, ok := key.(*object.Str)
+			if !ok {
+				return nil, object.Errorf(i.keyErr, "enum member lookup requires a string key")
+			}
+			if mem, ok := cls.EnumData.MemberMap.GetStr(nameStr.V); ok {
+				return mem, nil
+			}
+			return nil, object.Errorf(i.keyErr, "%s", nameStr.V)
+		}
 		if fn, ok := classLookup(cls, "__class_getitem__"); ok {
 			return i.callObject(fn, []object.Object{cls, key}, nil)
 		}
