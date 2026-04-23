@@ -133,6 +133,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildTempfile(), true
 	case "stat":
 		return i.buildStat(), true
+	case "filecmp":
+		return i.buildFilecmp(), true
 	}
 	return nil, false
 }
