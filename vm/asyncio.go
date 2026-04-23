@@ -89,6 +89,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildReprlib(), true
 	case "enum":
 		return i.buildEnum(), true
+	case "graphlib":
+		return i.buildGraphlib(), true
 	case "html":
 		return i.buildHtml(), true
 	case "sys":

@@ -1,0 +1,27 @@
+['A', 'B', 'C']
+['A', 'B']
+True
+True
+True
+['A']
+['B', 'C']
+[]
+False
+True
+CycleError raised
+True
+ValueError on add after prepare
+ValueError on done without prepare
+ValueError on done for non-ready node
+ValueError on is_active before prepare
+[]
+['X']
+True
+True
+True
+True
+True
+True
+True
+True
+done
