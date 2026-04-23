@@ -82,9 +82,9 @@ func (f *Frame) pop() object.Object {
 	return f.Stack[f.SP]
 }
 
-func (f *Frame) top() object.Object        { return f.Stack[f.SP-1] }
-func (f *Frame) peek(n int) object.Object  { return f.Stack[f.SP-1-n] }
-func (f *Frame) setTop(o object.Object)    { f.Stack[f.SP-1] = o }
+func (f *Frame) top() object.Object       { return f.Stack[f.SP-1] }
+func (f *Frame) peek(n int) object.Object { return f.Stack[f.SP-1-n] }
+func (f *Frame) setTop(o object.Object)   { f.Stack[f.SP-1] = o }
 func (f *Frame) setPeek(n int, o object.Object) {
 	f.Stack[f.SP-1-n] = o
 }

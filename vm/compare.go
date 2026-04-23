@@ -16,6 +16,46 @@ const (
 	cmpGE = 5
 )
 
+// compareEqNe handles == and != which don't need ordering.
+func (i *Interp) compareEqNe(a, b object.Object, kind int) (object.Object, bool, error) {
+	if kind != cmpEQ && kind != cmpNE {
+		return nil, false, nil
+	}
+	eq, err := object.Eq(a, b)
+	if err != nil {
+		return nil, true, err
+	}
+	return object.BoolOf(eq == (kind == cmpEQ)), true, nil
+}
+
+// compareOrdered handles <, <=, >, >= after EQ/NE are ruled out.
+func (i *Interp) compareOrdered(a, b object.Object, kind int) (object.Object, error) {
+	if isSetLike(a) && isSetLike(b) {
+		return setOrder(a, b, kind, i)
+	}
+	lt, err := i.lt(a, b)
+	if err != nil {
+		return nil, err
+	}
+	if kind == cmpLT {
+		return object.BoolOf(lt), nil
+	}
+	if kind == cmpGE {
+		return object.BoolOf(!lt), nil
+	}
+	gt, err := i.lt(b, a)
+	if err != nil {
+		return nil, err
+	}
+	if kind == cmpGT {
+		return object.BoolOf(gt), nil
+	}
+	if kind == cmpLE {
+		return object.BoolOf(!gt), nil
+	}
+	return nil, object.Errorf(i.typeErr, "bad compare op %d", kind)
+}
+
 func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
 	if _, ok := a.(*object.Instance); ok {
 		if r, ok, err := i.tryCompareDunder(a, b, kind); ok {
@@ -26,48 +66,10 @@ func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
 			return object.BoolOf(object.Truthy(r)), err
 		}
 	}
-	if kind == cmpEQ {
-		eq, err := object.Eq(a, b)
-		if err != nil {
-			return nil, err
-		}
-		return object.BoolOf(eq), nil
+	if r, handled, err := i.compareEqNe(a, b, kind); handled {
+		return r, err
 	}
-	if kind == cmpNE {
-		eq, err := object.Eq(a, b)
-		if err != nil {
-			return nil, err
-		}
-		return object.BoolOf(!eq), nil
-	}
-	// Sets use a partial order (subset) rather than the total-order path.
-	if isSetLike(a) && isSetLike(b) {
-		return setOrder(a, b, kind, i)
-	}
-	lt, err := i.lt(a, b)
-	if err != nil {
-		return nil, err
-	}
-	switch kind {
-	case cmpLT:
-		return object.BoolOf(lt), nil
-	case cmpGE:
-		return object.BoolOf(!lt), nil
-	case cmpGT:
-		// a > b == b < a
-		gt, err := i.lt(b, a)
-		if err != nil {
-			return nil, err
-		}
-		return object.BoolOf(gt), nil
-	case cmpLE:
-		gt, err := i.lt(b, a)
-		if err != nil {
-			return nil, err
-		}
-		return object.BoolOf(!gt), nil
-	}
-	return nil, object.Errorf(i.typeErr, "bad compare op %d", kind)
+	return i.compareOrdered(a, b, kind)
 }
 
 // setOrder implements <, <=, >, >= for set/frozenset as subset relations.
@@ -95,16 +97,23 @@ func setOrder(a, b object.Object, kind int, i *Interp) (object.Object, error) {
 	return nil, object.Errorf(i.typeErr, "bad set compare op %d", kind)
 }
 
-func (i *Interp) lt(a, b object.Object) (bool, error) {
-	// Instances with __lt__
+// ltDunder tries the __lt__ dunder on instances. Returns (result, handled, error).
+func (i *Interp) ltDunder(a, b object.Object) (bool, bool, error) {
 	if _, ok := a.(*object.Instance); ok {
 		if r, ok2, err := i.tryCompareDunder(a, b, cmpLT); ok2 {
-			return object.Truthy(r), err
+			return object.Truthy(r), true, err
 		}
 	} else if _, ok := b.(*object.Instance); ok {
 		if r, ok2, err := i.tryCompareDunder(a, b, cmpLT); ok2 {
-			return object.Truthy(r), err
+			return object.Truthy(r), true, err
 		}
+	}
+	return false, false, nil
+}
+
+func (i *Interp) lt(a, b object.Object) (bool, error) {
+	if r, ok, err := i.ltDunder(a, b); ok {
+		return r, err
 	}
 	// Both numeric?
 	if ai, af, aF, aok := asIntOrFloat(a); aok {

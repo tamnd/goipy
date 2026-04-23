@@ -345,10 +345,10 @@ func isCJKUnified(r rune) bool {
 
 // Hangul syllable decomposition constants.
 const (
-	hangulBase   = 0xAC00
-	jamoTCount   = 28
-	jamoVCount   = 21
-	jamoNCount   = jamoVCount * jamoTCount
+	hangulBase = 0xAC00
+	jamoTCount = 28
+	jamoVCount = 21
+	jamoNCount = jamoVCount * jamoTCount
 )
 
 var jamoLeadNames = []string{
@@ -548,4 +548,3 @@ func runeSliceToHex(b []byte) string {
 	}
 	return strings.Join(parts, " ")
 }
-

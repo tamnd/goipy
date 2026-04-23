@@ -317,15 +317,15 @@ func (i *Interp) callFunction(fn *object.Function, args []object.Object, kwargs 
 
 // CO_OPTIMIZED etc. mirror the CPython co_flags bits we need.
 const (
-	CO_OPTIMIZED = 0x0001
-	CO_NEWLOCALS = 0x0002
-	CO_VARARGS   = 0x0004
-	CO_VARKWDS   = 0x0008
-	CO_NESTED    = 0x0010
-	CO_GENERATOR         = 0x0020
-	CO_COROUTINE         = 0x0080
+	CO_OPTIMIZED          = 0x0001
+	CO_NEWLOCALS          = 0x0002
+	CO_VARARGS            = 0x0004
+	CO_VARKWDS            = 0x0008
+	CO_NESTED             = 0x0010
+	CO_GENERATOR          = 0x0020
+	CO_COROUTINE          = 0x0080
 	CO_ITERABLE_COROUTINE = 0x0100
-	CO_ASYNC_GENERATOR   = 0x0200
+	CO_ASYNC_GENERATOR    = 0x0200
 )
 
 func (i *Interp) bindArgs(fn *object.Function, frame *Frame, args []object.Object, kwargs *object.Dict) error {
@@ -436,6 +436,35 @@ func (i *Interp) bindArgs(fn *object.Function, frame *Frame, args []object.Objec
 
 // --- intrinsics ---
 
+func (i *Interp) intrinsicUnaryPos(v object.Object) (object.Object, error) {
+	if inst, ok := v.(*object.Instance); ok {
+		if r, ok, err := i.callInstanceDunder(inst, "__pos__"); ok {
+			return r, err
+		}
+	}
+	if c, ok := v.(*object.Counter); ok {
+		out := &object.Counter{D: object.NewDict()}
+		keys, vals := c.D.Items()
+		for k, key := range keys {
+			n, _ := toInt64(vals[k])
+			if n > 0 {
+				_ = out.D.Set(key, object.NewInt(n))
+			}
+		}
+		return out, nil
+	}
+	switch x := v.(type) {
+	case *object.Int, *object.Float:
+		return x, nil
+	case *object.Bool:
+		if x.V {
+			return object.NewInt(1), nil
+		}
+		return object.NewInt(0), nil
+	}
+	return nil, object.Errorf(i.typeErr, "bad operand for unary +")
+}
+
 func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 	switch idx {
 	case op.INTRINSIC_1_INVALID:
@@ -444,33 +473,7 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 		// Used by REPL for auto-print; we ignore.
 		return v, nil
 	case op.INTRINSIC_UNARY_POSITIVE:
-		if inst, ok := v.(*object.Instance); ok {
-			if r, ok, err := i.callInstanceDunder(inst, "__pos__"); ok {
-				return r, err
-			}
-		}
-		// +Counter: keep only positive counts
-		if c, ok := v.(*object.Counter); ok {
-			out := &object.Counter{D: object.NewDict()}
-			keys, vals := c.D.Items()
-			for k, key := range keys {
-				n, _ := toInt64(vals[k])
-				if n > 0 {
-					_ = out.D.Set(key, object.NewInt(n))
-				}
-			}
-			return out, nil
-		}
-		switch x := v.(type) {
-		case *object.Int, *object.Float:
-			return x, nil
-		case *object.Bool:
-			if x.V {
-				return object.NewInt(1), nil
-			}
-			return object.NewInt(0), nil
-		}
-		return nil, object.Errorf(i.typeErr, "bad operand for unary +")
+		return i.intrinsicUnaryPos(v)
 	case op.INTRINSIC_LIST_TO_TUPLE:
 		if l, ok := v.(*object.List); ok {
 			return &object.Tuple{V: append([]object.Object{}, l.V...)}, nil
@@ -1287,7 +1290,6 @@ func strSplitLines(s string, keepends bool) []string {
 	}
 	return parts
 }
-
 
 func parseInt(s string) (int64, bool) {
 	n := int64(0)

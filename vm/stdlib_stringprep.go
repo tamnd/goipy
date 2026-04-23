@@ -181,7 +181,8 @@ func inTableA1(r rune) bool {
 
 // inTableB1: RFC 3454 Table B.1 — commonly mapped to nothing.
 // Set: {0x00AD, 0x034F, 0x1806, 0x180B-0x180D, 0x200B-0x200D, 0x2060,
-//       0xFE00-0xFE0F, 0xFEFF}
+//
+//	0xFE00-0xFE0F, 0xFEFF}
 func inTableB1(r rune) bool {
 	switch {
 	case r == 0x00AD: // SOFT HYPHEN
@@ -232,8 +233,8 @@ func mapTableB2(ch string) string {
 }
 
 // c22_specials: {1757, 1807, 6158, 8204, 8205, 8232, 8233, 65279}
-//   + range(8288, 8292) + range(8298, 8304)
-//   + range(65529, 65533) + range(119155, 119163)
+//   - range(8288, 8292) + range(8298, 8304)
+//   - range(65529, 65533) + range(119155, 119163)
 func inC22Specials(r rune) bool {
 	switch r {
 	case 1757, 1807, 6158, 8204, 8205, 8232, 8233, 65279:

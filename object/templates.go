@@ -14,6 +14,6 @@ type Interpolation struct {
 // string.templatelib.Template. Strings and Interpolations interleave:
 // len(Strings) == len(Interpolations)+1.
 type Template struct {
-	Strings       []*Str
+	Strings        []*Str
 	Interpolations []*Interpolation
 }

@@ -362,6 +362,42 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 	return nil, object.Errorf(i.typeErr, "bad operand for unary -: '%s'", object.TypeName(v))
 }
 
+// collectionLen returns the length of dict-like collection types.
+func collectionLen(v object.Object) (int64, bool) {
+	switch x := v.(type) {
+	case *object.Dict:
+		return int64(x.Len()), true
+	case *object.Set:
+		return int64(x.Len()), true
+	case *object.Frozenset:
+		return int64(x.Len()), true
+	case *object.Counter:
+		return int64(x.D.Len()), true
+	case *object.DefaultDict:
+		return int64(x.D.Len()), true
+	case *object.OrderedDict:
+		return int64(x.D.Len()), true
+	}
+	return 0, false
+}
+
+// seqContainerLen returns the length of sequence types (List, Tuple, PyArray, Deque, Range).
+func seqContainerLen(v object.Object) (int64, bool) {
+	switch x := v.(type) {
+	case *object.List:
+		return int64(len(x.V)), true
+	case *object.Tuple:
+		return int64(len(x.V)), true
+	case *object.PyArray:
+		return int64(len(x.V)), true
+	case *object.Deque:
+		return int64(len(x.V)), true
+	case *object.Range:
+		return rangeLen(x), true
+	}
+	return 0, false
+}
+
 func (i *Interp) length(v object.Object) (int64, error) {
 	if inst, ok := v.(*object.Instance); ok {
 		if r, ok, err := i.callInstanceDunder(inst, "__len__"); ok {
@@ -375,6 +411,12 @@ func (i *Interp) length(v object.Object) (int64, error) {
 			return n, nil
 		}
 	}
+	if n, ok := collectionLen(v); ok {
+		return n, nil
+	}
+	if n, ok := seqContainerLen(v); ok {
+		return n, nil
+	}
 	switch x := v.(type) {
 	case *object.Str:
 		return int64(len(x.Runes())), nil
@@ -384,28 +426,6 @@ func (i *Interp) length(v object.Object) (int64, error) {
 		return int64(len(x.V)), nil
 	case *object.Memoryview:
 		return int64(x.Stop - x.Start), nil
-	case *object.List:
-		return int64(len(x.V)), nil
-	case *object.Tuple:
-		return int64(len(x.V)), nil
-	case *object.Dict:
-		return int64(x.Len()), nil
-	case *object.Set:
-		return int64(x.Len()), nil
-	case *object.Frozenset:
-		return int64(x.Len()), nil
-	case *object.Range:
-		return rangeLen(x), nil
-	case *object.PyArray:
-		return int64(len(x.V)), nil
-	case *object.Deque:
-		return int64(len(x.V)), nil
-	case *object.Counter:
-		return int64(x.D.Len()), nil
-	case *object.DefaultDict:
-		return int64(x.D.Len()), nil
-	case *object.OrderedDict:
-		return int64(x.D.Len()), nil
 	case *object.Class:
 		if x.EnumData != nil {
 			return int64(len(x.EnumData.Members)), nil
@@ -1021,64 +1041,78 @@ func isSpecialMatchClass(name string) bool {
 	return false
 }
 
-func matchBuiltinType(o object.Object, name string) bool {
+func matchBuiltinTypeScalar(o object.Object, name string) (bool, bool) {
 	switch name {
 	case "int":
 		if _, ok := o.(*object.Int); ok {
-			return true
+			return true, true
 		}
 		_, ok := o.(*object.Bool)
-		return ok
+		return ok, true
 	case "bool":
 		_, ok := o.(*object.Bool)
-		return ok
+		return ok, true
 	case "float":
 		_, ok := o.(*object.Float)
-		return ok
+		return ok, true
 	case "str":
 		_, ok := o.(*object.Str)
-		return ok
-	case "list":
-		_, ok := o.(*object.List)
-		return ok
-	case "tuple":
-		_, ok := o.(*object.Tuple)
-		return ok
-	case "dict":
-		_, ok := o.(*object.Dict)
-		return ok
-	case "set":
-		_, ok := o.(*object.Set)
-		return ok
-	case "frozenset":
-		_, ok := o.(*object.Frozenset)
-		return ok
+		return ok, true
 	case "bytes":
 		_, ok := o.(*object.Bytes)
-		return ok
+		return ok, true
 	case "bytearray":
 		_, ok := o.(*object.Bytearray)
-		return ok
+		return ok, true
 	case "memoryview":
 		_, ok := o.(*object.Memoryview)
-		return ok
+		return ok, true
+	}
+	return false, false
+}
+
+func matchBuiltinTypeContainer(o object.Object, name string) (bool, bool) {
+	switch name {
+	case "list":
+		_, ok := o.(*object.List)
+		return ok, true
+	case "tuple":
+		_, ok := o.(*object.Tuple)
+		return ok, true
+	case "dict":
+		_, ok := o.(*object.Dict)
+		return ok, true
+	case "set":
+		_, ok := o.(*object.Set)
+		return ok, true
+	case "frozenset":
+		_, ok := o.(*object.Frozenset)
+		return ok, true
 	case "type":
 		_, ok := o.(*object.Class)
-		return ok
+		return ok, true
 	case "Template":
 		_, ok := o.(*object.Template)
-		return ok
+		return ok, true
 	case "Interpolation":
 		_, ok := o.(*object.Interpolation)
-		return ok
+		return ok, true
 	case "weakref.ref":
 		_, ok := o.(*object.PyWeakRef)
-		return ok
+		return ok, true
 	case "module":
 		_, ok := o.(*object.Module)
-		return ok
+		return ok, true
 	}
-	return false
+	return false, false
+}
+
+func matchBuiltinType(o object.Object, name string) bool {
+	if r, ok := matchBuiltinTypeScalar(o, name); ok {
+		return r
+	}
+	r, _ := matchBuiltinTypeContainer(o, name)
+	return r
 }
 
 // bindDescriptor applies the descriptor protocol to v found in a class MRO.

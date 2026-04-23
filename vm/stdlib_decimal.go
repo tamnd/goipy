@@ -34,18 +34,18 @@ var (
 	bigTen  = big.NewInt(10)
 )
 
-func decFiniteZero() decState  { return decState{coeff: new(big.Int)} }
+func decFiniteZero() decState       { return decState{coeff: new(big.Int)} }
 func decInfinity(sign int) decState { return decState{sign: sign, coeff: new(big.Int), form: 1} }
 func decNaN(sign int) decState      { return decState{sign: sign, coeff: new(big.Int), form: 2} }
 func decSNaN(sign int) decState     { return decState{sign: sign, coeff: new(big.Int), form: 3} }
 
-func (d decState) isFinite() bool  { return d.form == 0 }
-func (d decState) isInf() bool     { return d.form == 1 }
-func (d decState) isNaN() bool     { return d.form == 2 || d.form == 3 }
-func (d decState) isQNaN() bool    { return d.form == 2 }
-func (d decState) isSNaN() bool    { return d.form == 3 }
-func (d decState) isZero() bool    { return d.form == 0 && d.coeff.Sign() == 0 }
-func (d decState) isSigned() bool  { return d.sign == 1 }
+func (d decState) isFinite() bool { return d.form == 0 }
+func (d decState) isInf() bool    { return d.form == 1 }
+func (d decState) isNaN() bool    { return d.form == 2 || d.form == 3 }
+func (d decState) isQNaN() bool   { return d.form == 2 }
+func (d decState) isSNaN() bool   { return d.form == 3 }
+func (d decState) isZero() bool   { return d.form == 0 && d.coeff.Sign() == 0 }
+func (d decState) isSigned() bool { return d.sign == 1 }
 func (d decState) numDigits() int {
 	if d.coeff.Sign() == 0 {
 		return 1
@@ -878,7 +878,6 @@ func toDecState(o object.Object, cls *object.Class) (decState, bool) {
 	}
 	return decState{}, false
 }
-
 
 // ── context ──────────────────────────────────────────────────────────────────
 

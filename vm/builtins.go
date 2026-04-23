@@ -1477,6 +1477,18 @@ func asciiRepr(o object.Object) string {
 	return buf.String()
 }
 
+// dictStrKeys returns all string-keyed names from d.
+func dictStrKeys(d *object.Dict) []string {
+	keys, _ := d.Items()
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if s, ok := k.(*object.Str); ok {
+			out = append(out, s.V)
+		}
+	}
+	return out
+}
+
 // dirOf returns a sorted list of attribute names for an object. With no
 // argument, returns the empty list (we don't expose the caller's frame).
 func dirOf(args []object.Object) []object.Object {
@@ -1486,45 +1498,20 @@ func dirOf(args []object.Object) []object.Object {
 	var names []string
 	switch v := args[0].(type) {
 	case *object.Module:
-		keys, _ := v.Dict.Items()
-		for _, k := range keys {
-			if s, ok := k.(*object.Str); ok {
-				names = append(names, s.V)
-			}
-		}
+		names = dictStrKeys(v.Dict)
 	case *object.Instance:
-		keys, _ := v.Dict.Items()
-		for _, k := range keys {
-			if s, ok := k.(*object.Str); ok {
-				names = append(names, s.V)
-			}
-		}
+		names = append(names, dictStrKeys(v.Dict)...)
 		for c := v.Class; c != nil; {
-			keys, _ := c.Dict.Items()
-			for _, k := range keys {
-				if s, ok := k.(*object.Str); ok {
-					names = append(names, s.V)
-				}
-			}
+			names = append(names, dictStrKeys(c.Dict)...)
 			if len(c.Bases) == 0 {
 				break
 			}
 			c = c.Bases[0]
 		}
 	case *object.Class:
-		keys, _ := v.Dict.Items()
-		for _, k := range keys {
-			if s, ok := k.(*object.Str); ok {
-				names = append(names, s.V)
-			}
-		}
+		names = dictStrKeys(v.Dict)
 	case *object.Dict:
-		keys, _ := v.Items()
-		for _, k := range keys {
-			if s, ok := k.(*object.Str); ok {
-				names = append(names, s.V)
-			}
-		}
+		names = dictStrKeys(v)
 	}
 	seen := map[string]bool{}
 	out := []object.Object{}

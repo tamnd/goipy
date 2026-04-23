@@ -313,12 +313,12 @@ var names = map[uint8]string{
 	LOAD_FAST_AND_CLEAR: "LOAD_FAST_AND_CLEAR", LOAD_FAST_BORROW: "LOAD_FAST_BORROW",
 	LOAD_FAST_BORROW_LOAD_FAST_BORROW: "LOAD_FAST_BORROW_LOAD_FAST_BORROW",
 	LOAD_FAST_CHECK:                   "LOAD_FAST_CHECK", LOAD_FAST_LOAD_FAST: "LOAD_FAST_LOAD_FAST",
-	LOAD_FROM_DICT_OR_DEREF: "LOAD_FROM_DICT_OR_DEREF",
+	LOAD_FROM_DICT_OR_DEREF:   "LOAD_FROM_DICT_OR_DEREF",
 	LOAD_FROM_DICT_OR_GLOBALS: "LOAD_FROM_DICT_OR_GLOBALS",
 	LOAD_GLOBAL:               "LOAD_GLOBAL", LOAD_NAME: "LOAD_NAME",
-	LOAD_SMALL_INT:  "LOAD_SMALL_INT", LOAD_SPECIAL: "LOAD_SPECIAL",
+	LOAD_SMALL_INT: "LOAD_SMALL_INT", LOAD_SPECIAL: "LOAD_SPECIAL",
 	LOAD_SUPER_ATTR: "LOAD_SUPER_ATTR", MAKE_CELL: "MAKE_CELL",
-	MAP_ADD:         "MAP_ADD", MATCH_CLASS: "MATCH_CLASS",
+	MAP_ADD: "MAP_ADD", MATCH_CLASS: "MATCH_CLASS",
 	POP_JUMP_IF_FALSE: "POP_JUMP_IF_FALSE", POP_JUMP_IF_NONE: "POP_JUMP_IF_NONE",
 	POP_JUMP_IF_NOT_NONE: "POP_JUMP_IF_NOT_NONE", POP_JUMP_IF_TRUE: "POP_JUMP_IF_TRUE",
 	RAISE_VARARGS: "RAISE_VARARGS", RERAISE: "RERAISE", SEND: "SEND",
@@ -336,33 +336,33 @@ var names = map[uint8]string{
 
 // BINARY_OP oparg codes (Python 3.14 opcode._nb_ops indices).
 const (
-	NB_ADD                    = 0
-	NB_AND                    = 1
-	NB_FLOOR_DIVIDE           = 2
-	NB_LSHIFT                 = 3
-	NB_MATRIX_MULTIPLY        = 4
-	NB_MULTIPLY               = 5
-	NB_REMAINDER              = 6
-	NB_OR                     = 7
-	NB_POWER                  = 8
-	NB_RSHIFT                 = 9
-	NB_SUBTRACT               = 10
-	NB_TRUE_DIVIDE            = 11
-	NB_XOR                    = 12
-	NB_INPLACE_ADD            = 13
-	NB_INPLACE_AND            = 14
-	NB_INPLACE_FLOOR_DIVIDE   = 15
-	NB_INPLACE_LSHIFT         = 16
+	NB_ADD                     = 0
+	NB_AND                     = 1
+	NB_FLOOR_DIVIDE            = 2
+	NB_LSHIFT                  = 3
+	NB_MATRIX_MULTIPLY         = 4
+	NB_MULTIPLY                = 5
+	NB_REMAINDER               = 6
+	NB_OR                      = 7
+	NB_POWER                   = 8
+	NB_RSHIFT                  = 9
+	NB_SUBTRACT                = 10
+	NB_TRUE_DIVIDE             = 11
+	NB_XOR                     = 12
+	NB_INPLACE_ADD             = 13
+	NB_INPLACE_AND             = 14
+	NB_INPLACE_FLOOR_DIVIDE    = 15
+	NB_INPLACE_LSHIFT          = 16
 	NB_INPLACE_MATRIX_MULTIPLY = 17
-	NB_INPLACE_MULTIPLY       = 18
-	NB_INPLACE_REMAINDER      = 19
-	NB_INPLACE_OR             = 20
-	NB_INPLACE_POWER          = 21
-	NB_INPLACE_RSHIFT         = 22
-	NB_INPLACE_SUBTRACT       = 23
-	NB_INPLACE_TRUE_DIVIDE    = 24
-	NB_INPLACE_XOR            = 25
-	NB_SUBSCR                 = 26
+	NB_INPLACE_MULTIPLY        = 18
+	NB_INPLACE_REMAINDER       = 19
+	NB_INPLACE_OR              = 20
+	NB_INPLACE_POWER           = 21
+	NB_INPLACE_RSHIFT          = 22
+	NB_INPLACE_SUBTRACT        = 23
+	NB_INPLACE_TRUE_DIVIDE     = 24
+	NB_INPLACE_XOR             = 25
+	NB_SUBSCR                  = 26
 )
 
 // COMPARE_OP arg encoding (3.14): high bits encode the comparison type, low 4
@@ -374,16 +374,16 @@ func CompareOp(oparg uint32) int { return int(oparg >> 5) }
 
 // Intrinsic 1 and 2 function indices.
 const (
-	INTRINSIC_1_INVALID       = 0
-	INTRINSIC_PRINT           = 1
-	INTRINSIC_IMPORT_STAR     = 2
+	INTRINSIC_1_INVALID           = 0
+	INTRINSIC_PRINT               = 1
+	INTRINSIC_IMPORT_STAR         = 2
 	INTRINSIC_STOPITERATION_ERROR = 3
-	INTRINSIC_ASYNC_GEN_WRAP  = 4
-	INTRINSIC_UNARY_POSITIVE  = 5
-	INTRINSIC_LIST_TO_TUPLE   = 6
-	INTRINSIC_TYPEVAR         = 7
-	INTRINSIC_PARAMSPEC       = 8
-	INTRINSIC_TYPEVARTUPLE    = 9
-	INTRINSIC_SUBSCRIPT_GENERIC = 10
-	INTRINSIC_TYPEALIAS       = 11
+	INTRINSIC_ASYNC_GEN_WRAP      = 4
+	INTRINSIC_UNARY_POSITIVE      = 5
+	INTRINSIC_LIST_TO_TUPLE       = 6
+	INTRINSIC_TYPEVAR             = 7
+	INTRINSIC_PARAMSPEC           = 8
+	INTRINSIC_TYPEVARTUPLE        = 9
+	INTRINSIC_SUBSCRIPT_GENERIC   = 10
+	INTRINSIC_TYPEALIAS           = 11
 )
