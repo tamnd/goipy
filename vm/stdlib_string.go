@@ -814,17 +814,17 @@ func asciiReprStr(s string) string {
 // ─── Format spec mini-language ────────────────────────────────────────────────
 
 type fmtSpec struct {
-	fill      rune
-	align     byte // '<', '>', '^', '=', 0=unset
-	sign      byte // '+', '-', ' ', 0=default
-	altForm   bool
-	zeroPad   bool
-	width     int
-	hasWidth  bool
-	grouping  byte // ',', '_', 0=none
-	prec      int
-	hasPrec   bool
-	typChar   byte // 's','d','b','o','x','X','e','E','f','F','g','G','%','c','n', 0=default
+	fill     rune
+	align    byte // '<', '>', '^', '=', 0=unset
+	sign     byte // '+', '-', ' ', 0=default
+	altForm  bool
+	zeroPad  bool
+	width    int
+	hasWidth bool
+	grouping byte // ',', '_', 0=none
+	prec     int
+	hasPrec  bool
+	typChar  byte // 's','d','b','o','x','X','e','E','f','F','g','G','%','c','n', 0=default
 }
 
 func parseSpec(spec string) fmtSpec {

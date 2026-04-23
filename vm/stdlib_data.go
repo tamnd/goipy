@@ -323,9 +323,9 @@ func (i *Interp) buildRe() *object.Module {
 
 	// re.error / re.PatternError exception class.
 	reErrClass := &object.Class{
-		Name:   "error",
-		Bases:  []*object.Class{i.exception},
-		Dict:   object.NewDict(),
+		Name:  "error",
+		Bases: []*object.Class{i.exception},
+		Dict:  object.NewDict(),
 	}
 	i.reErr = reErrClass
 	m.Dict.SetStr("error", reErrClass)
@@ -444,9 +444,15 @@ func (i *Interp) buildRe() *object.Module {
 	//   findall/finditer(pattern, string, flags=0)       → Pattern method takes (string).
 	//   split(pattern, string, maxsplit=0, flags=0)      → Pattern method takes (string, maxsplit).
 	//   sub/subn(pattern, repl, string, count=0, flags=0)→ Pattern method takes (repl, string, count).
-	shortcut("match", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternMatch(i, p, a, "match") })
-	shortcut("search", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternMatch(i, p, a, "search") })
-	shortcut("fullmatch", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternMatch(i, p, a, "fullmatch") })
+	shortcut("match", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) {
+		return patternMatch(i, p, a, "match")
+	})
+	shortcut("search", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) {
+		return patternMatch(i, p, a, "search")
+	})
+	shortcut("fullmatch", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) {
+		return patternMatch(i, p, a, "fullmatch")
+	})
 	shortcut("findall", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternFindall(i, p, a) })
 	shortcut("finditer", 1, 2, nil, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternFinditer(i, p, a) })
 	shortcut("split", 2, 3, []string{"maxsplit"}, func(p *object.Pattern, a []object.Object) (object.Object, error) { return patternSplit(i, p, a) })
@@ -522,7 +528,7 @@ func (i *Interp) compileRe(pattern string, flags int64) (*object.Pattern, error)
 		if flags&16 != 0 {
 			prefix.WriteByte('s')
 		}
-			prefix.WriteByte(')')
+		prefix.WriteByte(')')
 	}
 	verbose := flags&64 != 0
 	translated := pythonPatternToRE2(pattern, verbose)
@@ -1262,4 +1268,3 @@ func deepCopyPlain(o object.Object, seen map[any]object.Object) object.Object {
 	}
 	return o
 }
-

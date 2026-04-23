@@ -661,17 +661,23 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			k := f.pop()
 			c := f.pop()
 			v := f.pop()
-			if err = i.setitem(c, k, v); err != nil { goto handleErr }
+			if err = i.setitem(c, k, v); err != nil {
+				goto handleErr
+			}
 		case op.STORE_SLICE:
 			stop := f.pop()
 			start := f.pop()
 			c := f.pop()
 			v := f.pop()
-			if err = i.setitem(c, &object.Slice{Start: start, Stop: stop, Step: object.None}, v); err != nil { goto handleErr }
+			if err = i.setitem(c, &object.Slice{Start: start, Stop: stop, Step: object.None}, v); err != nil {
+				goto handleErr
+			}
 		case op.DELETE_SUBSCR:
 			k := f.pop()
 			c := f.pop()
-			if err = i.delitem(c, k); err != nil { goto handleErr }
+			if err = i.delitem(c, k); err != nil {
+				goto handleErr
+			}
 
 		// --- unary ---
 		case op.UNARY_NEGATIVE:
@@ -805,7 +811,9 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			n := int(oparg)
 			s := object.NewSet()
 			for k := f.SP - n; k < f.SP; k++ {
-				if err = s.Add(f.Stack[k]); err != nil { goto handleErr }
+				if err = s.Add(f.Stack[k]); err != nil {
+					goto handleErr
+				}
 			}
 			f.SP -= n
 			f.push(s)
@@ -814,7 +822,9 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			d := object.NewDict()
 			base := f.SP - 2*n
 			for k := 0; k < n; k++ {
-				if err = d.Set(f.Stack[base+2*k], f.Stack[base+2*k+1]); err != nil { goto handleErr }
+				if err = d.Set(f.Stack[base+2*k], f.Stack[base+2*k+1]); err != nil {
+					goto handleErr
+				}
 			}
 			f.SP = base
 			f.push(d)
@@ -918,7 +928,9 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.SET_ADD:
 			v := f.pop()
 			s := f.peek(int(oparg) - 1).(*object.Set)
-			if err = s.Add(v); err != nil { goto handleErr }
+			if err = s.Add(v); err != nil {
+				goto handleErr
+			}
 		case op.SET_UPDATE:
 			it := f.pop()
 			s := f.peek(int(oparg) - 1).(*object.Set)
@@ -928,13 +940,17 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				goto handleErr
 			}
 			for _, x := range items {
-				if err = s.Add(x); err != nil { goto handleErr }
+				if err = s.Add(x); err != nil {
+					goto handleErr
+				}
 			}
 		case op.MAP_ADD:
 			v := f.pop()
 			k := f.pop()
 			d := f.peek(int(oparg) - 1).(*object.Dict)
-			if err = d.Set(k, v); err != nil { goto handleErr }
+			if err = d.Set(k, v); err != nil {
+				goto handleErr
+			}
 		case op.DICT_UPDATE, op.DICT_MERGE:
 			src := f.pop()
 			d := f.peek(int(oparg) - 1).(*object.Dict)
@@ -944,7 +960,9 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			ks, vs := sd.Items()
 			for k, key := range ks {
-				if err = d.Set(key, vs[k]); err != nil { goto handleErr }
+				if err = d.Set(key, vs[k]); err != nil {
+					goto handleErr
+				}
 			}
 		case op.GET_LEN:
 			v := f.top()
@@ -1030,7 +1048,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			v, nok, ierr := it.Next()
 			if ierr != nil {
-				err = ierr; goto handleErr
+				err = ierr
+				goto handleErr
 			}
 			if !nok {
 				f.IP += int(oparg) * 2

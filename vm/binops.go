@@ -199,72 +199,83 @@ func bytesBytesOrArray(o object.Object) ([]byte, bool) {
 	return nil, false
 }
 
-// counterArith computes Counter +, -, &, | returning a new Counter with only
-// positive counts. op is one of "+", "-", "&", "|".
-func counterArith(a, b *object.Counter, op string) *object.Counter {
-	out := &object.Counter{D: object.NewDict()}
-	getCount := func(c *object.Counter, key object.Object) int64 {
-		v, ok, _ := c.D.Get(key)
-		if !ok {
-			return 0
-		}
-		n, _ := toInt64(v)
-		return n
+// counterGetCount returns the count for key in c, 0 if absent.
+func counterGetCount(c *object.Counter, key object.Object) int64 {
+	v, ok, _ := c.D.Get(key)
+	if !ok {
+		return 0
 	}
-	aKeys, aVals := a.D.Items()
-	for k, key := range aKeys {
-		av, _ := toInt64(aVals[k])
-		bv := getCount(b, key)
+	n, _ := toInt64(v)
+	return n
+}
+
+// counterArithVal computes the result for a single key that appears in a.
+func counterArithVal(av, bv int64, op string) int64 {
+	switch op {
+	case "+":
+		return av + bv
+	case "-":
+		return av - bv
+	case "&":
+		if av > 0 && bv > 0 {
+			if av < bv {
+				return av
+			}
+			return bv
+		}
+	case "|":
+		res := av
+		if bv > res {
+			res = bv
+		}
+		if res < 0 {
+			res = 0
+		}
+		return res
+	}
+	return 0
+}
+
+// counterArithBOnly adds keys that exist only in b for +, -, | operations.
+func counterArithBOnly(a, b *object.Counter, op string, out *object.Counter) {
+	bKeys, bVals := b.D.Items()
+	for k, key := range bKeys {
+		if _, ok, _ := a.D.Get(key); ok {
+			continue
+		}
+		bv, _ := toInt64(bVals[k])
 		var res int64
 		switch op {
 		case "+":
-			res = av + bv
+			res = bv
 		case "-":
-			res = av - bv
-		case "&":
-			if av > 0 && bv > 0 {
-				if av < bv {
-					res = av
-				} else {
-					res = bv
-				}
-			}
+			res = -bv
 		case "|":
-			if av > bv {
-				res = av
-			} else {
+			if bv > 0 {
 				res = bv
-			}
-			if res < 0 {
-				res = 0
 			}
 		}
 		if res > 0 {
 			_ = out.D.Set(key, object.NewInt(res))
 		}
 	}
-	// For +, -, |: process keys only in b (not in a).
-	if op != "&" {
-		bKeys, bVals := b.D.Items()
-		for k, key := range bKeys {
-			if _, ok, _ := a.D.Get(key); !ok {
-				bv, _ := toInt64(bVals[k])
-				var res int64
-				switch op {
-				case "+":
-					res = bv
-				case "-":
-					res = -bv
-				case "|":
-					if bv > 0 {
-						res = bv
-					}
-				}
-				if res > 0 {
-					_ = out.D.Set(key, object.NewInt(res))
-				}
-			}
+}
+
+// counterArith computes Counter +, -, &, | returning a new Counter with only
+// positive counts. op is one of "+", "-", "&", "|".
+func counterArith(a, b *object.Counter, op string) *object.Counter {
+	out := &object.Counter{D: object.NewDict()}
+	aKeys, aVals := a.D.Items()
+	for k, key := range aKeys {
+		av, _ := toInt64(aVals[k])
+		bv := counterGetCount(b, key)
+		res := counterArithVal(av, bv, op)
+		if res > 0 {
+			_ = out.D.Set(key, object.NewInt(res))
 		}
+	}
+	if op != "&" {
+		counterArithBOnly(a, b, op, out)
 	}
 	return out
 }
@@ -704,6 +715,20 @@ func setContains(o, x object.Object) bool {
 	return false
 }
 
+// setSymmetricDiff adds elements that are in x but not y, and vice versa.
+func setSymmetricDiff(x, y object.Object, addS func(object.Object)) {
+	for _, e := range setItems(x) {
+		if !setContains(y, e) {
+			addS(e)
+		}
+	}
+	for _, e := range setItems(y) {
+		if !setContains(x, e) {
+			addS(e)
+		}
+	}
+}
+
 // setBitop computes |, &, ^, - between two set-like operands. Result type
 // follows the left operand (CPython semantics).
 func setBitop(a, b object.Object, kind string) object.Object {
@@ -736,16 +761,7 @@ func setBitop(a, b object.Object, kind string) object.Object {
 			}
 		}
 	case "^":
-		for _, x := range aItems {
-			if !setContains(b, x) {
-				addS(x)
-			}
-		}
-		for _, x := range bItems {
-			if !setContains(a, x) {
-				addS(x)
-			}
-		}
+		setSymmetricDiff(a, b, addS)
 	case "-":
 		for _, x := range aItems {
 			if !setContains(b, x) {

@@ -11,7 +11,7 @@ import (
 // splitmix64 is a simple, fast PRNG whose full state is a single uint64.
 // This lets us implement getstate/setstate without reflection into math/rand.
 type splitmix64 struct {
-	state    uint64
+	state     uint64
 	gaussNext float64 // cached second Gaussian variate (NaN = empty)
 }
 

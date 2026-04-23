@@ -11,13 +11,13 @@ func (i *Interp) buildReadline() *object.Module {
 
 	// In-memory state
 	var (
-		history       []string
-		historyLength = -1
-		completer     object.Object
-		startupHook   object.Object
-		preInputHook  object.Object
-		displayHook   object.Object
-		lineBuffer    string
+		history         []string
+		historyLength   = -1
+		completer       object.Object
+		startupHook     object.Object
+		preInputHook    object.Object
+		displayHook     object.Object
+		lineBuffer      string
 		completerDelims = "\t\n !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
 	)
 

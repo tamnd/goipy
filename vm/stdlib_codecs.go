@@ -14,11 +14,11 @@ import (
 
 // BOM constants matching CPython.
 var (
-	bomUTF8     = []byte{0xEF, 0xBB, 0xBF}
-	bomUTF16BE  = []byte{0xFE, 0xFF}
-	bomUTF16LE  = []byte{0xFF, 0xFE}
-	bomUTF32BE  = []byte{0x00, 0x00, 0xFE, 0xFF}
-	bomUTF32LE  = []byte{0xFF, 0xFE, 0x00, 0x00}
+	bomUTF8    = []byte{0xEF, 0xBB, 0xBF}
+	bomUTF16BE = []byte{0xFE, 0xFF}
+	bomUTF16LE = []byte{0xFF, 0xFE}
+	bomUTF32BE = []byte{0x00, 0x00, 0xFE, 0xFF}
+	bomUTF32LE = []byte{0xFF, 0xFE, 0x00, 0x00}
 )
 
 // normaliseEncoding maps CPython alias names to a canonical key.
@@ -391,11 +391,11 @@ func (i *Interp) buildCodecs() *object.Module {
 
 	// error handler registry
 	errorRegistry := map[string]*object.BuiltinFunc{
-		"strict":             strictErrors,
-		"ignore":             ignoreErrors,
-		"replace":            replaceErrors,
-		"backslashreplace":   backslashReplaceErrors,
-		"xmlcharrefreplace":  xmlcharrefErrors,
+		"strict":            strictErrors,
+		"ignore":            ignoreErrors,
+		"replace":           replaceErrors,
+		"backslashreplace":  backslashReplaceErrors,
+		"xmlcharrefreplace": xmlcharrefErrors,
 	}
 
 	m.Dict.SetStr("register_error", &object.BuiltinFunc{Name: "register_error", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {

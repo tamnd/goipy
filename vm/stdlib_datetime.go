@@ -589,7 +589,7 @@ func (i *Interp) fillTimedelta(inst *object.Instance, td goTimedelta) {
 			return mkTD(normTimedelta(0, 0, total)), nil
 		}
 		if f, ok2 := dtToFloat(a[0]); ok2 {
-			us := math.Round(td.totalSecs()*f*1e6)
+			us := math.Round(td.totalSecs() * f * 1e6)
 			return mkTD(normTimedelta(0, 0, int64(us))), nil
 		}
 		return object.NotImplemented, nil
@@ -1549,10 +1549,10 @@ func (i *Interp) buildDatetime() *object.Module {
 		days = vals[0]
 		secs = vals[1]
 		usecs = vals[2]
-		usecs += vals[3] * 1000       // milliseconds
-		secs += vals[4] * 60          // minutes
-		secs += vals[5] * 3600        // hours
-		days += vals[6] * 7           // weeks
+		usecs += vals[3] * 1000 // milliseconds
+		secs += vals[4] * 60    // minutes
+		secs += vals[5] * 3600  // hours
+		days += vals[6] * 7     // weeks
 		td := normTimedelta(days, secs, usecs)
 		i.fillTimedelta(self, td)
 		return object.None, nil

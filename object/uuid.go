@@ -11,6 +11,6 @@ type UUID struct {
 // When SeqA/SeqB are non-nil, the matcher operates on those sequences;
 // otherwise A and B are used as character sequences.
 type SequenceMatcher struct {
-	A, B     string
+	A, B       string
 	SeqA, SeqB []Object // non-nil when operating on lists
 }

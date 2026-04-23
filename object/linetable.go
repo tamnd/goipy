@@ -15,11 +15,12 @@ package object
 // bytecode.
 //
 // Codes:
-//   0-9  — SHORT_FORM: line_delta=0, one data byte of column info
-//   10/11/12 — ONE_LINE_{0,1,2}: line_delta = code-10, two data bytes
-//   13   — NO_COLUMNS: one svarint line_delta
-//   14   — LONG: svarint line_delta, varint end_line_delta, varint col, varint end_col
-//   15   — NONE: no data (represents "no location available")
+//
+//	0-9  — SHORT_FORM: line_delta=0, one data byte of column info
+//	10/11/12 — ONE_LINE_{0,1,2}: line_delta = code-10, two data bytes
+//	13   — NO_COLUMNS: one svarint line_delta
+//	14   — LONG: svarint line_delta, varint end_line_delta, varint col, varint end_col
+//	15   — NONE: no data (represents "no location available")
 //
 // We only need the line_delta; column bytes are skipped.
 func (c *Code) LineForOffset(ip int) int {
@@ -27,7 +28,7 @@ func (c *Code) LineForOffset(ip int) int {
 		return c.FirstLineNo
 	}
 	line := c.FirstLineNo
-	codeUnit := 0           // index in code units (one unit = 2 bytes)
+	codeUnit := 0 // index in code units (one unit = 2 bytes)
 	targetUnit := ip / 2
 	p := 0
 	for p < len(c.LineTable) {

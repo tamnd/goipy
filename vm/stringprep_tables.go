@@ -399,4 +399,3 @@ var tableA1 = [][2]rune{
 	{0xE0002, 0xE001F},
 	{0xE0080, 0xEFFFD},
 }
-

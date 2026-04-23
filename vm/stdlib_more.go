@@ -452,4 +452,3 @@ func tupleOfStrs(xs []string) *object.Tuple {
 	}
 	return &object.Tuple{V: out}
 }
-

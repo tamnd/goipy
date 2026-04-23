@@ -134,22 +134,34 @@ func (i *Interp) buildDifflib() *object.Module {
 		lineterm := "\n"
 		if kw != nil {
 			if v, ok := kw.GetStr("fromfile"); ok {
-				if s, ok := v.(*object.Str); ok { fromfile = s.V }
+				if s, ok := v.(*object.Str); ok {
+					fromfile = s.V
+				}
 			}
 			if v, ok := kw.GetStr("tofile"); ok {
-				if s, ok := v.(*object.Str); ok { tofile = s.V }
+				if s, ok := v.(*object.Str); ok {
+					tofile = s.V
+				}
 			}
 			if v, ok := kw.GetStr("fromfiledate"); ok {
-				if s, ok := v.(*object.Str); ok { fromdate = s.V }
+				if s, ok := v.(*object.Str); ok {
+					fromdate = s.V
+				}
 			}
 			if v, ok := kw.GetStr("tofiledate"); ok {
-				if s, ok := v.(*object.Str); ok { todate = s.V }
+				if s, ok := v.(*object.Str); ok {
+					todate = s.V
+				}
 			}
 			if v, ok := kw.GetStr("n"); ok {
-				if iv, ok2 := toInt64(v); ok2 { n = int(iv) }
+				if iv, ok2 := toInt64(v); ok2 {
+					n = int(iv)
+				}
 			}
 			if v, ok := kw.GetStr("lineterm"); ok {
-				if s, ok := v.(*object.Str); ok { lineterm = s.V }
+				if s, ok := v.(*object.Str); ok {
+					lineterm = s.V
+				}
 			}
 		}
 		lines := unifiedDiff(aLines, bLines, fromfile, tofile, fromdate, todate, n, lineterm)
@@ -173,22 +185,34 @@ func (i *Interp) buildDifflib() *object.Module {
 		lineterm := "\n"
 		if kw != nil {
 			if v, ok := kw.GetStr("fromfile"); ok {
-				if s, ok := v.(*object.Str); ok { fromfile = s.V }
+				if s, ok := v.(*object.Str); ok {
+					fromfile = s.V
+				}
 			}
 			if v, ok := kw.GetStr("tofile"); ok {
-				if s, ok := v.(*object.Str); ok { tofile = s.V }
+				if s, ok := v.(*object.Str); ok {
+					tofile = s.V
+				}
 			}
 			if v, ok := kw.GetStr("fromfiledate"); ok {
-				if s, ok := v.(*object.Str); ok { fromdate = s.V }
+				if s, ok := v.(*object.Str); ok {
+					fromdate = s.V
+				}
 			}
 			if v, ok := kw.GetStr("tofiledate"); ok {
-				if s, ok := v.(*object.Str); ok { todate = s.V }
+				if s, ok := v.(*object.Str); ok {
+					todate = s.V
+				}
 			}
 			if v, ok := kw.GetStr("n"); ok {
-				if iv, ok2 := toInt64(v); ok2 { n = int(iv) }
+				if iv, ok2 := toInt64(v); ok2 {
+					n = int(iv)
+				}
 			}
 			if v, ok := kw.GetStr("lineterm"); ok {
-				if s, ok := v.(*object.Str); ok { lineterm = s.V }
+				if s, ok := v.(*object.Str); ok {
+					lineterm = s.V
+				}
 			}
 		}
 		lines := contextDiff(aLines, bLines, fromfile, tofile, fromdate, todate, n, lineterm)
@@ -246,11 +270,23 @@ func (i *Interp) buildDifflib() *object.Module {
 			}
 			switch v := val.(type) {
 			case *object.Str:
-				if idx == 1 { sm.A = v.V } else { sm.B = v.V }
+				if idx == 1 {
+					sm.A = v.V
+				} else {
+					sm.B = v.V
+				}
 			case *object.List:
-				if idx == 1 { sm.SeqA = v.V } else { sm.SeqB = v.V }
+				if idx == 1 {
+					sm.SeqA = v.V
+				} else {
+					sm.SeqB = v.V
+				}
 			case *object.Tuple:
-				if idx == 1 { sm.SeqA = v.V } else { sm.SeqB = v.V }
+				if idx == 1 {
+					sm.SeqA = v.V
+				} else {
+					sm.SeqB = v.V
+				}
 			}
 		}
 		setSeq(1, "a")
@@ -460,33 +496,73 @@ func sequenceMatcherAttr(i *Interp, sm *object.SequenceMatcher, name string) (ob
 		}}, true
 	case "set_seqs":
 		return &object.BuiltinFunc{Name: "set_seqs", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) >= 1 { smSetSeq(sm, 1, a[0]) }
-			if len(a) >= 2 { smSetSeq(sm, 2, a[1]) }
+			if len(a) >= 1 {
+				smSetSeq(sm, 1, a[0])
+			}
+			if len(a) >= 2 {
+				smSetSeq(sm, 2, a[1])
+			}
 			return object.None, nil
 		}}, true
 	case "set_seq1":
 		return &object.BuiltinFunc{Name: "set_seq1", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) >= 1 { smSetSeq(sm, 1, a[0]) }
+			if len(a) >= 1 {
+				smSetSeq(sm, 1, a[0])
+			}
 			return object.None, nil
 		}}, true
 	case "set_seq2":
 		return &object.BuiltinFunc{Name: "set_seq2", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) >= 1 { smSetSeq(sm, 2, a[0]) }
+			if len(a) >= 1 {
+				smSetSeq(sm, 2, a[0])
+			}
 			return object.None, nil
 		}}, true
 	case "find_longest_match":
 		return &object.BuiltinFunc{Name: "find_longest_match", Call: func(_ any, args []object.Object, kw *object.Dict) (object.Object, error) {
 			la, lb := smSeqLen(sm)
 			alo, ahi, blo, bhi := 0, la, 0, lb
-			if len(args) >= 1 { if v, ok := toInt64(args[0]); ok { alo = int(v) } }
-			if len(args) >= 2 { if v, ok := toInt64(args[1]); ok { ahi = int(v) } }
-			if len(args) >= 3 { if v, ok := toInt64(args[2]); ok { blo = int(v) } }
-			if len(args) >= 4 { if v, ok := toInt64(args[3]); ok { bhi = int(v) } }
+			if len(args) >= 1 {
+				if v, ok := toInt64(args[0]); ok {
+					alo = int(v)
+				}
+			}
+			if len(args) >= 2 {
+				if v, ok := toInt64(args[1]); ok {
+					ahi = int(v)
+				}
+			}
+			if len(args) >= 3 {
+				if v, ok := toInt64(args[2]); ok {
+					blo = int(v)
+				}
+			}
+			if len(args) >= 4 {
+				if v, ok := toInt64(args[3]); ok {
+					bhi = int(v)
+				}
+			}
 			if kw != nil {
-				if v, ok := kw.GetStr("alo"); ok { if n, ok2 := toInt64(v); ok2 { alo = int(n) } }
-				if v, ok := kw.GetStr("ahi"); ok { if n, ok2 := toInt64(v); ok2 { ahi = int(n) } }
-				if v, ok := kw.GetStr("blo"); ok { if n, ok2 := toInt64(v); ok2 { blo = int(n) } }
-				if v, ok := kw.GetStr("bhi"); ok { if n, ok2 := toInt64(v); ok2 { bhi = int(n) } }
+				if v, ok := kw.GetStr("alo"); ok {
+					if n, ok2 := toInt64(v); ok2 {
+						alo = int(n)
+					}
+				}
+				if v, ok := kw.GetStr("ahi"); ok {
+					if n, ok2 := toInt64(v); ok2 {
+						ahi = int(n)
+					}
+				}
+				if v, ok := kw.GetStr("blo"); ok {
+					if n, ok2 := toInt64(v); ok2 {
+						blo = int(n)
+					}
+				}
+				if v, ok := kw.GetStr("bhi"); ok {
+					if n, ok2 := toInt64(v); ok2 {
+						bhi = int(n)
+					}
+				}
 			}
 			a, b, size := smFindLongestMatch(sm, alo, ahi, blo, bhi)
 			return makeMatchTuple(i, a, b, size), nil
@@ -519,8 +595,18 @@ func sequenceMatcherAttr(i *Interp, sm *object.SequenceMatcher, name string) (ob
 	case "get_grouped_opcodes":
 		return &object.BuiltinFunc{Name: "get_grouped_opcodes", Call: func(_ any, args []object.Object, kw *object.Dict) (object.Object, error) {
 			n := 3
-			if len(args) >= 1 { if v, ok := toInt64(args[0]); ok { n = int(v) } }
-			if kw != nil { if v, ok := kw.GetStr("n"); ok { if iv, ok2 := toInt64(v); ok2 { n = int(iv) } } }
+			if len(args) >= 1 {
+				if v, ok := toInt64(args[0]); ok {
+					n = int(v)
+				}
+			}
+			if kw != nil {
+				if v, ok := kw.GetStr("n"); ok {
+					if iv, ok2 := toInt64(v); ok2 {
+						n = int(iv)
+					}
+				}
+			}
 			ops := smGetOpcodes(sm)
 			groups := groupOpcodes(ops, n)
 			out := make([]object.Object, len(groups))
@@ -548,11 +634,29 @@ func sequenceMatcherAttr(i *Interp, sm *object.SequenceMatcher, name string) (ob
 func smSetSeq(sm *object.SequenceMatcher, which int, v object.Object) {
 	switch val := v.(type) {
 	case *object.Str:
-		if which == 1 { sm.A = val.V; sm.SeqA = nil } else { sm.B = val.V; sm.SeqB = nil }
+		if which == 1 {
+			sm.A = val.V
+			sm.SeqA = nil
+		} else {
+			sm.B = val.V
+			sm.SeqB = nil
+		}
 	case *object.List:
-		if which == 1 { sm.SeqA = val.V; sm.A = "" } else { sm.SeqB = val.V; sm.B = "" }
+		if which == 1 {
+			sm.SeqA = val.V
+			sm.A = ""
+		} else {
+			sm.SeqB = val.V
+			sm.B = ""
+		}
 	case *object.Tuple:
-		if which == 1 { sm.SeqA = val.V; sm.A = "" } else { sm.SeqB = val.V; sm.B = "" }
+		if which == 1 {
+			sm.SeqA = val.V
+			sm.A = ""
+		} else {
+			sm.SeqB = val.V
+			sm.B = ""
+		}
 	}
 }
 
@@ -729,9 +833,13 @@ func unifiedDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 	}
 	var lines []string
 	fromhdr := fromfile
-	if fromdate != "" { fromhdr += "\t" + fromdate }
+	if fromdate != "" {
+		fromhdr += "\t" + fromdate
+	}
 	tohdr := tofile
-	if todate != "" { tohdr += "\t" + todate }
+	if todate != "" {
+		tohdr += "\t" + todate
+	}
 	lines = append(lines, "--- "+fromhdr+lineterm)
 	lines = append(lines, "+++ "+tohdr+lineterm)
 	for _, g := range groups {
@@ -746,14 +854,24 @@ func unifiedDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 			oi1, oi2, oj1, oj2 := op[1].(int), op[2].(int), op[3].(int), op[4].(int)
 			switch tag {
 			case "equal":
-				for _, l := range a[oi1:oi2] { lines = append(lines, " "+l) }
+				for _, l := range a[oi1:oi2] {
+					lines = append(lines, " "+l)
+				}
 			case "replace":
-				for _, l := range a[oi1:oi2] { lines = append(lines, "-"+l) }
-				for _, l := range b[oj1:oj2] { lines = append(lines, "+"+l) }
+				for _, l := range a[oi1:oi2] {
+					lines = append(lines, "-"+l)
+				}
+				for _, l := range b[oj1:oj2] {
+					lines = append(lines, "+"+l)
+				}
 			case "delete":
-				for _, l := range a[oi1:oi2] { lines = append(lines, "-"+l) }
+				for _, l := range a[oi1:oi2] {
+					lines = append(lines, "-"+l)
+				}
 			case "insert":
-				for _, l := range b[oj1:oj2] { lines = append(lines, "+"+l) }
+				for _, l := range b[oj1:oj2] {
+					lines = append(lines, "+"+l)
+				}
 			}
 		}
 	}
@@ -770,9 +888,13 @@ func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 	}
 	var lines []string
 	fromhdr := fromfile
-	if fromdate != "" { fromhdr += "\t" + fromdate }
+	if fromdate != "" {
+		fromhdr += "\t" + fromdate
+	}
 	tohdr := tofile
-	if todate != "" { tohdr += "\t" + todate }
+	if todate != "" {
+		tohdr += "\t" + todate
+	}
 	lines = append(lines, "*** "+fromhdr+lineterm)
 	lines = append(lines, "--- "+tohdr+lineterm)
 	for _, g := range groups {
@@ -786,7 +908,10 @@ func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 		// from side
 		hasChange := false
 		for _, op := range g {
-			if op[0].(string) != "insert" { hasChange = true; break }
+			if op[0].(string) != "insert" {
+				hasChange = true
+				break
+			}
 		}
 		if hasChange {
 			for _, op := range g {
@@ -794,9 +919,13 @@ func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 				oi1, oi2 := op[1].(int), op[2].(int)
 				switch tag {
 				case "equal":
-					for _, l := range a[oi1:oi2] { lines = append(lines, "  "+l) }
+					for _, l := range a[oi1:oi2] {
+						lines = append(lines, "  "+l)
+					}
 				case "replace", "delete":
-					for _, l := range a[oi1:oi2] { lines = append(lines, "! "+l) }
+					for _, l := range a[oi1:oi2] {
+						lines = append(lines, "! "+l)
+					}
 				}
 			}
 		}
@@ -804,7 +933,10 @@ func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 		// to side
 		hasChange2 := false
 		for _, op := range g {
-			if op[0].(string) != "delete" { hasChange2 = true; break }
+			if op[0].(string) != "delete" {
+				hasChange2 = true
+				break
+			}
 		}
 		if hasChange2 {
 			for _, op := range g {
@@ -812,9 +944,13 @@ func contextDiff(a, b []string, fromfile, tofile, fromdate, todate string, n int
 				oj1, oj2 := op[3].(int), op[4].(int)
 				switch tag {
 				case "equal":
-					for _, l := range b[oj1:oj2] { lines = append(lines, "  "+l) }
+					for _, l := range b[oj1:oj2] {
+						lines = append(lines, "  "+l)
+					}
 				case "replace", "insert":
-					for _, l := range b[oj1:oj2] { lines = append(lines, "! "+l) }
+					for _, l := range b[oj1:oj2] {
+						lines = append(lines, "! "+l)
+					}
 				}
 			}
 		}

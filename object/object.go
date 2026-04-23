@@ -17,10 +17,10 @@ type Object = any
 
 // Singletons.
 var (
-	None          = &NoneType{}
-	True          = &Bool{V: true}
-	False         = &Bool{V: false}
-	Ellipsis      = &EllipsisType{}
+	None           = &NoneType{}
+	True           = &Bool{V: true}
+	False          = &Bool{V: false}
+	Ellipsis       = &EllipsisType{}
 	NotImplemented = &NotImplementedType{}
 )
 
@@ -310,17 +310,17 @@ const (
 
 // Function is a user-defined Python function.
 type Function struct {
-	Code     *Code
-	Globals  *Dict
-	Defaults *Tuple
-	KwDefaults *Dict
-	Closure  *Tuple // of *Cell
-	Name     string
-	QualName string
-	Doc      Object
-	Module   Object
+	Code        *Code
+	Globals     *Dict
+	Defaults    *Tuple
+	KwDefaults  *Dict
+	Closure     *Tuple // of *Cell
+	Name        string
+	QualName    string
+	Doc         Object
+	Module      Object
 	Annotations Object
-	Dict     *Dict
+	Dict        *Dict
 }
 
 // Cell is a shared storage slot used for closures.
@@ -331,8 +331,8 @@ type Cell struct {
 
 // BuiltinFunc wraps a Go callable exposed as a Python builtin.
 type BuiltinFunc struct {
-	Name  string
-	Call  func(interp any, args []Object, kwargs *Dict) (Object, error)
+	Name string
+	Call func(interp any, args []Object, kwargs *Dict) (Object, error)
 	// Attrs holds extra attributes set on the builtin (e.g.
 	// functools.lru_cache's wrapper exposes cache_info/cache_clear).
 	Attrs *Dict

@@ -963,4 +963,3 @@ func (i *Interp) buildBisect() *object.Module {
 
 	return m
 }
-

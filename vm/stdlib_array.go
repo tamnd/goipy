@@ -3,8 +3,8 @@ package vm
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
 	"github.com/tamnd/goipy/object"
+	"math"
 )
 
 // buildArray constructs the array module exposing array.array and array.typecodes.

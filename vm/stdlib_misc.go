@@ -1076,7 +1076,6 @@ func (i *Interp) buildReprlib() *object.Module {
 	return m
 }
 
-
 // --- html module -----------------------------------------------------------
 
 func (i *Interp) buildHtml() *object.Module {
