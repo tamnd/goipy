@@ -1,0 +1,67 @@
+8192
+['RCS', 'CVS', 'tags', '.git', '.hg', '.bzr', '_darcs', '__pycache__']
+True
+True
+False
+False
+True
+True
+['same.txt']
+['diff.txt']
+[]
+['same.txt']
+[]
+['missing.txt']
+[] [] []
+['diff.txt', 'left_only.txt', 'same.txt', 'subdir']
+['diff.txt', 'right_only.txt', 'same.txt', 'subdir']
+['diff.txt', 'same.txt', 'subdir']
+['left_only.txt']
+['right_only.txt']
+['subdir']
+['diff.txt', 'same.txt']
+[]
+['same.txt']
+['diff.txt']
+[]
+['subdir']
+dircmp
+['sub.txt']
+['sub_diff.txt']
+['sub.txt', 'sub_diff.txt']
+diff a b
+Only in a : ['left_only.txt']
+Only in b : ['right_only.txt']
+Identical files : ['same.txt']
+Differing files : ['diff.txt']
+Common subdirectories : ['subdir']
+
+diff a b
+Only in a : ['left_only.txt']
+Only in b : ['right_only.txt']
+Identical files : ['same.txt']
+Differing files : ['diff.txt']
+Common subdirectories : ['subdir']
+
+diff a/subdir b/subdir
+Identical files : ['sub.txt']
+Differing files : ['sub_diff.txt']
+
+diff a b
+Only in a : ['left_only.txt']
+Only in b : ['right_only.txt']
+Identical files : ['same.txt']
+Differing files : ['diff.txt']
+Common subdirectories : ['subdir']
+
+diff a/subdir b/subdir
+Identical files : ['sub.txt']
+Differing files : ['sub_diff.txt']
+['same.txt']
+['left_only.txt']
+['diff.txt', 'left_only.txt', 'subdir']
+['same.txt']
+['diff.txt']
+True
+True
+done

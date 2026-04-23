@@ -272,6 +272,21 @@ func (i *Interp) buildOs() *object.Module {
 		return object.NewInt(int64(os.Getpid())), nil
 	}})
 
+	// chdir(path) — change current working directory.
+	m.Dict.SetStr("chdir", &object.BuiltinFunc{Name: "chdir", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "chdir() requires 1 argument")
+		}
+		p, ok := a[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "chdir() path must be str")
+		}
+		if err := os.Chdir(p.V); err != nil {
+			return nil, object.Errorf(i.osErr, "%v", err)
+		}
+		return object.None, nil
+	}})
+
 	// path sub-module as attribute.
 	osPath := i.buildOsPath()
 	m.Dict.SetStr("path", osPath)

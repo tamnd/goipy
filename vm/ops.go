@@ -726,6 +726,14 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		if clsFound {
 			return i.bindDescriptor(clsAttr, inst, inst.Class)
 		}
+		// __getattr__ fallback — called when normal lookup fails.
+		if inst.Class != nil {
+			if gaFn, ok := classLookup(inst.Class, "__getattr__"); ok {
+				if bf, ok := gaFn.(*object.BuiltinFunc); ok {
+					return bf.Call(nil, []object.Object{inst, &object.Str{V: name}}, nil)
+				}
+			}
+		}
 		clsName := "object"
 		if inst.Class != nil {
 			clsName = inst.Class.Name
