@@ -186,9 +186,18 @@ func (i *Interp) buildMath() *object.Module {
 	}})
 
 	// ceil / floor / trunc — return int.
+	// If the argument has __ceil__/__floor__/__trunc__, delegate to it (e.g. Fraction).
 	m.Dict.SetStr("ceil", &object.BuiltinFunc{Name: "ceil", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "ceil() requires a number")
+		}
 		if n, ok := toInt64(a[0]); ok {
 			return object.NewInt(n), nil
+		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			if fn, ok2 := classLookup(inst.Class, "__ceil__"); ok2 {
+				return i.callObject(fn, []object.Object{inst}, nil)
+			}
 		}
 		x, ok := toFloat64Any(a[0])
 		if !ok {
@@ -197,8 +206,16 @@ func (i *Interp) buildMath() *object.Module {
 		return object.NewInt(int64(math.Ceil(x))), nil
 	}})
 	m.Dict.SetStr("floor", &object.BuiltinFunc{Name: "floor", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "floor() requires a number")
+		}
 		if n, ok := toInt64(a[0]); ok {
 			return object.NewInt(n), nil
+		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			if fn, ok2 := classLookup(inst.Class, "__floor__"); ok2 {
+				return i.callObject(fn, []object.Object{inst}, nil)
+			}
 		}
 		x, ok := toFloat64Any(a[0])
 		if !ok {
@@ -207,8 +224,16 @@ func (i *Interp) buildMath() *object.Module {
 		return object.NewInt(int64(math.Floor(x))), nil
 	}})
 	m.Dict.SetStr("trunc", &object.BuiltinFunc{Name: "trunc", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "trunc() requires a number")
+		}
 		if n, ok := toInt64(a[0]); ok {
 			return object.NewInt(n), nil
+		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			if fn, ok2 := classLookup(inst.Class, "__trunc__"); ok2 {
+				return i.callObject(fn, []object.Object{inst}, nil)
+			}
 		}
 		x, ok := toFloat64Any(a[0])
 		if !ok {
