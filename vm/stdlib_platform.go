@@ -75,7 +75,10 @@ func goosToSystem(goos string) string {
 	case "netbsd":
 		return "NetBSD"
 	default:
-		return strings.Title(goos) //nolint:staticcheck
+		if len(goos) == 0 {
+			return goos
+		}
+		return strings.ToUpper(goos[:1]) + goos[1:]
 	}
 }
 
