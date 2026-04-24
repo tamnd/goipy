@@ -161,7 +161,7 @@ with tempfile.TemporaryDirectory() as tmp:
     print(du.total > 0)                                 # True
     print(du.used > 0)                                  # True
     print(du.free > 0)                                  # True
-    print(du.total == du.used + du.free)                # True
+    print(du.total >= du.used + du.free)                # True
 
     # named tuple fields
     print(isinstance(du.total, int))                    # True

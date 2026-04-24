@@ -18,14 +18,14 @@ with tempfile.TemporaryDirectory() as tmpdir:
     for path, content in [
         ('a/same.txt',         'identical\n'),
         ('b/same.txt',         'identical\n'),
-        ('a/diff.txt',         'version A\n'),
-        ('b/diff.txt',         'version B\n'),
+        ('a/diff.txt',         'version A content differs\n'),  # different size
+        ('b/diff.txt',         'B\n'),                          # than b/diff.txt
         ('a/left_only.txt',    'left\n'),
         ('b/right_only.txt',   'right\n'),
         ('a/subdir/sub.txt',   'sub\n'),
         ('b/subdir/sub.txt',   'sub\n'),
-        ('a/subdir/sub_diff.txt', 'aaa\n'),
-        ('b/subdir/sub_diff.txt', 'bbb\n'),
+        ('a/subdir/sub_diff.txt', 'aaa longer content\n'),  # different size
+        ('b/subdir/sub_diff.txt', 'bbb\n'),                 # than b/sub_diff.txt
     ]:
         with open(path, 'w') as f:
             f.write(content)
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
     # ===== cmp() =====
     print(filecmp.cmp('a/same.txt', 'b/same.txt'))         # True  (shallow: same sig)
     print(filecmp.cmp('a/same.txt', 'b/same.txt', False))  # True  (content)
-    print(filecmp.cmp('a/diff.txt', 'b/diff.txt'))         # False (different sizes)
+    print(filecmp.cmp('a/diff.txt', 'b/diff.txt'))         # False (different size → reliable)
     print(filecmp.cmp('a/diff.txt', 'b/diff.txt', False))  # False (different content)
     print(filecmp.cmp('a/same.txt', 'a/same.txt'))         # True  (same file)
 
