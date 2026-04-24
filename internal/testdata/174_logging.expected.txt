@@ -1,0 +1,49 @@
+True
+True
+True
+True
+True
+True
+True
+True
+DEBUG
+INFO
+WARNING
+ERROR
+CRITICAL
+NOTSET
+True
+True
+VERBOSE
+True
+True
+True
+DEBUG:root:dbg msg
+INFO:root:info msg
+WARNING:root:warn msg
+ERROR:root:err msg
+CRITICAL:root:crit msg
+True
+myapp.sub
+myapp
+True
+False
+True
+True
+isolated msg
+True
+True
+WARNING - test warning
+ERROR - test error arg
+INFO file info
+ERROR file error
+True
+INFO:hello
+False
+True
+parent2.kid
+INFO:explicit level
+True
+True
+True
+True
