@@ -348,9 +348,11 @@ func bytesOrStr(o object.Object) ([]byte, bool) {
 func (i *Interp) buildSecrets() *object.Module {
 	m := &object.Module{Name: "secrets", Dict: object.NewDict()}
 
+	m.Dict.SetStr("DEFAULT_ENTROPY", object.NewInt(32))
+
 	readRand := func(n int) ([]byte, error) {
 		if n < 0 {
-			return nil, object.Errorf(i.valueErr, "negative argument")
+			return nil, object.Errorf(i.valueErr, "negative argument not allowed")
 		}
 		buf := make([]byte, n)
 		if _, err := rand.Read(buf); err != nil {
@@ -413,7 +415,7 @@ func (i *Interp) buildSecrets() *object.Module {
 		}
 		n, ok := toInt64(a[0])
 		if !ok || n <= 0 {
-			return nil, object.Errorf(i.valueErr, "randbelow() upper bound must be positive int")
+			return nil, object.Errorf(i.valueErr, "Upper bound must be positive.")
 		}
 		bn, err := rand.Int(rand.Reader, big.NewInt(n))
 		if err != nil {
@@ -428,7 +430,7 @@ func (i *Interp) buildSecrets() *object.Module {
 		}
 		k, ok := toInt64(a[0])
 		if !ok || k < 0 {
-			return nil, object.Errorf(i.valueErr, "randbits() k must be non-negative")
+			return nil, object.Errorf(i.valueErr, "number of bits must be non-negative")
 		}
 		if k == 0 {
 			return object.NewInt(0), nil
@@ -453,8 +455,11 @@ func (i *Interp) buildSecrets() *object.Module {
 		}
 		seq := a[0]
 		n := sequenceLen(seq)
-		if n <= 0 {
-			return nil, object.Errorf(i.valueErr, "choice() empty sequence")
+		if n == 0 {
+			return nil, object.Errorf(i.indexErr, "Cannot choose from an empty sequence")
+		}
+		if n < 0 {
+			return nil, object.Errorf(i.typeErr, "choice() argument is not a sequence")
 		}
 		bn, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
 		if err != nil {
