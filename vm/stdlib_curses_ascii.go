@@ -1,8 +1,6 @@
 package vm
 
 import (
-	"unicode"
-
 	"github.com/tamnd/goipy/object"
 )
 
@@ -43,7 +41,15 @@ func (i *Interp) buildCursesAscii() *object.Module {
 		m.Dict.SetStr(k, object.NewInt(v))
 	}
 
-	// Helper: make a bool classification function.
+	// Pure ASCII classification helpers (not Unicode-aware).
+	isdigit := func(c int) bool { return c >= 48 && c <= 57 }
+	isupper := func(c int) bool { return c >= 65 && c <= 90 }
+	islower := func(c int) bool { return c >= 97 && c <= 122 }
+	isalpha := func(c int) bool { return isupper(c) || islower(c) }
+	isalnum := func(c int) bool { return isalpha(c) || isdigit(c) }
+	isgraph := func(c int) bool { return c >= 33 && c <= 126 }
+
+	// Helper: register a bool classification function from a predicate.
 	boolFn := func(name string, fn func(int) bool) {
 		m.Dict.SetStr(name, &object.BuiltinFunc{Name: name, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) < 1 {
@@ -57,47 +63,32 @@ func (i *Interp) buildCursesAscii() *object.Module {
 		}})
 	}
 
-	boolFn("isalnum", func(c int) bool {
-		r := rune(c)
-		return unicode.IsLetter(r) || unicode.IsDigit(r)
-	})
-	boolFn("isalpha", func(c int) bool {
-		return unicode.IsLetter(rune(c))
-	})
-	boolFn("isascii", func(c int) bool {
-		return c >= 0 && c <= 127
-	})
-	boolFn("isblank", func(c int) bool {
-		return c == ' ' || c == '\t'
-	})
-	boolFn("iscntrl", func(c int) bool {
-		return (c >= 0 && c <= 31) || c == 127
-	})
-	boolFn("isdigit", func(c int) bool {
-		return c >= '0' && c <= '9'
-	})
-	boolFn("isgraph", func(c int) bool {
-		return c > 32 && c < 127
-	})
-	boolFn("islower", func(c int) bool {
-		return c >= 'a' && c <= 'z'
-	})
-	boolFn("isprint", func(c int) bool {
-		return c >= 32 && c < 127
-	})
-	boolFn("ispunct", func(c int) bool {
-		r := rune(c)
-		return unicode.IsPunct(r) || unicode.IsSymbol(r)
-	})
+	boolFn("isalnum", isalnum)
+	boolFn("isalpha", isalpha)
+	boolFn("isascii", func(c int) bool { return c >= 0 && c <= 127 })
+	boolFn("isblank", func(c int) bool { return c == 32 || c == 9 })
+	boolFn("iscntrl", func(c int) bool { return (c >= 0 && c <= 31) || c == 127 })
+	boolFn("isdigit", isdigit)
+	boolFn("isgraph", isgraph)
+	boolFn("islower", islower)
+	boolFn("isprint", func(c int) bool { return c >= 32 && c <= 126 })
+	boolFn("ispunct", func(c int) bool { return isgraph(c) && !isalnum(c) })
 	boolFn("isspace", func(c int) bool {
-		return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
+		return c == 32 || c == 9 || c == 10 || c == 11 || c == 12 || c == 13
 	})
-	boolFn("isupper", func(c int) bool {
-		return c >= 'A' && c <= 'Z'
-	})
+	boolFn("isupper", isupper)
 	boolFn("isxdigit", func(c int) bool {
-		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		return isdigit(c) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70)
 	})
+
+	// ascii(c) → int ordinal
+	m.Dict.SetStr("ascii", &object.BuiltinFunc{Name: "ascii", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.NewInt(0), nil
+		}
+		c, _ := asciiOrd(a[0])
+		return object.NewInt(int64(c)), nil
+	}})
 
 	// toascii(c) → c & 0x7F
 	m.Dict.SetStr("toascii", &object.BuiltinFunc{Name: "toascii", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -106,15 +97,6 @@ func (i *Interp) buildCursesAscii() *object.Module {
 		}
 		c, _ := asciiOrd(a[0])
 		return object.NewInt(int64(c & 0x7F)), nil
-	}})
-
-	// alt(c) → c | 0x80
-	m.Dict.SetStr("alt", &object.BuiltinFunc{Name: "alt", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return object.NewInt(0), nil
-		}
-		c, _ := asciiOrd(a[0])
-		return object.NewInt(int64(c | 0x80)), nil
 	}})
 
 	// ctrl(c) → c & 0x1F
@@ -126,28 +108,39 @@ func (i *Interp) buildCursesAscii() *object.Module {
 		return object.NewInt(int64(c & 0x1F)), nil
 	}})
 
-	// unctrl(c) → str representation
+	// alt(c) → c | 0x80
+	m.Dict.SetStr("alt", &object.BuiltinFunc{Name: "alt", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.NewInt(0), nil
+		}
+		c, _ := asciiOrd(a[0])
+		return object.NewInt(int64(c | 0x80)), nil
+	}})
+
+	// unctrl(c) → printable string representation
 	m.Dict.SetStr("unctrl", &object.BuiltinFunc{Name: "unctrl", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
 		c, _ := asciiOrd(a[0])
-		if c < 32 {
-			return &object.Str{V: "^" + string(rune('A'+c-1))}, nil
+		var s string
+		switch {
+		case c >= 32 && c <= 126:
+			// printable
+			s = string(rune(c))
+		case c == 127:
+			// DEL
+			s = "^?"
+		case c >= 0 && c < 32:
+			// control character: c+64 gives the corresponding uppercase letter
+			s = "^" + string(rune(c+64))
+		case c > 127:
+			// high-bit set: prefix with '!' and recurse on low 7 bits
+			s = "!" + string(rune(c&0x7F))
+		default:
+			s = "?"
 		}
-		if c == 127 {
-			return &object.Str{V: "^?"}, nil
-		}
-		return &object.Str{V: string(rune(c))}, nil
-	}})
-
-	// ascii(c) → int ordinal
-	m.Dict.SetStr("ascii", &object.BuiltinFunc{Name: "ascii", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return object.NewInt(0), nil
-		}
-		c, _ := asciiOrd(a[0])
-		return object.NewInt(int64(c)), nil
+		return &object.Str{V: s}, nil
 	}})
 
 	return m
