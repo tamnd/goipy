@@ -1,0 +1,60 @@
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+LZMAError raised
+True
+True
+True
+True
+b''
+True
+True
+True
+True
+True
+True
+False
+True
+True
+True
+True
+True
+14
+True
+False
+False
+True
+b'hello lzmafile'
+True
+False
+True
+True
+b'abc'
+3
+b'def'
+6
+b'ghij'
+b'fg'
+b'a'
+b'e'
+b'ij'
+b'line1\n'
+b'line2\n'
+b'line3'
+b''
+b'abc'
+0
+b'a'
+b'lzma open write'
+b'crc32 check'
+hello text mode
+
+b'part1part2part3'
+done
