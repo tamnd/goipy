@@ -183,6 +183,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildLoggingHandlers(), true
 	case "platform":
 		return i.buildPlatform(), true
+	case "errno":
+		return i.buildErrno(), true
 	}
 	return nil, false
 }
