@@ -1,0 +1,54 @@
+True
+True
+True
+True
+True
+True
+True
+OSError raised
+True
+True
+True
+True
+b''
+True
+True
+True
+True
+True
+True
+False
+True
+13
+True
+False
+False
+True
+b'hello bz2file'
+True
+False
+True
+True
+True
+b'abc'
+3
+b'def'
+6
+b'ghij'
+b'fg'
+b'a'
+b'e'
+b'ij'
+b'line1\n'
+b'line2\n'
+b'line3'
+b''
+b'abc'
+0
+b'a'
+b'bz2 open write'
+b'fast compress'
+hello text mode
+
+b'part1part2part3'
+done
