@@ -84,6 +84,11 @@ func (ls *logState) getLevelNum(name string) (int, bool) {
 func (i *Interp) buildLogging() *object.Module {
 	m := &object.Module{Name: "logging", Dict: object.NewDict()}
 	ls := newLogState()
+	// Register ls so that logging.config can access it.
+	if i.logStates == nil {
+		i.logStates = map[string]*logState{}
+	}
+	i.logStates["logging"] = ls
 
 	// --- level constants ---
 	m.Dict.SetStr("CRITICAL", object.NewInt(logCRITICAL))

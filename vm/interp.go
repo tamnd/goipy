@@ -77,6 +77,9 @@ type Interp struct {
 	// curFrame is the innermost executing frame; sys.exc_info walks this
 	// chain via Frame.Back to find the active exception.
 	curFrame *Frame
+
+	// logStates holds per-module logState for logging/logging.config sharing.
+	logStates map[string]*logState
 }
 
 // New builds a fresh interpreter.

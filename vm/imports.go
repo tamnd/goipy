@@ -135,6 +135,14 @@ func (i *Interp) loadModule(qname string) (*object.Module, error) {
 	}
 	if m, ok := i.builtinModule(qname); ok {
 		i.modules[qname] = m
+		// For dotted names, also set the leaf as an attribute on the parent module.
+		if dot := strings.LastIndex(qname, "."); dot >= 0 {
+			parentName := qname[:dot]
+			leaf := qname[dot+1:]
+			if parent, perr := i.loadModule(parentName); perr == nil {
+				parent.Dict.SetStr(leaf, m)
+			}
+		}
 		return m, nil
 	}
 
