@@ -185,6 +185,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPlatform(), true
 	case "errno":
 		return i.buildErrno(), true
+	case "ctypes":
+		return i.buildCtypes(), true
 	}
 	return nil, false
 }
