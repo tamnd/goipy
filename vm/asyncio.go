@@ -193,6 +193,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildOptparse(), true
 	case "getpass":
 		return i.buildGetpass(), true
+	case "fileinput":
+		return i.buildFileinput(), true
 	}
 	return nil, false
 }
