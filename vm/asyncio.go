@@ -195,6 +195,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildGetpass(), true
 	case "fileinput":
 		return i.buildFileinput(), true
+	case "curses":
+		return i.buildCurses(), true
+	case "curses.ascii":
+		return i.buildCursesAscii(), true
+	case "curses.textpad":
+		return i.buildCursesTextpad(), true
+	case "curses.panel":
+		return i.buildCursesPanel(), true
 	}
 	return nil, false
 }
