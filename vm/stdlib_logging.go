@@ -570,10 +570,15 @@ func (i *Interp) handlerHandle(ls *logState, hdlr *object.Instance, rec *object.
 	if !i.runFilters(hdlr, rec) {
 		return
 	}
-	// Format message.
+	// Instance-level emit (buffering/queue handlers set this in __init__).
+	if emitV, ok := hdlr.Dict.GetStr("emit"); ok {
+		if fn, ok2 := emitV.(*object.BuiltinFunc); ok2 {
+			fn.Call(nil, []object.Object{hdlr, rec}, nil) //nolint
+			return
+		}
+	}
+	// Format message and call _emit (StreamHandler, FileHandler, etc.).
 	msg := formatRecord(ls, hdlr, rec)
-
-	// Emit.
 	if emit, ok := hdlr.Dict.GetStr("_emit"); ok {
 		if fn, ok2 := emit.(*object.BuiltinFunc); ok2 {
 			fn.Call(nil, []object.Object{&object.Str{V: msg}}, nil) //nolint
