@@ -133,6 +133,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildThreading(), true
 	case "multiprocessing":
 		return i.buildMultiprocessing(), true
+	case "multiprocessing.shared_memory":
+		return i.buildSharedMemory(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":

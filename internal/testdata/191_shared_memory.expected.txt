@@ -1,0 +1,17 @@
+SharedMemory create ok
+SharedMemory buf ok
+SharedMemory named attach ok
+SharedMemory context manager ok
+SharedMemory FileNotFoundError ok
+SharedMemory bad size ok
+SharedMemory cross-process ok
+ShareableList basic ok
+ShareableList setitem ok
+ShareableList iter ok
+ShareableList count ok
+ShareableList index ok
+ShareableList shm ok
+ShareableList types ok
+ShareableList cross-process ok
+ShareableList empty ok
+ALL OK
