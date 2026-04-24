@@ -149,6 +149,10 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildShelve(), true
 	case "marshal":
 		return i.buildMarshal(), true
+	case "dbm":
+		return i.buildDbm(), true
+	case "dbm.sqlite3":
+		return i.buildDbmSqlite3(), true
 	}
 	return nil, false
 }
