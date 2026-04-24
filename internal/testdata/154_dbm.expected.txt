@@ -1,0 +1,44 @@
+True
+True
+True
+True
+True
+True
+True
+b'value'
+b'42'
+b'alpha'
+b'beta'
+b'str_val'
+b'bytes_val'
+b'str_val'
+True
+True
+False
+True
+[b'x', b'y']
+b'v'
+None
+b'default'
+b'value'
+b'created'
+b'created'
+False
+KeyError del missing
+[]
+[]
+b'v'
+error on read-only write
+b'first'
+b'second'
+KeyError missing
+error on closed get
+error on closed set
+True
+dbm.sqlite3
+
+b'sq_val'
+[b'sq_key']
+b'updated'
+b'added'
+done
