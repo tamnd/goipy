@@ -1,6 +1,6 @@
 package vm
 
-import "syscall"
+import "golang.org/x/sys/unix"
 
 // Linux CLOCK_* constants.
 const (
@@ -11,8 +11,8 @@ const (
 )
 
 func threadTimeNs() int64 {
-	var ts syscall.Timespec
-	if err := syscall.ClockGettime(clockThreadCPUTime, &ts); err != nil {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(clockThreadCPUTime, &ts); err != nil {
 		return 0
 	}
 	return ts.Sec*1e9 + int64(ts.Nsec)
