@@ -342,13 +342,21 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							entry.Cls = inst.Class
 							entry.Kind = object.AttrCacheClassMethod
 							entry.Val = fn
+						case *object.BuiltinFunc:
+							// BuiltinFuncs in a class dict are callable with self,
+							// same as Functions — cache them as methods so that
+							// cache hits create a BoundMethod rather than returning
+							// the raw function without self binding.
+							entry.Cls = inst.Class
+							entry.Kind = object.AttrCacheClassMethod
+							entry.Val = raw
 						default:
 							// Only cache when the descriptor protocol would not
 							// produce a different value for other instances.
 							if !isDataDescriptor(raw) {
 								switch raw.(type) {
 								case *object.Int, *object.Str, *object.Float, *object.Bool,
-									*object.Tuple, *object.NoneType, *object.BuiltinFunc:
+									*object.Tuple, *object.NoneType:
 									entry.Cls = inst.Class
 									entry.Kind = object.AttrCacheClassValue
 									entry.Val = raw

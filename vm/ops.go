@@ -858,6 +858,19 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			}
 			return e.Ctx, nil
 		}
+		// Check extra instance attributes (e.g. NetrcParseError.msg).
+		if e.Dict != nil {
+			if v, ok := e.Dict.GetStr(name); ok {
+				return v, nil
+			}
+		}
+		// Fall through to class dict lookup for method access.
+		if e.Class != nil {
+			if v, found := classLookup(e.Class, name); found {
+				return v, nil
+			}
+		}
+		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", e.Class.Name, name)
 	}
 	if tb, ok := o.(*object.Traceback); ok {
 		switch name {

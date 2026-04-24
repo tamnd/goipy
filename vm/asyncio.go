@@ -75,6 +75,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildConfigParser(), true
 	case "tomllib":
 		return i.buildTomllib(), true
+	case "netrc":
+		return i.buildNetrc(), true
 	case "difflib":
 		return i.buildDifflib(), true
 	case "shlex":

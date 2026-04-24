@@ -1,0 +1,28 @@
+['example.com']
+user1  pass1
+2
+a  b
+c d e
+anon  guest
+user  pass
+None
+u p
+my user my pass
+['upload']
+['binary\n', 'put file.txt\n']
+u p
+alice secret
+NetrcParseError
+bad toplevel token 'badtoken'
+2
+NetrcParseError
+True
+True
+True
+{}
+{}
+['cd /pub\n', 'mget *.gz\n']
+u acc p
+xu xp
+yu yp
+zu zp
