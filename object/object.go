@@ -10,6 +10,7 @@ package object
 import (
 	"fmt"
 	"math/big"
+	"sync"
 )
 
 // Object is any Python-level value visible to bytecode.
@@ -208,6 +209,7 @@ func NewFrozenset() *Frozenset { return &Frozenset{index: map[uint64][]int{}} }
 // compacted when >50% of slots are dead; this keeps Delete O(1) amortized
 // instead of O(n) per call.
 type Dict struct {
+	mu    sync.RWMutex   // protects all fields for concurrent goroutine access
 	keys  []Object
 	vals  []Object
 	index map[string]int // fast path for str keys
@@ -225,13 +227,17 @@ func NewDict() *Dict {
 }
 
 // Len returns the number of live entries.
-func (d *Dict) Len() int { return len(d.keys) - d.dead }
+func (d *Dict) Len() int {
+	d.mu.RLock()
+	n := len(d.keys) - d.dead
+	d.mu.RUnlock()
+	return n
+}
 
-// Items returns key and value slices of live entries (caller must not mutate).
+// Items returns a snapshot of key and value slices of live entries.
 func (d *Dict) Items() ([]Object, []Object) {
-	if d.dead == 0 {
-		return d.keys, d.vals
-	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	ks := make([]Object, 0, len(d.keys)-d.dead)
 	vs := make([]Object, 0, len(d.vals)-d.dead)
 	for i, k := range d.keys {
@@ -284,6 +290,8 @@ type Code struct {
 	// specialized; a non-zero Cls is a guard — if the instance's class
 	// changed, the entry is invalid and the slow path runs + repopulates.
 	AttrCache []AttrCacheEntry
+	// Mu protects AttrCache and KwSlot for concurrent access from goroutine threads.
+	Mu sync.Mutex
 }
 
 // AttrCacheEntry is a one-shot inline cache for LOAD_ATTR on instances.
@@ -363,6 +371,9 @@ type Class struct {
 	Dict  *Dict
 	// MRO computed lazily
 	mro []*Class
+
+	// Mu protects MethodCache for concurrent access from goroutine threads.
+	Mu sync.Mutex
 
 	// MethodCache memoises classLookup(name) walks. A single global epoch
 	// is bumped whenever any class is mutated (ClassEpoch()); stale entries

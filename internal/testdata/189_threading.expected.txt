@@ -1,0 +1,36 @@
+True
+False
+True
+False
+True
+False
+True
+False
+rlocked
+False
+True
+True
+False
+False
+False
+[42]
+Alpha
+[0, 1, 2, 3, 4]
+True
+True
+True
+False
+True
+ValueError ok
+cond ok
+[99]
+True
+False
+True
+[1, 2]
+[10, 20]
+True
+True
+Reporter
+MainThread
+True

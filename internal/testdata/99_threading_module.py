@@ -91,10 +91,12 @@ for n in range(5):
 
 print(items)             # [0, 1, 2, 3, 4]
 
-# --- Concurrent list.append pattern ---
+# --- Concurrent list.append pattern (lock protects against data races) ---
 shared_list = []
+shared_list_lock = threading.Lock()
 def append_worker(v):
-    shared_list.append(v)
+    with shared_list_lock:
+        shared_list.append(v)
 
 threads2 = [threading.Thread(target=append_worker, args=(i,)) for i in range(3)]
 for t in threads2:

@@ -8,6 +8,12 @@ import (
 
 // Set inserts or replaces a value for key in the dict.
 func (d *Dict) Set(key, val Object) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.setLocked(key, val)
+}
+
+func (d *Dict) setLocked(key, val Object) error {
 	if s, ok := key.(*Str); ok {
 		if d.index != nil {
 			if i, ok := d.index[s.V]; ok {
@@ -48,6 +54,8 @@ func (d *Dict) Set(key, val Object) error {
 
 // Get returns the value for key (or nil, false).
 func (d *Dict) Get(key Object) (Object, bool, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	if s, ok := key.(*Str); ok {
 		if d.index != nil {
 			if i, ok := d.index[s.V]; ok {
@@ -77,6 +85,8 @@ func (d *Dict) Get(key Object) (Object, bool, error) {
 
 // GetStr is a fast-path for string keys.
 func (d *Dict) GetStr(key string) (Object, bool) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	if d.index == nil {
 		return nil, false
 	}
@@ -88,6 +98,8 @@ func (d *Dict) GetStr(key string) (Object, bool) {
 
 // SetStr stores a value under a string key.
 func (d *Dict) SetStr(key string, val Object) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.index != nil {
 		if i, ok := d.index[key]; ok {
 			d.vals[i] = val
@@ -103,6 +115,8 @@ func (d *Dict) SetStr(key string, val Object) {
 
 // Delete removes key. Returns true if a key was removed.
 func (d *Dict) Delete(key Object) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	idx := -1
 	if s, ok := key.(*Str); ok {
 		if d.index == nil {
@@ -151,6 +165,17 @@ func (d *Dict) Delete(key Object) (bool, error) {
 		d.compact()
 	}
 	return true, nil
+}
+
+// Clear removes all entries from the dict.
+func (d *Dict) Clear() {
+	d.mu.Lock()
+	d.keys = d.keys[:0]
+	d.vals = d.vals[:0]
+	d.index = nil
+	d.oHash = nil
+	d.dead = 0
+	d.mu.Unlock()
 }
 
 // compact rebuilds keys/vals without tombstones and reindexes. Called when
