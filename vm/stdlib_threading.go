@@ -571,12 +571,18 @@ func (i *Interp) makeCondition() *object.Instance {
 		return object.None, nil
 	}})
 
-	inst.Dict.SetStr("wait_for", &object.BuiltinFunc{Name: "wait_for", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	inst.Dict.SetStr("wait_for", &object.BuiltinFunc{Name: "wait_for", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		caller := i
+		if ii != nil {
+			if ci, ok := ii.(*Interp); ok {
+				caller = ci
+			}
+		}
 		if len(a) == 0 {
 			return object.True, nil
 		}
 		for {
-			r, err := i.callObject(a[0], nil, nil)
+			r, err := caller.callObject(a[0], nil, nil)
 			if err != nil {
 				return nil, err
 			}

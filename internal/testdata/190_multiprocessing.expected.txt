@@ -1,0 +1,37 @@
+cpu_count ok
+current_process ok
+parent_process ok
+active_children initially empty ok
+freeze_support ok
+get_start_method ok
+Process start/join ok
+Process name ok
+Process daemon ok
+Process pid ok
+Multiple processes ok
+active_children while alive ok
+Queue put/get ok
+Queue qsize/empty ok
+Queue put_nowait/get_nowait ok
+Queue cross-process ok
+Pipe duplex ok
+Pipe simplex ok
+Pipe cross-process ok
+Pool.apply ok
+Pool.map ok
+Pool.starmap ok
+Pool.apply_async ok
+Pool.map_async ok
+Value ok
+Value cross-process ok
+Array ok
+Manager ok
+Lock ok
+Event ok
+Semaphore ok
+BoundedSemaphore ok
+Condition ok
+Barrier single-party ok
+Barrier two-party ok
+Condition cross-process ok
+ALL OK
