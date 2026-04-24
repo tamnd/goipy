@@ -170,6 +170,10 @@ func Repr(o Object) string {
 		return fmt.Sprintf("<_csv.writer object at 0x%p>", v)
 	case *CSVDictWriter:
 		return fmt.Sprintf("<csv.DictWriter object at 0x%p>", v)
+	case *CSVDictReader:
+		return fmt.Sprintf("<csv.DictReader object at 0x%p>", v)
+	case *CSVDialectObj:
+		return fmt.Sprintf("<class 'csv.Dialect'>")
 	case *URLParseResult:
 		return fmt.Sprintf("ParseResult(scheme=%s, netloc=%s, path=%s, params=%s, query=%s, fragment=%s)",
 			Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),

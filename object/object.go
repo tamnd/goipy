@@ -508,6 +508,10 @@ func TypeName(o Object) string {
 		return "_csv.writer"
 	case *CSVDictWriter:
 		return "csv.DictWriter"
+	case *CSVDictReader:
+		return "csv.DictReader"
+	case *CSVDialectObj:
+		return "csv.Dialect"
 	case *URLParseResult:
 		return "ParseResult"
 	case *UUID:

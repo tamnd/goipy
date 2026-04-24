@@ -1,0 +1,64 @@
+0
+1
+2
+3
+4
+5
+caught Error: test error
+[['a', 'b', 'c'], ['1', '2', '3']]
+[['hello, world', 'b'], ['say "hi"', 'c']]
+[['a', 'b', 'c'], ['1', '2', '3']]
+[['a', 'b', 'c']]
+3
+,
+"
+True
+False
+'\r\n'
+0
+a,b,c
+1,2,3
+
+,
+x,y
+1,2
+
+'"a","b","1"\r\n'
+'"a",1,"b"\r\n'
+'a\\,b,c\r\n'
+'"a",1,"b",2.5\r\n'
+'"a",,"b"\r\n'
+'a\tb\r\n'
+'"a","b"\n'
+['name', 'age']
+{'name': 'alice', 'age': '30'}
+{'name': 'bob', 'age': '25'}
+{'name': 'alice', 'age': '30'}
+{'name': 'bob', 'age': '25'}
+{'a': '1', 'b': '2', 'c': 'N/A'}
+{'a': '1', 'b': '2', 'extras': ['3', '4']}
+name,age
+alice,30
+bob,25
+
+x,y
+1,2
+3,4
+
+ValueError raised
+'alice,30\r\n'
+[['a', 'b', 'c'], ['1', '2', '3']]
+True
+|
+True
+unregister Error raised
+True
+True
+True
+131072
+1000
+131072
+,
+|
+True
+False

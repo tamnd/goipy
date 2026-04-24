@@ -23,8 +23,24 @@ type CSVWriter struct {
 
 // CSVDictWriter wraps a CSVWriter with a fixed field order for dict rows.
 type CSVDictWriter struct {
-	Writer     *CSVWriter
-	Fieldnames []string
+	Writer       *CSVWriter
+	Fieldnames   []string
+	Extrasaction string // "raise" (default) or "ignore"
+}
+
+// CSVDictReader is a proper DictReader object with fieldnames/restkey/restval.
+type CSVDictReader struct {
+	Rows       [][]string
+	Fieldnames []string // nil = not yet loaded; read from first row on access
+	Pos        int
+	Dialect    *CSVDialect
+	Restkey    Object // key for extra fields; default None
+	Restval    Object // value for missing fields; default None
+}
+
+// CSVDialectObj wraps a CSVDialect for Python-side attribute access.
+type CSVDialectObj struct {
+	D *CSVDialect
 }
 
 // CSVDialect is a plain-data holder for dialect options.
@@ -34,6 +50,7 @@ type CSVDialect struct {
 	Escapechar     byte
 	Doublequote    bool
 	SkipInitial    bool
+	Strict         bool
 	Lineterminator string
 	Quoting        int
 }
