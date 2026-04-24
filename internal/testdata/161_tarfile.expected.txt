@@ -1,0 +1,32 @@
+['hello.txt', 'second.bin']
+hello.txt
+13
+b'hello addfile'
+b'second via addfile'
+2
+True
+False
+['root', 'root/a.txt', 'root/b.txt', 'root/sub', 'root/sub/c.txt']
+b'hello from a'
+b'nested'
+True
+['data.txt']
+True
+['data.txt']
+True
+['data.txt']
+True
+b'autodetect me'
+b'hello from a'
+b'nested'
+['hello.txt', 'second.bin']
+True
+True
+False
+ReadError raised
+zz.txt
+True
+False
+True
+b'inside'
+done

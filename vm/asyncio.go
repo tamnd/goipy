@@ -83,6 +83,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildLzma(), true
 	case "zipfile":
 		return i.buildZipfile(), true
+	case "tarfile":
+		return i.buildTarfile(), true
 	case "fnmatch":
 		return i.buildFnmatch(), true
 	case "glob":
