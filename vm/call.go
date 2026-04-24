@@ -108,9 +108,13 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
 	var frame *Frame
 	if !isGen {
+		code.Mu.Lock()
 		if f, ok := code.FramePool.(*Frame); ok && f != nil {
 			code.FramePool = nil
 			frame = f
+		}
+		code.Mu.Unlock()
+		if frame != nil {
 			frame.Globals = fn.Globals
 			frame.Builtins = i.Builtins
 			// Fast slice: clear any stale entries so GC can reclaim and
@@ -160,8 +164,12 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 	// Return frame to pool unless something kept a reference (generator
 	// branch above returned early; tracebacks can retain frames via
 	// exception info — skip pooling when err != nil to be safe).
-	if err == nil && code.FramePool == nil {
-		code.FramePool = frame
+	if err == nil {
+		code.Mu.Lock()
+		if code.FramePool == nil {
+			code.FramePool = frame
+		}
+		code.Mu.Unlock()
 	}
 	return r, err
 }
@@ -175,9 +183,13 @@ func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kw
 	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
 	var frame *Frame
 	if !isGen {
+		code.Mu.Lock()
 		if f, ok := code.FramePool.(*Frame); ok && f != nil {
 			code.FramePool = nil
 			frame = f
+		}
+		code.Mu.Unlock()
+		if frame != nil {
 			frame.Globals = fn.Globals
 			frame.Builtins = i.Builtins
 			clear(frame.Fast)
@@ -209,7 +221,8 @@ func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kw
 		return nil, object.Errorf(i.typeErr, "%s() takes %d positional arguments but %d were given", fn.Name, narg, len(pos))
 	}
 	copy(frame.Fast[:len(pos)], pos)
-	// Populate per-Code kwname→slot map lazily.
+	// Populate per-Code kwname→slot map lazily (protected for thread safety).
+	code.Mu.Lock()
 	slotMap := code.KwSlot
 	if slotMap == nil {
 		slotMap = make(map[string]int, narg+nkwonly)
@@ -218,6 +231,7 @@ func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kw
 		}
 		code.KwSlot = slotMap
 	}
+	code.Mu.Unlock()
 	for k, nameObj := range kwnames {
 		name := nameObj.(*object.Str).V
 		slot, ok := slotMap[name]
@@ -266,8 +280,12 @@ func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kw
 		return &object.Generator{Name: fn.Name, Frame: frame}, nil
 	}
 	r, err := i.runFrame(frame)
-	if err == nil && code.FramePool == nil {
-		code.FramePool = frame
+	if err == nil {
+		code.Mu.Lock()
+		if code.FramePool == nil {
+			code.FramePool = frame
+		}
+		code.Mu.Unlock()
 	}
 	return r, err
 }

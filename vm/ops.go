@@ -921,6 +921,10 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 					}
 				}
 			}
+			if saFn, ok := classLookup(inst.Class, "__setattr__"); ok {
+				_, err := i.callObject(saFn, []object.Object{inst, &object.Str{V: name}, val}, nil)
+				return err
+			}
 		}
 		inst.Dict.SetStr(name, val)
 		return nil
@@ -1246,16 +1250,21 @@ func computeMRO(c *object.Class) []*object.Class {
 
 func classLookup(c *object.Class, name string) (object.Object, bool) {
 	epoch := object.ClassEpoch()
+	c.Mu.Lock()
 	if c.MethodCache != nil {
 		if e, ok := c.MethodCache[name]; ok && e.Epoch == epoch {
+			c.Mu.Unlock()
 			return e.Val, e.Found
 		}
 	}
+	c.Mu.Unlock()
 	v, found := classLookupSlow(c, name)
+	c.Mu.Lock()
 	if c.MethodCache == nil {
 		c.MethodCache = make(map[string]object.MethodCacheEntry, 8)
 	}
 	c.MethodCache[name] = object.MethodCacheEntry{Val: v, Found: found, Epoch: epoch}
+	c.Mu.Unlock()
 	return v, found
 }
 

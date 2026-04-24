@@ -675,14 +675,13 @@ func orderedDictMethod(i *Interp, od *object.OrderedDict, name string) (object.O
 			if last {
 				od.D.Set(a[0], v)
 			} else {
-				// Rebuild with key at front.
+				// Rebuild with key at front by clearing and re-inserting.
 				keys, vals := od.D.Items()
-				newD := object.NewDict()
-				newD.Set(a[0], v)
+				od.D.Clear()
+				od.D.Set(a[0], v) //nolint
 				for k, key := range keys {
-					newD.Set(key, vals[k])
+					od.D.Set(key, vals[k]) //nolint
 				}
-				*od.D = *newD
 			}
 			return object.None, nil
 		}}, true

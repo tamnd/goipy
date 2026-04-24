@@ -261,62 +261,47 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			// class). This avoids the full getAttr type-switch + classLookup
 			// walk on every dispatch.
 			if inst, ok := obj.(*object.Instance); ok {
+				// Read a snapshot of the cache entry under lock.
+				f.Code.Mu.Lock()
 				if f.Code.AttrCache == nil {
 					f.Code.AttrCache = make([]object.AttrCacheEntry, len(f.Code.Bytecode))
 				}
-				entry := &f.Code.AttrCache[startIP]
-				if entry.Cls == inst.Class {
-					switch entry.Kind {
+				snap := f.Code.AttrCache[startIP]
+				f.Code.Mu.Unlock()
+
+				var hitVal object.Object
+				cacheHit := false
+				if snap.Cls == inst.Class && snap.Cls != nil {
+					switch snap.Kind {
 					case object.AttrCacheInstDict:
 						if v, ok := inst.Dict.GetStr(name); ok {
-							if pushSelf {
-								f.push(v)
-								f.push(nil)
-							} else {
-								f.push(v)
-							}
-							continue
+							hitVal = v
+							cacheHit = true
 						}
-						// miss — attribute was deleted; fall through to slow path
 					case object.AttrCacheClassMethod:
-						// Prefer instance override when present, else bind the
-						// cached class-level function.
 						if v, ok := inst.Dict.GetStr(name); ok {
-							if pushSelf {
-								f.push(v)
-								f.push(nil)
-							} else {
-								f.push(v)
-							}
-							continue
-						}
-						v := &object.BoundMethod{Self: inst, Fn: entry.Val}
-						if pushSelf {
-							f.push(v)
-							f.push(nil)
+							hitVal = v
 						} else {
-							f.push(v)
+							hitVal = &object.BoundMethod{Self: inst, Fn: snap.Val}
 						}
-						continue
+						cacheHit = true
 					case object.AttrCacheClassValue:
 						if v, ok := inst.Dict.GetStr(name); ok {
-							if pushSelf {
-								f.push(v)
-								f.push(nil)
-							} else {
-								f.push(v)
-							}
-							continue
-						}
-						v := entry.Val
-						if pushSelf {
-							f.push(v)
-							f.push(nil)
+							hitVal = v
 						} else {
-							f.push(v)
+							hitVal = snap.Val
 						}
-						continue
+						cacheHit = true
 					}
+				}
+				if cacheHit {
+					if pushSelf {
+						f.push(hitVal)
+						f.push(nil)
+					} else {
+						f.push(hitVal)
+					}
+					continue
 				}
 				// slow path — compute, then fill cache.
 				var val object.Object
@@ -324,10 +309,10 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				if err != nil {
 					goto handleErr
 				}
-				// Populate cache: pick the best kind we can guarantee.
+				// Populate cache under lock.
+				f.Code.Mu.Lock()
+				entry := &f.Code.AttrCache[startIP]
 				if _, inInst := inst.Dict.GetStr(name); inInst {
-					// But only if no data descriptor on class would override
-					// next time. Cheap check.
 					if inst.Class == nil {
 						entry.Cls = nil
 						entry.Kind = object.AttrCacheInstDict
@@ -343,16 +328,10 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 							entry.Kind = object.AttrCacheClassMethod
 							entry.Val = fn
 						case *object.BuiltinFunc:
-							// BuiltinFuncs in a class dict are callable with self,
-							// same as Functions — cache them as methods so that
-							// cache hits create a BoundMethod rather than returning
-							// the raw function without self binding.
 							entry.Cls = inst.Class
 							entry.Kind = object.AttrCacheClassMethod
 							entry.Val = raw
 						default:
-							// Only cache when the descriptor protocol would not
-							// produce a different value for other instances.
 							if !isDataDescriptor(raw) {
 								switch raw.(type) {
 								case *object.Int, *object.Str, *object.Float, *object.Bool,
@@ -365,6 +344,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 						}
 					}
 				}
+				f.Code.Mu.Unlock()
 				if pushSelf {
 					f.push(val)
 					f.push(nil)

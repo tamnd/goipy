@@ -109,6 +109,26 @@ func (i *Interp) RunPyc(code *object.Code) error {
 	return err
 }
 
+// threadCopy returns a shallow copy of i suitable for running in a new goroutine.
+// It shares all read-only state (Builtins, exception classes, Stdout/Stderr) but
+// gets its own module map so concurrent imports don't race on map writes.
+func (i *Interp) threadCopy() *Interp {
+	tc := *i
+	tc.callDepth = 0
+	tc.curFrame = nil
+	tc.modules = make(map[string]*object.Module, len(i.modules))
+	for k, v := range i.modules {
+		tc.modules[k] = v
+	}
+	if i.logStates != nil {
+		tc.logStates = make(map[string]*logState, len(i.logStates))
+		for k, v := range i.logStates {
+			tc.logStates[k] = v
+		}
+	}
+	return &tc
+}
+
 func (i *Interp) runFrame(f *Frame) (object.Object, error) {
 	if i.callDepth >= i.MaxDepth {
 		return nil, object.Errorf(i.recursionErr, "maximum recursion depth exceeded")
