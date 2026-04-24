@@ -179,6 +179,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildLogging(), true
 	case "logging.config":
 		return i.buildLoggingConfig(), true
+	case "logging.handlers":
+		return i.buildLoggingHandlers(), true
 	}
 	return nil, false
 }
