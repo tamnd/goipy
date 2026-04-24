@@ -1,0 +1,33 @@
+sha256: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+update chain: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+digest bytes: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+name: hmac-sha256
+digest_size: 32
+block_size: 64
+orig after copy: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+copy updated: 0ba06f1f9a6300461e43454535dc3c4223e47b1d357073d7536eae90ec095be1
+callable digestmod: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+digest one-shot: 9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b
+compare eq bytes: True
+compare ne bytes: False
+compare eq str: True
+compare ne str: False
+sha1: b34ceac4516ff23a143e61d79d0fa7a4fbe5f266
+sha1 block_size: 64
+sha1 digest_size: 20
+sha512: ff06ab36757777815c008d32c8e14a705b4e7bf310351a06a23b612dc4c7433e7757d20525a5593b71020ea2ee162d2311b247e9855862b270122419652c0c92
+sha512 block_size: 128
+sha512 digest_size: 64
+md5: 04130747afca4d79e32e87cf2104f087
+md5 block_size: 64
+md5 digest_size: 16
+sha3_256: a59b86b015726e63cb275f18729321e3b59068796945c7c99ddb7438b7539854
+sha3_256 block_size: 136
+sha3_256 digest_size: 32
+sha3_512: a7b1e8dcadfaf2c0b53d10e764d3553ea86f5ddc56d47f27c2d552efd64e306f8b534d1cb2ff11fc4a11d91658c523e0fc40c7f091df6017e51beaccc4003809
+sha3_512 block_size: 72
+sha3_512 digest_size: 64
+long key: 9f762a968e88215d22c2119a2d0b644d5148194581798a92bd791ebc384a5f5a
+empty msg: 5d5d139563c95b5967b9bd9a8c9b233a9dedb45072794cd232dc1b74832607d0
+sha1 one-shot: b34ceac4516ff23a143e61d79d0fa7a4fbe5f266
+sha1 callable: b34ceac4516ff23a143e61d79d0fa7a4fbe5f266

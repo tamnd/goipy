@@ -16,6 +16,8 @@ import (
 	"math/big"
 	"strings"
 
+	"golang.org/x/crypto/sha3"
+
 	"github.com/tamnd/goipy/object"
 )
 
@@ -131,6 +133,79 @@ func (i *Interp) buildBinascii() *object.Module {
 	return m
 }
 
+// copyableHMAC is an HMAC implementation that supports BinaryMarshaler
+// (by delegating to the inner hash) so copyHasher can clone it. The standard
+// crypto/hmac.HMAC does not implement BinaryMarshaler.
+type copyableHMAC struct {
+	inner    hash.Hash
+	ipad     []byte // block-size key XOR 0x36
+	opad     []byte // block-size key XOR 0x5c
+	hashNewFn func() hash.Hash
+	digestSz int
+	blkSz    int
+}
+
+func newCopyableHMAC(hashNewFn func() hash.Hash, key []byte) *copyableHMAC {
+	h := hashNewFn()
+	blkSz := h.BlockSize()
+	digestSz := h.Size()
+	if len(key) > blkSz {
+		h.Write(key)
+		key = h.Sum(nil)
+	}
+	ipad := make([]byte, blkSz)
+	opad := make([]byte, blkSz)
+	copy(ipad, key)
+	copy(opad, key)
+	for j := range ipad {
+		ipad[j] ^= 0x36
+		opad[j] ^= 0x5c
+	}
+	inner := hashNewFn()
+	inner.Write(ipad)
+	return &copyableHMAC{inner: inner, ipad: ipad, opad: opad, hashNewFn: hashNewFn, digestSz: digestSz, blkSz: blkSz}
+}
+
+func (h *copyableHMAC) Write(p []byte) (int, error) { return h.inner.Write(p) }
+func (h *copyableHMAC) Size() int                   { return h.digestSz }
+func (h *copyableHMAC) BlockSize() int              { return h.blkSz }
+func (h *copyableHMAC) Reset() {
+	h.inner = h.hashNewFn()
+	h.inner.Write(h.ipad)
+}
+
+func (h *copyableHMAC) Sum(b []byte) []byte {
+	innerSum := h.inner.Sum(nil)
+	outer := h.hashNewFn()
+	outer.Write(h.opad)
+	outer.Write(innerSum)
+	return outer.Sum(b)
+}
+
+// MarshalBinary serialises the inner hash state so copyHasher can clone it.
+func (h *copyableHMAC) MarshalBinary() ([]byte, error) {
+	m, ok := h.inner.(interface{ MarshalBinary() ([]byte, error) })
+	if !ok {
+		return nil, fmt.Errorf("inner hash not marshalable")
+	}
+	return m.MarshalBinary()
+}
+
+// UnmarshalBinary restores the inner hash state into a fresh copyableHMAC.
+// Called by copyHasher after creating a new instance via NewFn().
+func (h *copyableHMAC) UnmarshalBinary(data []byte) error {
+	ni := h.hashNewFn()
+	u, ok := ni.(interface{ UnmarshalBinary([]byte) error })
+	if !ok {
+		return fmt.Errorf("inner hash not unmarshalable")
+	}
+	if err := u.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	h.inner = ni
+	return nil
+}
+
 // --- hmac module -----------------------------------------------------------
 
 func (i *Interp) buildHmac() *object.Module {
@@ -161,22 +236,19 @@ func (i *Interp) buildHmac() *object.Module {
 			}
 		}
 		if dig != nil {
-			switch d := dig.(type) {
-			case *object.Str:
-				name = strings.ToLower(d.V)
-			case *object.BuiltinFunc:
-				name = strings.ToLower(d.Name)
-			}
+			name = digestmodName(dig)
 		}
-		newFn, size, ok := hashConstructorByName(name)
+		hashNewFn, digestSize, blockSize, ok := hashConstructorByName(name)
 		if !ok {
 			return nil, object.Errorf(i.valueErr, "unsupported digestmod %q", name)
 		}
-		mac := hmac.New(newFn, key)
+		keyCopy := append([]byte(nil), key...)
+		macFactory := func() hash.Hash { return newCopyableHMAC(hashNewFn, keyCopy) }
+		mac := macFactory()
 		if len(msg) > 0 {
 			mac.Write(msg)
 		}
-		return &object.Hasher{Name: "hmac-" + name, Size: size, State: mac}, nil
+		return &object.Hasher{Name: "hmac-" + name, Size: digestSize, BlockSize: blockSize, State: mac, NewFn: macFactory}, nil
 	}})
 
 	m.Dict.SetStr("compare_digest", &object.BuiltinFunc{Name: "compare_digest", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -203,14 +275,8 @@ func (i *Interp) buildHmac() *object.Module {
 		if err != nil {
 			return nil, err
 		}
-		name := "sha256"
-		switch d := a[2].(type) {
-		case *object.Str:
-			name = strings.ToLower(d.V)
-		case *object.BuiltinFunc:
-			name = strings.ToLower(d.Name)
-		}
-		newFn, _, ok := hashConstructorByName(name)
+		name := digestmodName(a[2])
+		newFn, _, _, ok := hashConstructorByName(name)
 		if !ok {
 			return nil, object.Errorf(i.valueErr, "unsupported digest %q", name)
 		}
@@ -222,22 +288,47 @@ func (i *Interp) buildHmac() *object.Module {
 	return m
 }
 
-func hashConstructorByName(name string) (func() hash.Hash, int, bool) {
+// digestmodName extracts the algorithm name from a digestmod argument.
+// Accepts: str name, BuiltinFunc (hashlib constructor), BoundMethod.
+func digestmodName(o object.Object) string {
+	switch d := o.(type) {
+	case *object.Str:
+		return strings.ToLower(d.V)
+	case *object.BuiltinFunc:
+		return strings.ToLower(d.Name)
+	case *object.BoundMethod:
+		if bf, ok := d.Fn.(*object.BuiltinFunc); ok {
+			return strings.ToLower(bf.Name)
+		}
+	}
+	return "sha256"
+}
+
+// hashConstructorByName returns (newFn, digestSize, blockSize, ok) for a named hash.
+func hashConstructorByName(name string) (func() hash.Hash, int, int, bool) {
 	switch name {
 	case "md5":
-		return md5.New, 16, true
+		return md5.New, 16, 64, true
 	case "sha1":
-		return sha1.New, 20, true
+		return sha1.New, 20, 64, true
 	case "sha224":
-		return sha256.New224, 28, true
+		return sha256.New224, 28, 64, true
 	case "sha256":
-		return sha256.New, 32, true
+		return sha256.New, 32, 64, true
 	case "sha384":
-		return sha512.New384, 48, true
+		return sha512.New384, 48, 128, true
 	case "sha512":
-		return sha512.New, 64, true
+		return sha512.New, 64, 128, true
+	case "sha3_224":
+		return sha3.New224, 28, 144, true
+	case "sha3_256":
+		return sha3.New256, 32, 136, true
+	case "sha3_384":
+		return sha3.New384, 48, 104, true
+	case "sha3_512":
+		return sha3.New512, 64, 72, true
 	}
-	return nil, 0, false
+	return nil, 0, 0, false
 }
 
 func bytesOrStr(o object.Object) ([]byte, bool) {
