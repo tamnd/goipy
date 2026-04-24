@@ -1,5 +1,106 @@
 package object
 
+// --- configparser types -----------------------------------------------------
+
+// CfgSection holds the options for one INI section in insertion order.
+type CfgSection struct {
+	Keys   []string
+	Values map[string]string
+	NoVal  map[string]bool // keys with no value (allow_no_value)
+}
+
+func NewCfgSection() *CfgSection {
+	return &CfgSection{Values: make(map[string]string), NoVal: make(map[string]bool)}
+}
+
+func (s *CfgSection) Set(key, val string) {
+	if _, exists := s.Values[key]; !exists {
+		s.Keys = append(s.Keys, key)
+	}
+	s.Values[key] = val
+	delete(s.NoVal, key)
+}
+
+func (s *CfgSection) SetNoVal(key string) {
+	if _, exists := s.Values[key]; !exists {
+		if !s.NoVal[key] {
+			s.Keys = append(s.Keys, key)
+		}
+	}
+	s.NoVal[key] = true
+}
+
+func (s *CfgSection) Del(key string) bool {
+	if _, ok := s.Values[key]; ok {
+		delete(s.Values, key)
+		delete(s.NoVal, key)
+		// rebuild Keys without key
+		newKeys := s.Keys[:0]
+		for _, k := range s.Keys {
+			if k != key {
+				newKeys = append(newKeys, k)
+			}
+		}
+		s.Keys = newKeys
+		return true
+	}
+	if s.NoVal[key] {
+		delete(s.NoVal, key)
+		newKeys := s.Keys[:0]
+		for _, k := range s.Keys {
+			if k != key {
+				newKeys = append(newKeys, k)
+			}
+		}
+		s.Keys = newKeys
+		return true
+	}
+	return false
+}
+
+func (s *CfgSection) Has(key string) bool {
+	_, ok := s.Values[key]
+	return ok || s.NoVal[key]
+}
+
+// ConfigParserObj is a Python configparser.ConfigParser/RawConfigParser instance.
+type ConfigParserObj struct {
+	Defaults  *CfgSection
+	Sections  []string // non-DEFAULT section names in order
+	Data      map[string]*CfgSection
+
+	DefaultSection        string
+	AllowNoValue          bool
+	Delimiters            []string
+	CommentPrefixes       []string
+	InlineCommentPrefixes []string
+	Strict                bool
+	EmptyLinesInValues    bool
+	Interpolation         int // 0=basic, 1=extended, 2=none
+
+	// Exception classes (populated by buildConfigParser).
+	NoSecErr      *Class
+	DupSecErr     *Class
+	DupOptErr     *Class
+	NoOptErr      *Class
+	InterpMissErr *Class
+	InterpDepthErr *Class
+	InterpSynErr  *Class
+	MissSecHdrErr *Class
+	ParseErr      *Class
+
+	// BoolStates is the BOOLEAN_STATES dict (ConfigParser only, nil for Raw).
+	BoolStates *Dict
+}
+
+// SectionProxyObj wraps a ConfigParserObj for mapping access to one section.
+type SectionProxyObj struct {
+	Parser  *ConfigParserObj
+	Section string
+}
+
+// --- CSV types --------------------------------------------------------------
+
 // CSVReader iterates rows of a csv.reader. Fields are plain Go strings.
 type CSVReader struct {
 	// Source is the underlying iterator yielding lines (strings). We keep

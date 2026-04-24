@@ -623,6 +623,16 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if cp, ok := o.(*object.ConfigParserObj); ok {
+		if m, ok := configParserAttr(i, cp, name); ok {
+			return m, nil
+		}
+	}
+	if sp, ok := o.(*object.SectionProxyObj); ok {
+		if m, ok := sectionProxyAttr(i, sp, name); ok {
+			return m, nil
+		}
+	}
 	if r, ok := o.(*object.URLParseResult); ok {
 		if m, ok := urlParseResultAttr(r, name); ok {
 			return m, nil

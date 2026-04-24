@@ -512,6 +512,10 @@ func TypeName(o Object) string {
 		return "csv.DictReader"
 	case *CSVDialectObj:
 		return "csv.Dialect"
+	case *ConfigParserObj:
+		return "configparser.ConfigParser"
+	case *SectionProxyObj:
+		return "configparser.SectionProxy"
 	case *URLParseResult:
 		return "ParseResult"
 	case *UUID:

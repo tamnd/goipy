@@ -173,7 +173,11 @@ func Repr(o Object) string {
 	case *CSVDictReader:
 		return fmt.Sprintf("<csv.DictReader object at 0x%p>", v)
 	case *CSVDialectObj:
-		return fmt.Sprintf("<class 'csv.Dialect'>")
+		return "<class 'csv.Dialect'>"
+	case *ConfigParserObj:
+		return fmt.Sprintf("<configparser.ConfigParser object at 0x%p>", v)
+	case *SectionProxyObj:
+		return fmt.Sprintf("<Section: %s>", v.Section)
 	case *URLParseResult:
 		return fmt.Sprintf("ParseResult(scheme=%s, netloc=%s, path=%s, params=%s, query=%s, fragment=%s)",
 			Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),

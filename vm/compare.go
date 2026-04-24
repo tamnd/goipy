@@ -353,6 +353,19 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 			}
 			return false, nil
 		}
+	case *object.SectionProxyObj:
+		if ks, ok := needle.(*object.Str); ok {
+			return cfgHasOption(c.Parser, c.Section, ks.V), nil
+		}
+		return false, nil
+	case *object.ConfigParserObj:
+		if ks, ok := needle.(*object.Str); ok {
+			if ks.V == c.DefaultSection {
+				return true, nil
+			}
+			return cfgHasSection(c, ks.V), nil
+		}
+		return false, nil
 	}
 	return false, object.Errorf(i.typeErr, "argument of type '%s' is not iterable", object.TypeName(container))
 }
