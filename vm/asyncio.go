@@ -175,6 +175,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildDbmSqlite3(), true
 	case "sqlite3":
 		return i.buildSqlite3(), true
+	case "logging":
+		return i.buildLogging(), true
 	}
 	return nil, false
 }
