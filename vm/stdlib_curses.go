@@ -298,6 +298,34 @@ func (i *Interp) buildCurses() *object.Module {
 	m.Dict.SetStr("KEY_UNDO", object.NewInt(408))
 	m.Dict.SetStr("KEY_MAX", object.NewInt(511))
 
+	// --- ACS (alternate character set) line-drawing constants ---
+	// ASCII fallbacks since we are a stub without a real terminal
+	m.Dict.SetStr("ACS_ULCORNER", object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_LLCORNER", object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_URCORNER", object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_LRCORNER", object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_LTEE",     object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_RTEE",     object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_BTEE",     object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_TTEE",     object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_HLINE",    object.NewInt(int64('-')))
+	m.Dict.SetStr("ACS_VLINE",    object.NewInt(int64('|')))
+	m.Dict.SetStr("ACS_PLUS",     object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_S1",       object.NewInt(int64('-')))
+	m.Dict.SetStr("ACS_S9",       object.NewInt(int64('_')))
+	m.Dict.SetStr("ACS_DIAMOND",  object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_CKBOARD",  object.NewInt(int64(':')))
+	m.Dict.SetStr("ACS_DEGREE",   object.NewInt(int64('\'')))
+	m.Dict.SetStr("ACS_PLMINUS",  object.NewInt(int64('+')))
+	m.Dict.SetStr("ACS_BULLET",   object.NewInt(int64('.')))
+	m.Dict.SetStr("ACS_LARROW",   object.NewInt(int64('<')))
+	m.Dict.SetStr("ACS_RARROW",   object.NewInt(int64('>')))
+	m.Dict.SetStr("ACS_DARROW",   object.NewInt(int64('v')))
+	m.Dict.SetStr("ACS_UARROW",   object.NewInt(int64('^')))
+	m.Dict.SetStr("ACS_BOARD",    object.NewInt(int64('#')))
+	m.Dict.SetStr("ACS_LANTERN",  object.NewInt(int64('*')))
+	m.Dict.SetStr("ACS_BLOCK",    object.NewInt(int64('#')))
+
 	// --- Module-level functions ---
 
 	// initscr() → window
