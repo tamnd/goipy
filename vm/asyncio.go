@@ -133,6 +133,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildThreading(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
+	case "cmd":
+		return i.buildCmd(), true
 	case "readline":
 		return i.buildReadline(), true
 	case "rlcompleter":
