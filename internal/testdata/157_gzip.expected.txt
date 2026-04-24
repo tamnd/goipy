@@ -1,0 +1,60 @@
+rb
+wb
+131072
+1
+2
+4
+8
+16
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+BadGzipFile raised
+True
+14
+True
+False
+True
+False
+True
+b'hello gzipfile'
+True
+False
+True
+True
+True
+True
+b'abc'
+3
+b'def'
+6
+b'ghij'
+b'fg'
+b'a'
+b'e'
+b'ij'
+0
+3
+b'line1\n'
+b'line2\n'
+b'line3'
+b''
+b'xy'
+0
+b'x'
+b'gzip open write'
+b'fast compress'
+hello text mode
+
+b'part1part2part3'
+b'positional mode'
+done
