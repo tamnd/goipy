@@ -191,6 +191,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildArgparse(), true
 	case "optparse":
 		return i.buildOptparse(), true
+	case "getpass":
+		return i.buildGetpass(), true
 	}
 	return nil, false
 }
