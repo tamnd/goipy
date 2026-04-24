@@ -24,9 +24,12 @@ jobs:
 
       - name: Compile test fixtures
         run: |
-          for f in internal/testdata/*.py; do
-            python3 -m py_compile "$f"
-          done
+          python3 -c "
+          import py_compile, glob, os
+          for src in sorted(glob.glob('internal/testdata/*.py')):
+              dst = src[:-3] + '.pyc'
+              py_compile.compile(src, cfile=dst, doraise=True)
+          "
 
       - name: Test
         run: go test ./...

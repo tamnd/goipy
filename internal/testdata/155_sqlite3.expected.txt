@@ -1,0 +1,27 @@
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+1
+2
+True
+True
+True
+True
+True
+True
+OperationalError raised
+caught as DatabaseError
+caught as Error
+caught as Exception
+True
+done
