@@ -1,0 +1,45 @@
+TOML Example
+99 -1 0
+57005 15 214
+1000000
+3.14 -2.0 6.626e-34
+inf -inf inf
+True
+True False
+C:\Users\n
+'\t\n\\'
+α😀
+'line1\nline2\n'
+'line1\nline2\n'
+hello world
+[1, 2, 3]
+[[1, 2], [3, 4]]
+[1, 2.0, 'three']
+[('x', 1), ('y', 2)]
+localhost 8080
+1
+99
+test 1
+['apple', 'banana']
+1
+host
+empty
+datetime 1979 5 27
+True
+datetime True
+datetime True
+date 1979 5 27
+time 7 32 0
+999999
+value
+TOMLDecodeError
+duplicate key
+duplicate table
+1
+float
+2
+Hammer
+284758393
+1
+[1, 2, 3]
+42
