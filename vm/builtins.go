@@ -66,7 +66,7 @@ func (i *Interp) initBuiltins() {
 	mk("ConnectionRefusedError", i.connectionErr)
 	mk("ConnectionResetError", i.connectionErr)
 	i.fileNotFoundErr = mk("FileNotFoundError", i.osErr)
-	mk("FileExistsError", i.osErr)
+	i.fileExistsErr = mk("FileExistsError", i.osErr)
 	mk("InterruptedError", i.osErr)
 	mk("IsADirectoryError", i.osErr)
 	mk("NotADirectoryError", i.osErr)
