@@ -613,6 +613,16 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return m, nil
 		}
 	}
+	if dr, ok := o.(*object.CSVDictReader); ok {
+		if m, ok := csvDictReaderAttr(i, dr, name); ok {
+			return m, nil
+		}
+	}
+	if do, ok := o.(*object.CSVDialectObj); ok {
+		if m, ok := csvDialectObjAttr(do.D, name); ok {
+			return m, nil
+		}
+	}
 	if r, ok := o.(*object.URLParseResult); ok {
 		if m, ok := urlParseResultAttr(r, name); ok {
 			return m, nil
@@ -1324,6 +1334,10 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 				vs[k] = &object.Str{V: s}
 			}
 			return &object.List{V: vs}, true, nil
+		}}, nil
+	case *object.CSVDictReader:
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			return csvDictReaderNextRow(x)
 		}}, nil
 	case *object.Memoryview:
 		idx := 0
