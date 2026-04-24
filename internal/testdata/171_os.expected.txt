@@ -1,0 +1,45 @@
+makedirs exist_ok=False raises FileExistsError
+True
+False
+True
+hel
+True
+True
+True
+False
+True
+True
+True
+True
+True
+True
+No such file or directory
+Permission denied
+True
+True
+True
+True
+True
+True
+True
+['f1.txt', 'sub']
+True
+False
+True
+False
+True
+True
+True
+True
+True
+True
+True
+True
+True
+False
+True
+abc
+False
+True
+True
+True

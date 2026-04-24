@@ -37,6 +37,7 @@ type Interp struct {
 	eofErr,
 	osErr,
 	fileNotFoundErr,
+	fileExistsErr,
 	stopAsyncIter,
 	// New exception classes.
 	floatErr,

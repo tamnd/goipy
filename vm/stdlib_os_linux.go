@@ -13,6 +13,10 @@ func statCtime(sys *syscall.Stat_t) (int64, int64) {
 	return sys.Ctim.Sec, sys.Ctim.Nsec
 }
 
+func statMtime(sys *syscall.Stat_t) (int64, int64) {
+	return sys.Mtim.Sec, sys.Mtim.Nsec
+}
+
 func osAtime(info os.FileInfo) float64 {
 	if sys, ok := info.Sys().(*syscall.Stat_t); ok {
 		return float64(sys.Atim.Sec) + float64(sys.Atim.Nsec)/1e9
