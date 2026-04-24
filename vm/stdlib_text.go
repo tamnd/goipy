@@ -1,14 +1,10 @@
 package vm
 
 import (
-	"bytes"
-	"compress/gzip"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/tamnd/goipy/object"
@@ -1118,70 +1114,6 @@ func shlexSplit(s string, comments, posix bool) ([]string, error) {
 	return tokens, nil
 }
 
-// --- gzip module -----------------------------------------------------------
-
-func (i *Interp) buildGzip() *object.Module {
-	m := &object.Module{Name: "gzip", Dict: object.NewDict()}
-
-	m.Dict.SetStr("compress", &object.BuiltinFunc{Name: "compress", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "compress() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		level := gzip.DefaultCompression
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				level = int(n)
-			}
-		} else if kw != nil {
-			if v, ok := kw.GetStr("compresslevel"); ok {
-				if n, ok := toInt64(v); ok {
-					level = int(n)
-				}
-			}
-		}
-		var buf bytes.Buffer
-		w, err := gzip.NewWriterLevel(&buf, level)
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		// Mark the uncompressed data as deterministic — CPython's default
-		// writes 0 for the mtime when called via gzip.compress.
-		w.ModTime = gzipEpoch
-		if _, err := w.Write(data); err != nil {
-			return nil, err
-		}
-		if err := w.Close(); err != nil {
-			return nil, err
-		}
-		return &object.Bytes{V: buf.Bytes()}, nil
-	}})
-
-	m.Dict.SetStr("decompress", &object.BuiltinFunc{Name: "decompress", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "decompress() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		r, err := gzip.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		return &object.Bytes{V: out}, nil
-	}})
-
-	return m
-}
 
 // --- fnmatch module --------------------------------------------------------
 
@@ -1323,5 +1255,3 @@ func listOfStr(ss []string) *object.List {
 	return &object.List{V: v}
 }
 
-// gzipEpoch is the deterministic zero-mtime used by gzip.compress in CPython.
-var gzipEpoch = time.Time{}
