@@ -1,0 +1,36 @@
+['from_str.txt', 'hello.txt', 'stored.bin']
+b'hello deflate'
+b'stored bytes'
+b'string payload'
+b'hello deflate'
+stored.bin
+12
+True
+False
+True
+13
+3
+True
+['from_str.txt', 'hello.txt', 'stored.bin']
+True
+True
+True
+True
+True
+False
+True
+b'hello deflate'
+b'stored bytes'
+True
+False
+BadZipFile raised
+True
+['first.txt', 'second.txt']
+b'first'
+b'second'
+a/b.txt
+False
+True
+b'with zipinfo'
+0 8 12 14
+done
