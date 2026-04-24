@@ -1,0 +1,20 @@
+thread submit ok
+thread map ok
+thread map two iterables ok
+thread context manager ok
+thread exception ok
+process submit ok
+process map ok
+future cancel ok
+future states ok
+done callback ok
+done callback immediate ok
+future exception ok
+future exception none ok
+wait all_completed ok
+wait first_completed ok
+wait first_exception ok
+as_completed ok
+shutdown ok
+initializer ok
+ALL OK

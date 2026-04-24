@@ -135,6 +135,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildMultiprocessing(), true
 	case "multiprocessing.shared_memory":
 		return i.buildSharedMemory(), true
+	case "concurrent":
+		// Namespace package for concurrent.futures.
+		m := &object.Module{Name: "concurrent", Dict: object.NewDict()}
+		m.Dict.SetStr("__path__", &object.List{V: []object.Object{&object.Str{V: ""}}})
+		m.Dict.SetStr("__package__", &object.Str{V: "concurrent"})
+		return m, true
+	case "concurrent.futures":
+		return i.buildConcurrentFutures(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
