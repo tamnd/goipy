@@ -4,3 +4,4 @@ __pycache__/
 *.pyc.bak
 /bench/.bin/
 /bench/cases/*.pyc
+internal/testdata/*.pyc

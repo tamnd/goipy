@@ -11,6 +11,12 @@ import (
 )
 
 func TestFixtures(t *testing.T) {
+	// Use absolute paths so that os.Chdir calls inside Python scripts
+	// don't break subsequent subtests.
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 	matches, err := filepath.Glob("../internal/testdata/*.pyc")
 	if err != nil {
 		t.Fatal(err)
@@ -18,9 +24,21 @@ func TestFixtures(t *testing.T) {
 	if len(matches) == 0 {
 		t.Fatal("no fixtures; run internal/testdata/gen.sh")
 	}
-	for _, pyc := range matches {
+	// Convert to absolute paths before any subtest can change the CWD.
+	absPaths := make([]string, len(matches))
+	for j, m := range matches {
+		abs, aerr := filepath.Abs(m)
+		if aerr != nil {
+			t.Fatal(aerr)
+		}
+		absPaths[j] = abs
+	}
+	for _, pyc := range absPaths {
 		name := strings.TrimSuffix(filepath.Base(pyc), ".pyc")
 		t.Run(name, func(t *testing.T) {
+			// Restore working directory after each subtest in case the
+			// Python script called os.chdir().
+			defer os.Chdir(origDir) //nolint:errcheck
 			code, err := marshal.LoadPyc(pyc)
 			if err != nil {
 				t.Fatalf("load: %v", err)
@@ -32,9 +50,7 @@ func TestFixtures(t *testing.T) {
 			var buf bytes.Buffer
 			i := New()
 			i.Stdout = &buf
-			if dir, derr := filepath.Abs(filepath.Dir(pyc)); derr == nil {
-				i.SearchPath = []string{dir}
-			}
+			i.SearchPath = []string{filepath.Dir(pyc)}
 			if _, err := i.Run(code); err != nil {
 				t.Fatalf("run: %v\noutput so far:\n%s", err, buf.String())
 			}
