@@ -17,6 +17,17 @@ import (
 	"github.com/tamnd/goipy/object"
 )
 
+// readArraysize reads the current arraysize from the instance dict so that
+// Python-level writes (cur.arraysize = N) are respected.
+func readArraysize(d *object.Dict, fallback int) int {
+	if v, ok := d.GetStr("arraysize"); ok {
+		if n, ok2 := v.(*object.Int); ok2 {
+			return int(n.Int64())
+		}
+	}
+	return fallback
+}
+
 // SQLite3DriverName is passed to sql.Open when Python calls sqlite3.connect().
 var SQLite3DriverName = "sqlite3"
 
@@ -352,9 +363,11 @@ func (i *Interp) makeSqlite3Cursor(
 		}
 		d.SetStr("rowcount", object.IntFromInt64(rowcount))
 		d.SetStr("lastrowid", object.IntFromInt64(lastrowid))
-		d.SetStr("arraysize", object.IntFromInt64(int64(arraysize)))
+		// arraysize is intentionally NOT written here — it is user-settable and
+		// must not be overwritten by execute operations.
 	}
 	syncDesc()
+	d.SetStr("arraysize", object.IntFromInt64(int64(arraysize)))
 	d.SetStr("connection", object.None)
 
 	makeRow := func(row []object.Object) object.Object {
@@ -505,6 +518,31 @@ func (i *Interp) makeSqlite3Cursor(
 	}}
 	d.SetStr("executemany", executemany)
 
+	executescript := &object.BuiltinFunc{Name: "executescript", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+		actualArgs := args
+		if len(actualArgs) > 0 {
+			if _, isSelf := actualArgs[0].(*object.Instance); isSelf {
+				actualArgs = actualArgs[1:]
+			}
+		}
+		if len(actualArgs) < 1 {
+			return nil, object.Errorf(progErr, "executescript() requires script string")
+		}
+		s, ok := actualArgs[0].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "executescript() requires str")
+		}
+		if err := sqlite3ExecScript(db, s.V, wrapErr); err != nil {
+			return nil, err
+		}
+		bufferedRows = nil
+		colNames = nil
+		pos = 0
+		syncDesc()
+		return inst, nil
+	}}
+	d.SetStr("executescript", executescript)
+
 	fetchone := &object.BuiltinFunc{Name: "fetchone", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
 		if pos >= len(bufferedRows) {
 			return object.None, nil
@@ -526,7 +564,7 @@ func (i *Interp) makeSqlite3Cursor(
 	d.SetStr("fetchall", fetchall)
 
 	fetchmany := &object.BuiltinFunc{Name: "fetchmany", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
-		size := arraysize
+		size := readArraysize(d, arraysize)
 		if len(args) >= 1 {
 			if n, ok := args[0].(*object.Int); ok {
 				size = int(n.Int64())
@@ -592,8 +630,20 @@ func sqlite3ConvertParams(obj object.Object) ([]any, error) {
 			out[idx] = sqlite3ObjToGo(item)
 		}
 		return out, nil
+	case *object.Dict:
+		// named params: {'name': value} → sql.Named("name", value)
+		keys, vals := v.Items()
+		out := make([]any, 0, len(keys))
+		for idx, key := range keys {
+			ks, ok := key.(*object.Str)
+			if !ok {
+				return nil, fmt.Errorf("dict param key must be str, got %T", key)
+			}
+			out = append(out, sql.Named(ks.V, sqlite3ObjToGo(vals[idx])))
+		}
+		return out, nil
 	}
-	return nil, fmt.Errorf("params must be a sequence (tuple or list)")
+	return nil, fmt.Errorf("params must be a sequence or mapping")
 }
 
 func sqlite3ObjToGo(obj object.Object) any {
