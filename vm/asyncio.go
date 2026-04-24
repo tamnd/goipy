@@ -189,6 +189,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCtypes(), true
 	case "argparse":
 		return i.buildArgparse(), true
+	case "optparse":
+		return i.buildOptparse(), true
 	}
 	return nil, false
 }
