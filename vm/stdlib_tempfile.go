@@ -5,10 +5,31 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"sync"
 
 	"github.com/tamnd/goipy/object"
 )
+
+// mkstempFiles tracks *os.File values returned by mkstemp() so that os.close(fd)
+// can call f.Close() rather than syscall.Close, preventing GC finalizer races.
+var (
+	mkstempMu    sync.Mutex
+	mkstempFiles = map[int]*os.File{}
+)
+
+func mkstempRegister(fd int, f *os.File) {
+	mkstempMu.Lock()
+	mkstempFiles[fd] = f
+	mkstempMu.Unlock()
+}
+
+func mkstempUnregister(fd int) *os.File {
+	mkstempMu.Lock()
+	f := mkstempFiles[fd]
+	delete(mkstempFiles, fd)
+	mkstempMu.Unlock()
+	return f
+}
 
 func (i *Interp) buildTempfile() *object.Module {
 	m := &object.Module{Name: "tempfile", Dict: object.NewDict()}
@@ -124,11 +145,9 @@ func (i *Interp) buildTempfile() *object.Module {
 			return nil, object.Errorf(i.osErr, "%v", err)
 		}
 		name := f.Name()
-		fd := int64(f.Fd())
-		// Keep file open; caller is responsible for os.close(fd).
-		// Prevent GC finalizer from closing until caller does so.
-		_ = f
-		return &object.Tuple{V: []object.Object{object.NewInt(fd), &object.Str{V: name}}}, nil
+		fdInt := int(f.Fd())
+		mkstempRegister(fdInt, f)
+		return &object.Tuple{V: []object.Object{object.NewInt(int64(fdInt)), &object.Str{V: name}}}, nil
 	}})
 
 	// mkdtemp(suffix=None, prefix=None, dir=None) — create temp dir, return path.
@@ -657,8 +676,12 @@ func (i *Interp) buildTempfile() *object.Module {
 	return m
 }
 
-// tempfileClose is a best-effort close of an OS-level file descriptor.
-// Used by os.close() to support the pattern: fd, path = mkstemp(); os.close(fd).
+// tempfileClose closes an OS-level file descriptor from mkstemp().
+// It uses the tracked *os.File when available so the Go GC finalizer
+// sees a properly-closed file and does not close a later reused fd.
 func tempfileClose(fd int) error {
-	return syscall.Close(fd)
+	if f := mkstempUnregister(fd); f != nil {
+		return f.Close()
+	}
+	return os.NewFile(uintptr(fd), "").Close()
 }

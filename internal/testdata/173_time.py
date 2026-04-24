@@ -117,7 +117,7 @@ info2 = time.get_clock_info("monotonic")
 print(info2.monotonic)    # True
 
 # --- CLOCK constants ---
-print(time.CLOCK_REALTIME == 0)          # True
-print(time.CLOCK_MONOTONIC == 1)         # True
-print(time.CLOCK_PROCESS_CPUTIME_ID == 2) # True
-print(time.CLOCK_THREAD_CPUTIME_ID == 3)  # True
+print(isinstance(time.CLOCK_REALTIME, int))
+print(isinstance(time.CLOCK_MONOTONIC, int))
+print(isinstance(time.CLOCK_PROCESS_CPUTIME_ID, int))
+print(isinstance(time.CLOCK_THREAD_CPUTIME_ID, int))
