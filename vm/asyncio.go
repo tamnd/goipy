@@ -103,6 +103,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildStatistics(), true
 	case "calendar":
 		return i.buildCalendar(), true
+	case "plistlib":
+		return i.buildPlistlib(), true
 	case "pprint":
 		return i.buildPprint(), true
 	case "reprlib":
