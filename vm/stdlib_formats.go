@@ -2,13 +2,9 @@ package vm
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"encoding/csv"
 	"fmt"
-	"hash/adler32"
-	"hash/crc32"
-	"io"
 	"math"
 	"math/big"
 	"net/url"
@@ -1726,108 +1722,6 @@ func urlParseResultGetItem(r *object.URLParseResult, idx int) (object.Object, bo
 		return nil, false
 	}
 	return &object.Str{V: fields[idx]}, true
-}
-
-// --- zlib module -----------------------------------------------------------
-
-func (i *Interp) buildZlib() *object.Module {
-	m := &object.Module{Name: "zlib", Dict: object.NewDict()}
-
-	m.Dict.SetStr("Z_NO_COMPRESSION", object.NewInt(0))
-	m.Dict.SetStr("Z_BEST_SPEED", object.NewInt(1))
-	m.Dict.SetStr("Z_BEST_COMPRESSION", object.NewInt(9))
-	m.Dict.SetStr("Z_DEFAULT_COMPRESSION", object.NewInt(-1))
-	m.Dict.SetStr("MAX_WBITS", object.NewInt(15))
-
-	m.Dict.SetStr("compress", &object.BuiltinFunc{Name: "compress", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "compress() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		level := zlib.DefaultCompression
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				level = int(n)
-			}
-		}
-		var buf bytes.Buffer
-		w, err := zlib.NewWriterLevel(&buf, level)
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		if _, err := w.Write(data); err != nil {
-			return nil, err
-		}
-		if err := w.Close(); err != nil {
-			return nil, err
-		}
-		return &object.Bytes{V: buf.Bytes()}, nil
-	}})
-
-	m.Dict.SetStr("decompress", &object.BuiltinFunc{Name: "decompress", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "decompress() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		r, err := zlib.NewReader(bytes.NewReader(data))
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		defer r.Close()
-		out, err := io.ReadAll(r)
-		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
-		}
-		return &object.Bytes{V: out}, nil
-	}})
-
-	m.Dict.SetStr("crc32", &object.BuiltinFunc{Name: "crc32", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "crc32() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		var seed uint32 = 0
-		if len(a) >= 2 {
-			if n, ok := toInt64(a[1]); ok {
-				seed = uint32(n)
-			}
-		}
-		return newIntU64(uint64(crc32.Update(seed, crc32.IEEETable, data))), nil
-	}})
-
-	m.Dict.SetStr("adler32", &object.BuiltinFunc{Name: "adler32", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) == 0 {
-			return nil, object.Errorf(i.typeErr, "adler32() missing data")
-		}
-		data, err := asBytes(a[0])
-		if err != nil {
-			return nil, err
-		}
-		if len(a) >= 2 {
-			// Python allows seeding the running adler. Go's hash/adler32 doesn't
-			// expose that; fold the seed bytes into a fresh hash.
-			h := adler32.New()
-			if n, ok := toInt64(a[1]); ok {
-				var seedBytes [4]byte
-				binary.BigEndian.PutUint32(seedBytes[:], uint32(n))
-				_ = seedBytes
-			}
-			h.Write(data)
-			return newIntU64(uint64(h.Sum32())), nil
-		}
-		return newIntU64(uint64(adler32.Checksum(data))), nil
-	}})
-
-	return m
 }
 
 // newIntU64 wraps a uint64 as *object.Int, preserving values above MaxInt64.
