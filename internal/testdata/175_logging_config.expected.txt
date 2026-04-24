@@ -1,0 +1,14 @@
+INFO:app1:hello
+ERROR:app1:world
+True
+True
+True
+ERROR root error
+True
+True
+True
+True
+True
+True
+True
+True
