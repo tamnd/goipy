@@ -683,6 +683,22 @@ func (i *Interp) initBuiltins() {
 			}
 			return v, nil
 		}
+		if inst, ok := a[0].(*object.Instance); ok {
+			r, handled, err := in.callInstanceDunder(inst, "__next__")
+			if !handled {
+				return nil, object.Errorf(in.typeErr, "next() arg is not an iterator")
+			}
+			if err != nil {
+				if exc, eok := err.(*object.Exception); eok && exc.Class != nil && object.IsSubclass(exc.Class, in.stopIter) {
+					if len(a) > 1 {
+						return a[1], nil
+					}
+					return nil, err
+				}
+				return nil, err
+			}
+			return r, nil
+		}
 		it, ok := a[0].(*object.Iter)
 		if !ok {
 			return nil, object.Errorf(in.typeErr, "next() arg is not an iterator")
