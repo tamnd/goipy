@@ -12,6 +12,9 @@ type Exception struct {
 	// Traceback is the innermost frame of the stack at raise time; each
 	// frame the exception propagates through prepends another node.
 	Traceback *Traceback
+	// Dict holds extra attributes set on the exception instance (e.g. .msg,
+	// .filename, .lineno for NetrcParseError). Nil when unused.
+	Dict *Dict
 }
 
 // Traceback records one frame in an exception's backtrace. Matches the
