@@ -662,7 +662,6 @@ func (i *Interp) buildOs() *object.Module {
 		return object.NewInt(int64(nw)), nil
 	}})
 
-	// Replace the old close() that used tempfileClose with one that uses syscall directly.
 	m.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "os.close() requires 1 argument")
@@ -671,7 +670,7 @@ func (i *Interp) buildOs() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "os.close() fd must be int")
 		}
-		if err := syscall.Close(int(fd)); err != nil {
+		if err := tempfileClose(int(fd)); err != nil {
 			return nil, object.Errorf(i.osErr, "%v", err)
 		}
 		return object.None, nil
