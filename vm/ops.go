@@ -1492,6 +1492,40 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 			pos++
 			return r, true, nil
 		}}, nil
+	case *object.StringIO:
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if x.Pos >= len(x.V) {
+				return nil, false, nil
+			}
+			start := x.Pos
+			end := start
+			for end < len(x.V) && x.V[end] != '\n' {
+				end++
+			}
+			if end < len(x.V) {
+				end++
+			}
+			x.Pos = end
+			return &object.Str{V: string(x.V[start:end])}, true, nil
+		}}, nil
+	case *object.BytesIO:
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if x.Pos >= len(x.V) {
+				return nil, false, nil
+			}
+			end := x.Pos
+			for end < len(x.V) && x.V[end] != '\n' {
+				end++
+			}
+			if end < len(x.V) {
+				end++
+			}
+			line := append([]byte(nil), x.V[x.Pos:end]...)
+			x.Pos = end
+			return &object.Bytes{V: line}, true, nil
+		}}, nil
+	case *object.File:
+		return i.fileIter(x), nil
 	case *object.Class:
 		if x.EnumData != nil {
 			idx := 0
