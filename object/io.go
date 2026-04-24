@@ -21,11 +21,15 @@ type BytesIO struct {
 // Hasher wraps a hash algorithm (md5/sha1/sha256/...). The VM treats this
 // as opaque — methods live in the stdlib layer.
 type Hasher struct {
-	Name string
-	Size int
+	Name      string
+	Size      int       // digest_size in bytes (0 for SHAKE variable-length)
+	BlockSize int       // block_size in bytes
+	IsShake   bool      // true for SHAKE-128/256 (variable-length digest)
 	// State is a hash.Hash but kept as `any` to avoid pulling `hash` into
 	// the object package's import graph. The stdlib module type-asserts.
 	State any
+	// NewFn creates a fresh hash of the same type (for copy). Kept as `any`.
+	NewFn any
 }
 
 // TextStream is a thin wrapper around an io.Writer for sys.stdout /
