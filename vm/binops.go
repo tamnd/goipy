@@ -993,6 +993,34 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		}
 		return matchGroupValue(i, mt, g)
 	}
+	if cp, ok := container.(*object.ConfigParserObj); ok {
+		ks, ok2 := key.(*object.Str)
+		if !ok2 {
+			return nil, object.Errorf(i.typeErr, "ConfigParser keys must be str")
+		}
+		if ks.V == cp.DefaultSection {
+			d := object.NewDict()
+			for _, k := range cp.Defaults.Keys {
+				d.SetStr(k, &object.Str{V: cp.Defaults.Values[k]})
+			}
+			return d, nil
+		}
+		if !cfgHasSection(cp, ks.V) {
+			return nil, object.Errorf(cp.NoSecErr, "No section: %q", ks.V)
+		}
+		return &object.SectionProxyObj{Parser: cp, Section: ks.V}, nil
+	}
+	if sp, ok := container.(*object.SectionProxyObj); ok {
+		ks, ok2 := key.(*object.Str)
+		if !ok2 {
+			return nil, object.Errorf(i.typeErr, "SectionProxy keys must be str")
+		}
+		v, err := cfgGetValue(sp.Parser, sp.Section, ks.V, false, nil, false)
+		if err != nil {
+			return nil, object.Errorf(i.keyErr, "%s", ks.V)
+		}
+		return v, nil
+	}
 	return nil, object.Errorf(i.typeErr, "'%s' object is not subscriptable", object.TypeName(container))
 }
 

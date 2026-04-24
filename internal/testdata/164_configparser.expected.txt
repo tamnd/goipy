@@ -1,0 +1,55 @@
+DEFAULT
+10
+['sec1', 'sec2']
+True
+False
+['key1', 'key2']
+value1
+True
+False
+42
+3.14
+True
+False
+8080
+9090
+bar
+hello
+True
+False
+['opt1', 'opt2']
+val
+True
+False
+True
+False
+'[sec1]\nk1 = v1\nk2 = v2\n\n'
+[('a', '1'), ('b', '2')]
+default
+99
+False
+NoOptionError
+NoSectionError
+DuplicateSectionError
+/home/user/work
+%(home)s/work
+%(no_interp)s
+None
+True
+val
+val1
+['section1']
+[('0', False), ('1', True), ('false', False), ('no', False), ('off', False), ('on', True), ('true', True), ('yes', True)]
+DuplicateOptionError
+MissingSectionHeaderError
+[('x', '1'), ('y', '2')]
+'[DEFAULT]\nbase = val\n\n[sec]\nkey = myval\n\n'
+bar
+defval
+/home/user
+/home/user/work
+value
+'[s]\nkey=val\n\n'
+InterpolationMissingOptionError
+1
+val
