@@ -131,6 +131,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildWarnings(), true
 	case "threading":
 		return i.buildThreading(), true
+	case "multiprocessing":
+		return i.buildMultiprocessing(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
