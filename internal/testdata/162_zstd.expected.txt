@@ -1,0 +1,49 @@
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+b''
+True
+True
+True
+True
+True
+True
+True
+ZstdError raised
+True
+True
+True
+True
+14
+True
+False
+False
+True
+b'hello zstdfile'
+True
+False
+True
+True
+b'abc'
+3
+b'de'
+3
+b'def'
+b'a'
+b'ij'
+b'line1\n'
+b'line2\n'
+b'line3'
+b''
+b'via module open'
+hello text mode
+
+done
