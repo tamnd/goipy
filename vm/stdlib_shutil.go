@@ -518,21 +518,14 @@ func shutilCopyFileObj(i *Interp, src, dst object.Object) error {
 }
 
 // shutilCopyFileContent copies file bytes from src to dst path.
+// os.ReadFile/WriteFile avoids copy_file_range on Linux (which does not fall
+// back on EBADF the way it does for ENOSYS/EXDEV).
 func shutilCopyFileContent(src, dst string) error {
-	in, err := os.Open(src)
+	data, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
+	return os.WriteFile(dst, data, 0o666)
 }
 
 // shutilCopyTree copies a directory tree from src to dst.
