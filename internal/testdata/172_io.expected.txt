@@ -1,0 +1,45 @@
+True
+True
+True
+True
+True
+True
+hello
+True
+True
+True
+['line1\n', 'line2\n', 'line3\n']
+['a\n', 'b']
+b'line1\n'
+b'line2\n'
+[b'a\n', b'b\n', b'c\n']
+b'foobarbaz'
+b'hello'
+b'hello'
+True
+True
+True
+[b'x\n', b'y\n', b'z\n']
+b'a;b;c;'
+5
+b'567'
+b'789'
+0
+hello
+True
+True
+False
+True
+False
+True
+False
+True
+True
+strict
+['alpha\n', 'beta\n', 'gamma\n']
+['a\n', 'b\n']
+['x\n', 'y']
+one
+two
+three
+

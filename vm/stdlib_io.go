@@ -15,15 +15,32 @@ import (
 
 // --- io module: StringIO and BytesIO ---
 
-// buildIO exposes `io.StringIO` and `io.BytesIO` constructors. The returned
-// objects are plain *object.StringIO / *object.BytesIO; method dispatch
-// happens through getAttr hooks (see stringIOAttr / bytesIOAttr).
+// buildIO exposes `io.StringIO`, `io.BytesIO`, constants and helpers.
 func (i *Interp) buildIO() *object.Module {
 	m := &object.Module{Name: "io", Dict: object.NewDict()}
 
+	// Constants.
+	m.Dict.SetStr("DEFAULT_BUFFER_SIZE", object.NewInt(8192))
+	m.Dict.SetStr("SEEK_SET", object.NewInt(0))
+	m.Dict.SetStr("SEEK_CUR", object.NewInt(1))
+	m.Dict.SetStr("SEEK_END", object.NewInt(2))
+
+	// UnsupportedOperation inherits from OSError and ValueError.
+	unsupported := &object.Class{
+		Name:  "UnsupportedOperation",
+		Bases: []*object.Class{i.osErr, i.valueErr},
+		Dict:  object.NewDict(),
+	}
+	m.Dict.SetStr("UnsupportedOperation", unsupported)
+
+	// open() is the same as the built-in open().
+	if v, ok := i.Builtins.GetStr("open"); ok {
+		m.Dict.SetStr("open", v)
+	}
+
 	m.Dict.SetStr("StringIO", &object.BuiltinFunc{Name: "StringIO", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		sio := &object.StringIO{}
-		if len(a) >= 1 {
+		if len(a) >= 1 && a[0] != object.None {
 			s, ok := a[0].(*object.Str)
 			if !ok {
 				return nil, object.Errorf(i.typeErr, "initial_value must be str")
@@ -35,7 +52,7 @@ func (i *Interp) buildIO() *object.Module {
 
 	m.Dict.SetStr("BytesIO", &object.BuiltinFunc{Name: "BytesIO", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		bio := &object.BytesIO{}
-		if len(a) >= 1 {
+		if len(a) >= 1 && a[0] != object.None {
 			switch v := a[0].(type) {
 			case *object.Bytes:
 				bio.V = append([]byte(nil), v.V...)
@@ -181,7 +198,7 @@ func stringIOAttr(i *Interp, sio *object.StringIO, name string) (object.Object, 
 	case "truncate":
 		return &object.BuiltinFunc{Name: "truncate", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			size := sio.Pos
-			if len(a) >= 1 {
+			if len(a) >= 1 && a[0] != object.None {
 				if v, ok := toInt64(a[0]); ok {
 					size = int(v)
 				}
@@ -190,6 +207,33 @@ func stringIOAttr(i *Interp, sio *object.StringIO, name string) (object.Object, 
 				sio.V = sio.V[:size]
 			}
 			return object.NewInt(int64(size)), nil
+		}}, true
+	case "readable", "writable", "seekable":
+		return &object.BuiltinFunc{Name: name, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.True, nil
+		}}, true
+	case "__iter__":
+		return &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return sio, nil
+		}}, true
+	case "__next__":
+		return &object.BuiltinFunc{Name: "__next__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if sio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if sio.Pos >= len(sio.V) {
+				return nil, object.Errorf(i.stopIter, "")
+			}
+			start := sio.Pos
+			end := start
+			for end < len(sio.V) && sio.V[end] != '\n' {
+				end++
+			}
+			if end < len(sio.V) {
+				end++ // include the newline
+			}
+			sio.Pos = end
+			return &object.Str{V: string(sio.V[start:end])}, nil
 		}}, true
 	}
 	return nil, false
@@ -258,6 +302,126 @@ func bytesIOAttr(i *Interp, bio *object.BytesIO, name string) (object.Object, bo
 	case "tell":
 		return &object.BuiltinFunc{Name: "tell", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.NewInt(int64(bio.Pos)), nil
+		}}, true
+	case "readline":
+		return &object.BuiltinFunc{Name: "readline", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if bio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if bio.Pos >= len(bio.V) {
+				return &object.Bytes{V: []byte{}}, nil
+			}
+			end := bio.Pos
+			for end < len(bio.V) && bio.V[end] != '\n' {
+				end++
+			}
+			if end < len(bio.V) {
+				end++ // include newline
+			}
+			line := append([]byte(nil), bio.V[bio.Pos:end]...)
+			bio.Pos = end
+			return &object.Bytes{V: line}, nil
+		}}, true
+	case "readlines":
+		return &object.BuiltinFunc{Name: "readlines", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if bio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			var out []object.Object
+			for bio.Pos < len(bio.V) {
+				end := bio.Pos
+				for end < len(bio.V) && bio.V[end] != '\n' {
+					end++
+				}
+				if end < len(bio.V) {
+					end++
+				}
+				out = append(out, &object.Bytes{V: append([]byte(nil), bio.V[bio.Pos:end]...)})
+				bio.Pos = end
+			}
+			return &object.List{V: out}, nil
+		}}, true
+	case "writelines":
+		return &object.BuiltinFunc{Name: "writelines", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if bio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "writelines() requires 1 argument")
+			}
+			it, ierr := i.getIter(a[0])
+			if ierr != nil {
+				return nil, ierr
+			}
+			for {
+				item, ok, nerr := it.Next()
+				if nerr != nil {
+					return nil, nerr
+				}
+				if !ok {
+					break
+				}
+				data, e2 := asBytes(item)
+				if e2 != nil {
+					return nil, e2
+				}
+				if bio.Pos >= len(bio.V) {
+					bio.V = append(bio.V, data...)
+					bio.Pos = len(bio.V)
+				} else {
+					end := bio.Pos + len(data)
+					if end > len(bio.V) {
+						bio.V = append(bio.V[:bio.Pos], data...)
+					} else {
+						copy(bio.V[bio.Pos:], data)
+					}
+					bio.Pos = end
+				}
+			}
+			return object.None, nil
+		}}, true
+	case "truncate":
+		return &object.BuiltinFunc{Name: "truncate", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if bio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			size := bio.Pos
+			if len(a) >= 1 && a[0] != object.None {
+				if v, ok := toInt64(a[0]); ok {
+					size = int(v)
+				}
+			}
+			if size < len(bio.V) {
+				bio.V = bio.V[:size]
+			}
+			return object.NewInt(int64(size)), nil
+		}}, true
+	case "readable", "writable", "seekable":
+		return &object.BuiltinFunc{Name: name, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.True, nil
+		}}, true
+	case "__iter__":
+		return &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return bio, nil
+		}}, true
+	case "__next__":
+		return &object.BuiltinFunc{Name: "__next__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if bio.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if bio.Pos >= len(bio.V) {
+				return nil, object.Errorf(i.stopIter, "")
+			}
+			end := bio.Pos
+			for end < len(bio.V) && bio.V[end] != '\n' {
+				end++
+			}
+			if end < len(bio.V) {
+				end++
+			}
+			line := append([]byte(nil), bio.V[bio.Pos:end]...)
+			bio.Pos = end
+			return &object.Bytes{V: line}, nil
 		}}, true
 	case "close":
 		return &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -971,19 +1135,22 @@ func fileAttr(i *Interp, f *object.File, name string) (object.Object, bool) {
 			if err != nil {
 				return nil, object.Errorf(i.osErr, "%v", err)
 			}
-			lines := strings.Split(string(data), "\n")
-			out := make([]object.Object, 0, len(lines))
-			for idx, l := range lines {
-				if idx < len(lines)-1 {
-					l += "\n"
-				}
-				if l == "" {
-					continue
+			var out []object.Object
+			remaining := data
+			for len(remaining) > 0 {
+				idx := strings.IndexByte(string(remaining), '\n')
+				var line []byte
+				if idx < 0 {
+					line = remaining
+					remaining = nil
+				} else {
+					line = remaining[:idx+1]
+					remaining = remaining[idx+1:]
 				}
 				if f.Binary {
-					out = append(out, &object.Bytes{V: []byte(l)})
+					out = append(out, &object.Bytes{V: append([]byte(nil), line...)})
 				} else {
-					out = append(out, &object.Str{V: l})
+					out = append(out, &object.Str{V: string(line)})
 				}
 			}
 			return &object.List{V: out}, nil
@@ -1027,30 +1194,149 @@ func fileAttr(i *Interp, f *object.File, name string) (object.Object, bool) {
 			if len(a) < 1 {
 				return nil, object.Errorf(i.typeErr, "writelines() requires 1 argument")
 			}
-			lst, ok := a[0].(*object.List)
-			if !ok {
-				return nil, object.Errorf(i.typeErr, "writelines() argument must be list")
+			it, ierr := i.getIter(a[0])
+			if ierr != nil {
+				return nil, ierr
 			}
-			for _, item := range lst.V {
+			for {
+				item, ok2, nerr := it.Next()
+				if nerr != nil {
+					return nil, nerr
+				}
+				if !ok2 {
+					break
+				}
 				var data []byte
 				if f.Binary {
-					b, ok := item.(*object.Bytes)
-					if !ok {
+					b, ok3 := item.(*object.Bytes)
+					if !ok3 {
 						return nil, object.Errorf(i.typeErr, "writelines() items must be bytes in binary mode")
 					}
 					data = b.V
 				} else {
-					s, ok := item.(*object.Str)
-					if !ok {
+					s, ok3 := item.(*object.Str)
+					if !ok3 {
 						return nil, object.Errorf(i.typeErr, "writelines() items must be str")
 					}
 					data = []byte(s.V)
 				}
-				if _, err := osf.Write(data); err != nil {
-					return nil, object.Errorf(i.osErr, "%v", err)
+				if _, werr := osf.Write(data); werr != nil {
+					return nil, object.Errorf(i.osErr, "%v", werr)
 				}
 			}
 			return object.None, nil
+		}}, true
+	case "seek":
+		return &object.BuiltinFunc{Name: "seek", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "seek() requires at least 1 argument")
+			}
+			offset, _ := toInt64(a[0])
+			whence := 0
+			if len(a) >= 2 {
+				if w, ok2 := toInt64(a[1]); ok2 {
+					whence = int(w)
+				}
+			}
+			pos, err := osf.Seek(offset, whence)
+			if err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			return object.NewInt(pos), nil
+		}}, true
+	case "tell":
+		return &object.BuiltinFunc{Name: "tell", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			pos, err := osf.Seek(0, io.SeekCurrent)
+			if err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			return object.NewInt(pos), nil
+		}}, true
+	case "truncate":
+		return &object.BuiltinFunc{Name: "truncate", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			var size int64
+			if len(a) >= 1 && a[0] != object.None {
+				v, ok2 := toInt64(a[0])
+				if !ok2 {
+					return nil, object.Errorf(i.typeErr, "truncate() argument must be int")
+				}
+				size = v
+			} else {
+				var err error
+				size, err = osf.Seek(0, io.SeekCurrent)
+				if err != nil {
+					return nil, object.Errorf(i.osErr, "%v", err)
+				}
+			}
+			if err := osf.Truncate(size); err != nil {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			return object.NewInt(size), nil
+		}}, true
+	case "fileno":
+		return &object.BuiltinFunc{Name: "fileno", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			return object.NewInt(int64(osf.Fd())), nil
+		}}, true
+	case "isatty":
+		return &object.BuiltinFunc{Name: "isatty", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.False, nil
+		}}, true
+	case "readable":
+		return &object.BuiltinFunc{Name: "readable", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			m := f.Mode
+			return object.BoolOf(m == "" || strings.ContainsAny(m, "r+")), nil
+		}}, true
+	case "writable":
+		return &object.BuiltinFunc{Name: "writable", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.BoolOf(strings.ContainsAny(f.Mode, "wxa+")), nil
+		}}, true
+	case "seekable":
+		return &object.BuiltinFunc{Name: "seekable", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.True, nil
+		}}, true
+	case "encoding":
+		if f.Binary {
+			return object.None, true
+		}
+		return &object.Str{V: "utf-8"}, true
+	case "errors":
+		if f.Binary {
+			return object.None, true
+		}
+		return &object.Str{V: "strict"}, true
+	case "__iter__":
+		return &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return f, nil
+		}}, true
+	case "__next__":
+		return &object.BuiltinFunc{Name: "__next__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if f.Closed {
+				return nil, object.Errorf(i.valueErr, "I/O operation on closed file")
+			}
+			rd := bufio.NewReader(osf)
+			line, err := rd.ReadString('\n')
+			if err == io.EOF && line == "" {
+				return nil, object.Errorf(i.stopIter, "")
+			}
+			if err != nil && err != io.EOF {
+				return nil, object.Errorf(i.osErr, "%v", err)
+			}
+			if f.Binary {
+				return &object.Bytes{V: []byte(line)}, nil
+			}
+			return &object.Str{V: line}, nil
 		}}, true
 	case "flush":
 		return &object.BuiltinFunc{Name: "flush", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
@@ -1078,4 +1364,27 @@ func fileAttr(i *Interp, f *object.File, name string) (object.Object, bool) {
 		}}, true
 	}
 	return nil, false
+}
+
+// fileIter returns an *object.Iter that reads one line at a time from f.
+// It is used by getIter when a *object.File appears in a for-loop.
+func (i *Interp) fileIter(f *object.File) *object.Iter {
+	osf := f.F.(*os.File)
+	rd := bufio.NewReader(osf)
+	return &object.Iter{Next: func() (object.Object, bool, error) {
+		if f.Closed {
+			return nil, false, nil
+		}
+		line, err := rd.ReadString('\n')
+		if err == io.EOF && line == "" {
+			return nil, false, nil
+		}
+		if err != nil && err != io.EOF {
+			return nil, false, object.Errorf(i.osErr, "%v", err)
+		}
+		if f.Binary {
+			return &object.Bytes{V: []byte(line)}, true, nil
+		}
+		return &object.Str{V: line}, true, nil
+	}}
 }
