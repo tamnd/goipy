@@ -1,0 +1,11 @@
+error_class ok
+controller_class ok
+register_get ok
+get_error ok
+module_functions ok
+open_returns_bool ok
+open_new_returns_bool ok
+open_new_tab_returns_bool ok
+get_default ok
+preferred_browser ok
+constructor_register ok

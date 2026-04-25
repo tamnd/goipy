@@ -333,6 +333,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 			}
 		}
 		return nil, false
+	case "webbrowser":
+		return i.buildWebbrowser(), true
 	}
 	return nil, false
 }
