@@ -285,6 +285,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildMailbox(), true
 	case "mimetypes":
 		return i.buildMimetypes(), true
+	case "quopri":
+		return i.buildQuopri(), true
 	}
 	return nil, false
 }
