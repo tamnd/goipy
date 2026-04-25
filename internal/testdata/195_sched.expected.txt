@@ -1,0 +1,16 @@
+empty ok
+enter not empty ok
+queue ok
+cancel ok
+cancel unknown ok
+run order ok
+run args ok
+run priority ok
+enterabs ok
+run nonblocking ok
+run nonblocking empty ok
+delayfunc zero ok
+enter returns event ok
+fifo ok
+default scheduler ok
+ALL OK
