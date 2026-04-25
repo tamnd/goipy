@@ -1,0 +1,11 @@
+dom_constants ok
+dom_exception_hierarchy ok
+dom_implementation ok
+nodelist ok
+named_node_map ok
+node_is_same ok
+get_attribute_node ok
+set_attribute_node ok
+document_ns ok
+named_node_map_remove ok
+ALL OK
