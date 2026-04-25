@@ -1,0 +1,15 @@
+b64encode_basic ok
+b64encode_altchars ok
+b64decode_basic ok
+b64decode_validate ok
+urlsafe ok
+b32 ok
+b32hex ok
+b16 ok
+standard_aliases ok
+encodebytes ok
+encodebytes_long ok
+b85 ok
+a85 ok
+b32_map01 ok
+ALL OK
