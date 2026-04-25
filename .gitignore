@@ -1,7 +1,6 @@
 goipy
 /bin/
 __pycache__/
+*.pyc
 *.pyc.bak
 /bench/.bin/
-/bench/cases/*.pyc
-internal/testdata/*.pyc
