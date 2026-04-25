@@ -2826,7 +2826,13 @@ func (i *Interp) installTextMethods(cls *object.Class) {
 // ── xml.dom.pulldom ───────────────────────────────────────────────────────────
 
 func (i *Interp) buildXmlDomPulldom() *object.Module {
+	ensureDomSharedClasses(i)
+	_, elemCls, textCls, commentCls, piCls, _, _, _ := i.buildMinidomClasses()
+
 	m := &object.Module{Name: "xml.dom.pulldom", Dict: object.NewDict()}
+
+	// Module-level default buffer size
+	m.Dict.SetStr("default_bufsize", object.IntFromInt64(8192))
 
 	// Event constants
 	m.Dict.SetStr("START_ELEMENT", &object.Str{V: "START_ELEMENT"})
@@ -2840,30 +2846,153 @@ func (i *Interp) buildXmlDomPulldom() *object.Module {
 
 	// DOMEventStream class
 	domesCls := &object.Class{Name: "DOMEventStream", Dict: object.NewDict()}
-	domesCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) >= 2 {
-			a[0].(*object.Instance).Dict.SetStr("_events", a[1])
+
+	// helper: read _pos from instance dict
+	getPos := func(self *object.Instance) int {
+		v, ok := self.Dict.GetStr("_pos")
+		if !ok {
+			return 0
 		}
-		return object.None, nil
-	}})
-	domesCls.Dict.SetStr("__iter__", &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if n, ok2 := toInt64(v); ok2 {
+			return int(n)
+		}
+		return 0
+	}
+	// helper: read _events slice from instance dict
+	getEvents := func(self *object.Instance) []object.Object {
+		v, ok := self.Dict.GetStr("_events")
+		if !ok {
+			return nil
+		}
+		if lst, ok2 := v.(*object.List); ok2 {
+			return lst.V
+		}
+		return nil
+	}
+
+	domesCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
-			return &object.List{V: nil}, nil
+			return object.None, nil
 		}
 		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_events"); ok {
-			return v, nil
+		if len(a) >= 2 {
+			self.Dict.SetStr("_events", a[1])
 		}
-		return &object.List{V: nil}, nil
-	}})
-	domesCls.Dict.SetStr("expandNode", &object.BuiltinFunc{Name: "expandNode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		self.Dict.SetStr("_pos", object.IntFromInt64(0))
 		return object.None, nil
 	}})
+
+	// getEvent() -> (event, node) or None
+	domesCls.Dict.SetStr("getEvent", &object.BuiltinFunc{Name: "getEvent", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		events := getEvents(self)
+		pos := getPos(self)
+		if pos >= len(events) {
+			return object.None, nil
+		}
+		self.Dict.SetStr("_pos", object.IntFromInt64(int64(pos+1)))
+		return events[pos], nil
+	}})
+
+	// reset() — restart the stream
+	domesCls.Dict.SetStr("reset", &object.BuiltinFunc{Name: "reset", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		a[0].(*object.Instance).Dict.SetStr("_pos", object.IntFromInt64(0))
+		return object.None, nil
+	}})
+
+	// __iter__ — returns self (proper iterator protocol)
+	domesCls.Dict.SetStr("__iter__", &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		return a[0], nil
+	}})
+
+	// __next__ — advances via getEvent, raises StopIteration when done
+	domesCls.Dict.SetStr("__next__", &object.BuiltinFunc{Name: "__next__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.stopIter, "")
+		}
+		self := a[0].(*object.Instance)
+		events := getEvents(self)
+		pos := getPos(self)
+		if pos >= len(events) {
+			return nil, object.Errorf(i.stopIter, "")
+		}
+		self.Dict.SetStr("_pos", object.IntFromInt64(int64(pos+1)))
+		return events[pos], nil
+	}})
+
+	// expandNode(node) — consume events and build node's full subtree
+	domesCls.Dict.SetStr("expandNode", &object.BuiltinFunc{Name: "expandNode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		node, ok := a[1].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		events := getEvents(self)
+		pos := getPos(self)
+
+		// Stack of parents: we consume until we see the END_ELEMENT that
+		// matches the node passed in (depth goes back to 0).
+		parents := []*object.Instance{node}
+		for pos < len(events) && len(parents) > 0 {
+			ev, ok2 := events[pos].(*object.Tuple)
+			pos++
+			if !ok2 || len(ev.V) < 2 {
+				continue
+			}
+			tok := ""
+			if s, ok3 := ev.V[0].(*object.Str); ok3 {
+				tok = s.V
+			}
+			child, _ := ev.V[1].(*object.Instance)
+
+			switch tok {
+			case "START_ELEMENT":
+				parent := parents[len(parents)-1]
+				if child != nil {
+					pulldomAppendChild(parent, child)
+				}
+				parents = append(parents, child)
+			case "END_ELEMENT":
+				parents = parents[:len(parents)-1]
+			case "CHARACTERS", "COMMENT", "PROCESSING_INSTRUCTION", "IGNORABLE_WHITESPACE":
+				if child != nil && len(parents) > 0 {
+					pulldomAppendChild(parents[len(parents)-1], child)
+				}
+			}
+		}
+		self.Dict.SetStr("_pos", object.IntFromInt64(int64(pos)))
+		return object.None, nil
+	}})
+
 	m.Dict.SetStr("DOMEventStream", domesCls)
+
+	// PullDOM — internal SAX handler stub
+	pulldomCls := &object.Class{Name: "PullDOM", Dict: object.NewDict()}
+	m.Dict.SetStr("PullDOM", pulldomCls)
 
 	// SAX2DOM class (stub)
 	sax2domCls := &object.Class{Name: "SAX2DOM", Dict: object.NewDict()}
 	m.Dict.SetStr("SAX2DOM", sax2domCls)
+
+	// makeDOMStream creates a DOMEventStream instance from a parsed event list
+	makeDOMStream := func(events []object.Object) *object.Instance {
+		inst := &object.Instance{Class: domesCls, Dict: object.NewDict()}
+		inst.Dict.SetStr("_events", &object.List{V: events})
+		inst.Dict.SetStr("_pos", object.IntFromInt64(0))
+		return inst
+	}
 
 	// parse(stream, parser=None, bufsize=None) -> DOMEventStream
 	m.Dict.SetStr("parse", &object.BuiltinFunc{Name: "parse", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -2893,17 +3022,15 @@ func (i *Interp) buildXmlDomPulldom() *object.Module {
 				data, _ = asBytes(res)
 			}
 		}
-		events, err := pulldomParse(data)
+		events, err := pulldomParseFull(data, elemCls, textCls, commentCls, piCls)
 		if err != nil {
 			return nil, err
 		}
-		inst := &object.Instance{Class: domesCls, Dict: object.NewDict()}
-		inst.Dict.SetStr("_events", &object.List{V: events})
-		return inst, nil
+		return makeDOMStream(events), nil
 	}})
 
 	// parseString(string, parser=None) -> DOMEventStream
-	m.Dict.SetStr("parseString", &object.BuiltinFunc{Name: "parseString", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	m.Dict.SetStr("parseString", &object.BuiltinFunc{Name: "parseString", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "parseString() requires at least 1 argument")
 		}
@@ -2911,34 +3038,48 @@ func (i *Interp) buildXmlDomPulldom() *object.Module {
 		if err != nil {
 			return nil, object.Errorf(i.typeErr, "parseString() requires bytes or str")
 		}
-		events, perr := pulldomParse(data)
+		events, perr := pulldomParseFull(data, elemCls, textCls, commentCls, piCls)
 		if perr != nil {
 			return nil, perr
 		}
-		inst := &object.Instance{Class: domesCls, Dict: object.NewDict()}
-		inst.Dict.SetStr("_events", &object.List{V: events})
-		return inst, nil
+		return makeDOMStream(events), nil
 	}})
 
 	return m
 }
 
-// pulldomParse parses XML bytes and returns a list of (event, node) tuples.
-func pulldomParse(data []byte) ([]object.Object, error) {
+// pulldomAppendChild appends a child to a parent in the DOM state (used by expandNode).
+func pulldomAppendChild(parent, child *object.Instance) {
+	if parent == nil || child == nil {
+		return
+	}
+	parentSt := getDomNode(parent)
+	childSt := getDomNode(child)
+	if parentSt == nil || childSt == nil {
+		return
+	}
+	parentSt.children = append(parentSt.children, child)
+	childSt.parent = parent
+	child.Dict.SetStr("parentNode", parent)
+}
+
+// pulldomParseFull parses XML bytes into a list of (event, node) tuples using real minidom nodes.
+func pulldomParseFull(data []byte, elemCls, textCls, commentCls, piCls *object.Class) ([]object.Object, error) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = false
 
+	// Document node for START_DOCUMENT / END_DOCUMENT events
+	docCls := &object.Class{Name: "Document", Dict: object.NewDict()}
+	docInst := &object.Instance{Class: docCls, Dict: object.NewDict()}
+	docSt := &domNodeState{nodeType: domDOCUMENT_NODE, nodeName: "#document"}
+	domNodeMap.Store(docInst, docSt)
+	domSyncNodeDict(docInst, docSt)
+
 	var events []object.Object
+	events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "START_DOCUMENT"}, docInst}})
 
-	// minimal node classes for pulldom
-	elemCls := &object.Class{Name: "Element", Dict: object.NewDict()}
-	textCls := &object.Class{Name: "Text", Dict: object.NewDict()}
-	commentCls := &object.Class{Name: "Comment", Dict: object.NewDict()}
-	piCls := &object.Class{Name: "ProcessingInstruction", Dict: object.NewDict()}
-
-	// START_DOCUMENT
-	docNode := object.None
-	events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "START_DOCUMENT"}, docNode}})
+	// Track element stack so END_ELEMENT returns the same instance as START_ELEMENT
+	var elemStack []*object.Instance
 
 	for {
 		tok, err := dec.Token()
@@ -2951,60 +3092,76 @@ func pulldomParse(data []byte) ([]object.Object, error) {
 		switch t := tok.(type) {
 		case xml.StartElement:
 			inst := &object.Instance{Class: elemCls, Dict: object.NewDict()}
-			inst.Dict.SetStr("tagName", &object.Str{V: t.Name.Local})
-			inst.Dict.SetStr("nodeName", &object.Str{V: t.Name.Local})
-			inst.Dict.SetStr("nodeType", object.IntFromInt64(domELEMENT_NODE))
-			attrDict := object.NewDict()
-			for _, attr := range t.Attr {
-				attrDict.SetStr(attr.Name.Local, &object.Str{V: attr.Value})
+			st := &domNodeState{
+				nodeType: domELEMENT_NODE,
+				nodeName: t.Name.Local,
+				ownerDoc: docInst,
 			}
-			inst.Dict.SetStr("attributes", attrDict)
-			events = append(events, &object.Tuple{V: []object.Object{
-				&object.Str{V: "START_ELEMENT"}, inst,
-			}})
+			for _, attr := range t.Attr {
+				st.attrs = append(st.attrs, domAttr{attr.Name.Local, attr.Value})
+			}
+			domNodeMap.Store(inst, st)
+			domSyncNodeDict(inst, st)
+			elemStack = append(elemStack, inst)
+			events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "START_ELEMENT"}, inst}})
+
 		case xml.EndElement:
-			inst := &object.Instance{Class: elemCls, Dict: object.NewDict()}
-			inst.Dict.SetStr("tagName", &object.Str{V: t.Name.Local})
-			inst.Dict.SetStr("nodeName", &object.Str{V: t.Name.Local})
-			inst.Dict.SetStr("nodeType", object.IntFromInt64(domELEMENT_NODE))
-			events = append(events, &object.Tuple{V: []object.Object{
-				&object.Str{V: "END_ELEMENT"}, inst,
-			}})
+			var endInst object.Object = object.None
+			if len(elemStack) > 0 {
+				endInst = elemStack[len(elemStack)-1]
+				elemStack = elemStack[:len(elemStack)-1]
+			}
+			events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "END_ELEMENT"}, endInst}})
+
 		case xml.CharData:
 			text := string(t)
 			inst := &object.Instance{Class: textCls, Dict: object.NewDict()}
-			inst.Dict.SetStr("data", &object.Str{V: text})
-			inst.Dict.SetStr("nodeType", object.IntFromInt64(domTEXT_NODE))
-			if strings.TrimSpace(text) == "" {
-				events = append(events, &object.Tuple{V: []object.Object{
-					&object.Str{V: "IGNORABLE_WHITESPACE"}, inst,
-				}})
-			} else {
-				events = append(events, &object.Tuple{V: []object.Object{
-					&object.Str{V: "CHARACTERS"}, inst,
-				}})
+			st := &domNodeState{
+				nodeType:  domTEXT_NODE,
+				nodeName:  "#text",
+				nodeValue: text,
+				data:      text,
+				ownerDoc:  docInst,
 			}
+			domNodeMap.Store(inst, st)
+			domSyncNodeDict(inst, st)
+			evType := "CHARACTERS"
+			if strings.TrimSpace(text) == "" {
+				evType = "IGNORABLE_WHITESPACE"
+			}
+			events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: evType}, inst}})
+
 		case xml.Comment:
 			inst := &object.Instance{Class: commentCls, Dict: object.NewDict()}
-			inst.Dict.SetStr("data", &object.Str{V: string(t)})
-			inst.Dict.SetStr("nodeType", object.IntFromInt64(domCOMMENT_NODE))
-			events = append(events, &object.Tuple{V: []object.Object{
-				&object.Str{V: "COMMENT"}, inst,
-			}})
+			st := &domNodeState{
+				nodeType: domCOMMENT_NODE,
+				nodeName: "#comment",
+				data:     string(t),
+				ownerDoc: docInst,
+			}
+			domNodeMap.Store(inst, st)
+			domSyncNodeDict(inst, st)
+			events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "COMMENT"}, inst}})
+
 		case xml.ProcInst:
+			if t.Target == "xml" {
+				continue
+			}
 			inst := &object.Instance{Class: piCls, Dict: object.NewDict()}
-			inst.Dict.SetStr("target", &object.Str{V: t.Target})
-			inst.Dict.SetStr("data", &object.Str{V: string(t.Inst)})
-			inst.Dict.SetStr("nodeType", object.IntFromInt64(domPROCESSING_INSTRUCTION_NODE))
-			events = append(events, &object.Tuple{V: []object.Object{
-				&object.Str{V: "PROCESSING_INSTRUCTION"}, inst,
-			}})
+			st := &domNodeState{
+				nodeType: domPROCESSING_INSTRUCTION_NODE,
+				nodeName: t.Target,
+				target:   t.Target,
+				data:     string(t.Inst),
+				ownerDoc: docInst,
+			}
+			domNodeMap.Store(inst, st)
+			domSyncNodeDict(inst, st)
+			events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "PROCESSING_INSTRUCTION"}, inst}})
 		}
 	}
 
-	// END_DOCUMENT
-	events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "END_DOCUMENT"}, docNode}})
-
+	events = append(events, &object.Tuple{V: []object.Object{&object.Str{V: "END_DOCUMENT"}, docInst}})
 	return events, nil
 }
 
