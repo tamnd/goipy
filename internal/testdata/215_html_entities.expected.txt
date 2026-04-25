@@ -1,0 +1,11 @@
+name2codepoint_basic ok
+name2codepoint_size ok
+codepoint2name_basic ok
+codepoint2name_size ok
+html5_basic ok
+html5_legacy_no_semicolon ok
+html5_size ok
+html5_html5_only ok
+html5_multichar ok
+html5_case_variants ok
+ALL OK
