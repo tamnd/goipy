@@ -145,6 +145,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildConcurrentFutures(), true
 	case "concurrent.interpreters":
 		return i.buildConcurrentInterpreters(), true
+	case "subprocess":
+		return i.buildSubprocess(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
