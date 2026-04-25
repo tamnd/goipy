@@ -15,8 +15,24 @@ import (
 )
 
 // sockStateRegistry maps Python socket instances to their Go state so that
-// other modules (e.g., ssl) can access the underlying net.Conn.
+// other modules (e.g., ssl, select) can access the underlying net.Conn.
 var sockStateRegistry sync.Map // *object.Instance -> *sockState
+
+// connFd returns the raw OS file descriptor from a net.Conn or net.Listener
+// via SyscallConn().Control(). Does not dup the fd or change blocking mode.
+func connFd(c interface{}) int {
+	type rawConner interface {
+		SyscallConn() (syscall.RawConn, error)
+	}
+	if sc, ok := c.(rawConner); ok {
+		if rc, err := sc.SyscallConn(); err == nil {
+			fd := -1
+			_ = rc.Control(func(f uintptr) { fd = int(f) })
+			return fd
+		}
+	}
+	return -1
+}
 
 // sockStateOf returns the sockState for a Python socket instance, or nil.
 func sockStateOf(obj object.Object) *sockState {
@@ -518,6 +534,19 @@ func (i *Interp) makeSocketInst(sockCls *object.Class, st *sockState, socketErrC
 
 	inst.Dict.SetStr("fileno", &object.BuiltinFunc{Name: "fileno",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			st.mu.RLock()
+			conn, ln := st.conn, st.listener
+			st.mu.RUnlock()
+			if conn != nil {
+				if fd := connFd(conn); fd >= 0 {
+					return object.NewInt(int64(fd)), nil
+				}
+			}
+			if ln != nil {
+				if fd := connFd(ln); fd >= 0 {
+					return object.NewInt(int64(fd)), nil
+				}
+			}
 			return object.NewInt(-1), nil
 		}})
 

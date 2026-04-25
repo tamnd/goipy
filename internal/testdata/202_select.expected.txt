@@ -1,0 +1,11 @@
+error_alias ok
+constants ok
+select_timeout ok
+select_readable ok
+select_writable ok
+select_multiple ok
+poll ok
+poll_modify ok
+epoll ok (skipped)
+kqueue ok
+ALL OK
