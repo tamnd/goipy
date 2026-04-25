@@ -153,6 +153,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildQueue(), true
 	case "contextvars":
 		return i.buildContextvars(), true
+	case "_thread":
+		return i.buildThread(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
