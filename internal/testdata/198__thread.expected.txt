@@ -1,0 +1,18 @@
+allocate_lock ok
+acquire release ok
+acquire nonblocking unlocked ok
+acquire nonblocking locked ok
+acquire timeout ok
+lock context manager ok
+get_ident ok
+get_native_id ok
+start_new_thread ok
+start_new_thread kwargs ok
+start_new_thread returns id ok
+exit ok
+error ok
+TIMEOUT_MAX ok
+stack_size ok
+LockType ok
+thread idents differ ok
+ALL OK
