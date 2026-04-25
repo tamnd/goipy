@@ -14,6 +14,20 @@ import (
 	"github.com/tamnd/goipy/object"
 )
 
+// sockStateRegistry maps Python socket instances to their Go state so that
+// other modules (e.g., ssl) can access the underlying net.Conn.
+var sockStateRegistry sync.Map // *object.Instance -> *sockState
+
+// sockStateOf returns the sockState for a Python socket instance, or nil.
+func sockStateOf(obj object.Object) *sockState {
+	if inst, ok := obj.(*object.Instance); ok {
+		if v, ok2 := sockStateRegistry.Load(inst); ok2 {
+			return v.(*sockState)
+		}
+	}
+	return nil
+}
+
 // sockState holds the Go-level state for a Python socket instance.
 type sockState struct {
 	mu       sync.RWMutex
@@ -107,6 +121,7 @@ func netAddrToTuple(addr net.Addr) object.Object {
 // makeSocketInst wraps an existing sockState into a Python socket instance.
 func (i *Interp) makeSocketInst(sockCls *object.Class, st *sockState, socketErrCls *object.Class) *object.Instance {
 	inst := &object.Instance{Class: sockCls, Dict: object.NewDict()}
+	sockStateRegistry.Store(inst, st)
 	inst.Dict.SetStr("family", object.NewInt(int64(st.family)))
 	inst.Dict.SetStr("type", object.NewInt(int64(st.socktype)))
 	inst.Dict.SetStr("proto", object.NewInt(int64(st.proto)))
