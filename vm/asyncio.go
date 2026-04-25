@@ -229,6 +229,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCursesTextpad(), true
 	case "curses.panel":
 		return i.buildCursesPanel(), true
+	case "socket":
+		return i.buildSocket(), true
 	}
 	return nil, false
 }

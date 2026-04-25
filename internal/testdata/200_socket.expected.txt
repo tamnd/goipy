@@ -1,0 +1,20 @@
+constants ok
+byte order ok
+inet_aton/ntoa ok
+inet_pton/ntop ok
+gethostname ok
+getaddrinfo ok
+socket create ok
+tcp loopback ok
+socketpair ok
+udp ok
+blocking ok
+sockopts ok
+socknames ok
+errors ok
+default timeout ok
+service/proto ok
+gethostbyname ok
+connect_ex ok
+create_connection ok
+ALL OK
