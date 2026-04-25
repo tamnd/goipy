@@ -58,6 +58,7 @@ Each release ships pre-built binaries for:
 - `linux/arm64`
 - `darwin/amd64`
 - `darwin/arm64`
-- `windows/amd64`
 
 All binaries are statically linked (CGO_ENABLED=0) and built with `-ldflags="-s -w"`.
+
+Windows is not yet supported. Several stdlib modules (`socket`, `os`, `signal`, `mmap`, `shutil`) use Unix syscalls that have no Windows equivalent. Windows support is planned for a future release.

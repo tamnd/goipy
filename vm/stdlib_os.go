@@ -732,7 +732,7 @@ func (i *Interp) buildOs() *object.Module {
 		if !ok1 || !ok2 {
 			return nil, object.Errorf(i.typeErr, "os.dup2() arguments must be int")
 		}
-		if err := syscall.Dup2(int(oldfd), int(newfd)); err != nil {
+		if err := osDup2(int(oldfd), int(newfd)); err != nil {
 			return nil, object.Errorf(i.osErr, "%v", err)
 		}
 		return object.NewInt(int64(newfd)), nil
