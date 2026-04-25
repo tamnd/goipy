@@ -1,0 +1,15 @@
+basic_tags ok
+attrs ok
+boolean_attr ok
+self_closing ok
+heading_tags ok
+comment ok
+doctype ok
+pi ok
+convert_charrefs_true ok
+convert_charrefs_false ok
+incremental ok
+getpos ok
+cdata ok
+nested ok
+ALL OK
