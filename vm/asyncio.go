@@ -61,6 +61,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildUrllib(), true
 	case "urllib.parse":
 		return i.buildUrllibParse(), true
+	case "urllib.error":
+		return i.buildUrllibError(), true
+	case "urllib.request":
+		return i.buildUrllibRequest(), true
+	case "urllib.robotparser":
+		return i.buildUrllibRobotParser(), true
+	case "urllib.response":
+		return i.buildUrllib(), true
 	case "zlib":
 		return i.buildZlib(), true
 	case "binascii":

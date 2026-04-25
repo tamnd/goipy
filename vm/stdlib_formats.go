@@ -957,6 +957,96 @@ func (i *Interp) buildUrllibParse() *object.Module {
 		return out, nil
 	}})
 
+	defragCls := &object.Class{Name: "DefragResult", Dict: object.NewDict()}
+	m.Dict.SetStr("DefragResult", defragCls)
+	m.Dict.SetStr("urldefrag", &object.BuiltinFunc{Name: "urldefrag", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		s, err := stringArg(i, a, "urldefrag")
+		if err != nil {
+			return nil, err
+		}
+		u, frag, _ := strings.Cut(s, "#")
+		inst := &object.Instance{Class: defragCls, Dict: object.NewDict()}
+		inst.Dict.SetStr("url", &object.Str{V: u})
+		inst.Dict.SetStr("fragment", &object.Str{V: frag})
+		return inst, nil
+	}})
+
+	m.Dict.SetStr("quote_from_bytes", &object.BuiltinFunc{Name: "quote_from_bytes", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "quote_from_bytes() requires bytes argument")
+		}
+		b, ok := a[0].(*object.Bytes)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "quote_from_bytes() argument must be bytes")
+		}
+		safe := "/"
+		if len(a) >= 2 {
+			if ss, ok := a[1].(*object.Str); ok {
+				safe = ss.V
+			}
+		} else if kw != nil {
+			if v, ok2 := kw.GetStr("safe"); ok2 {
+				if ss, ok3 := v.(*object.Str); ok3 {
+					safe = ss.V
+				}
+			}
+		}
+		var sb strings.Builder
+		for _, c := range b.V {
+			if shouldEncode(c, safe, false) {
+				fmt.Fprintf(&sb, "%%%02X", c)
+			} else {
+				sb.WriteByte(c)
+			}
+		}
+		return &object.Str{V: sb.String()}, nil
+	}})
+
+	m.Dict.SetStr("unquote_to_bytes", &object.BuiltinFunc{Name: "unquote_to_bytes", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "unquote_to_bytes() requires argument")
+		}
+		var s string
+		switch v := a[0].(type) {
+		case *object.Str:
+			s = v.V
+		case *object.Bytes:
+			s = string(v.V)
+		default:
+			return nil, object.Errorf(i.typeErr, "unquote_to_bytes() argument must be str or bytes")
+		}
+		// percent-decode
+		var out []byte
+		for j := 0; j < len(s); {
+			if s[j] == '%' && j+2 < len(s) {
+				hi := hexDigit(s[j+1])
+				lo := hexDigit(s[j+2])
+				if hi >= 0 && lo >= 0 {
+					out = append(out, byte(hi<<4|lo))
+					j += 3
+					continue
+				}
+			}
+			out = append(out, s[j])
+			j++
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	m.Dict.SetStr("unwrap", &object.BuiltinFunc{Name: "unwrap", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		s, err := stringArg(i, a, "unwrap")
+		if err != nil {
+			return nil, err
+		}
+		s = strings.TrimSpace(s)
+		if strings.HasPrefix(s, "<") && strings.HasSuffix(s, ">") {
+			s = s[1 : len(s)-1]
+		}
+		s = strings.TrimPrefix(s, "URL:")
+		s = strings.TrimSpace(s)
+		return &object.Str{V: s}, nil
+	}})
+
 	return m
 }
 

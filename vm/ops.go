@@ -873,6 +873,10 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 				}
 				return v, nil
 			}
+			// __getattr__ fallback for exceptions with custom attribute logic.
+			if gaFn, ok := classLookup(e.Class, "__getattr__"); ok {
+				return i.callObject(gaFn, []object.Object{e, &object.Str{V: name}}, nil)
+			}
 		}
 		return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", e.Class.Name, name)
 	}

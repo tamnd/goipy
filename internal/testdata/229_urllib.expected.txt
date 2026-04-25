@@ -1,0 +1,18 @@
+urldefrag ok
+quote_from_bytes ok
+unquote_to_bytes ok
+unwrap ok
+URLError ok
+HTTPError ok
+ContentTooShortError ok
+Request class ok
+Request POST ok
+Request headers ok
+Request method ok
+build_opener ok
+install_opener ok
+urlopen data URI ok
+urlopen data URI base64 ok
+robotparser basic ok
+robotparser crawl_delay ok
+robotparser site_maps ok

@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.229 - 2026-04-26
+
+`urllib` package — urllib.parse additions plus three new sub-modules.
+
+`urllib.parse` additions: `urldefrag(url)` returns a `DefragResult` instance with `.url` and `.fragment` attributes; `quote_from_bytes(bytes, safe='/')` percent-encodes a bytes object; `unquote_to_bytes(str)` percent-decodes a string to bytes; `unwrap(url)` strips leading `<`/`>` angle brackets and `URL:` prefix.
+
+`urllib.error`: `URLError(reason)` (base: `OSError`) with `.reason`; `HTTPError(url, code, msg, hdrs, fp)` (base: `URLError`) with `.url`, `.code`, `.reason`, `.headers`, `.hdrs`, `.fp`; `ContentTooShortError(msg, content)` with `.content`. Attribute access on all three is backed by the constructor `Args` tuple via `__getattr__`; `__str__` gives human-readable representations (`<urlopen error …>` / `HTTP Error N: …`).
+
+`urllib.request`: `Request(url, data=None, headers={}, …, method=None)` with `.full_url`, `.type`, `.host`, `.selector`, `.data`, `get_method()`, `add_header`, `has_header`, `get_header`, `remove_header`, `add_unredirected_header`, `header_items` (headers stored with capitalize-key semantics via a `sync.Map`); `urlopen(url, data=None)` supports `data:` URIs (RFC 2397 — plain percent-encoded and base64 variants) and HTTP/HTTPS via Go `net/http`; returns `addinfourl` with `read(n)`, `readline`, `readlines`, `close`, `url`, `status`, `code`, `headers`, `geturl`, `info`, `getcode`, and context-manager support; `build_opener(*handlers)` → `OpenerDirector` (with `open`, `add_handler`, `error`); `install_opener(opener)`; `OpenerDirector`; full set of 19 handler class stubs (`HTTPDefaultErrorHandler`, `HTTPRedirectHandler`, `HTTPCookieProcessor`, `ProxyHandler`, `HTTPPasswordMgr`, `HTTPPasswordMgrWithDefaultRealm`, `HTTPPasswordMgrWithPriorAuth`, `HTTPBasicAuthHandler`, `ProxyBasicAuthHandler`, `HTTPDigestAuthHandler`, `ProxyDigestAuthHandler`, `HTTPHandler`, `HTTPSHandler`, `FileHandler`, `DataHandler`, `FTPHandler`, `CacheFTPHandler`, `UnknownHandler`, `HTTPErrorProcessor`); `pathname2url`, `url2pathname`, `getproxies`, `urlretrieve`, `urlcleanup`.
+
+`urllib.robotparser`: `RobotFileParser(url='')` — `set_url`, `read` (fetches via HTTP), `parse(lines)` (groups `User-agent`/`Allow`/`Disallow`/`Crawl-delay`/`Sitemap` directives), `can_fetch(agent, path)` (longest-match-wins with Allow precedence over Disallow, wildcard `*` fallback), `crawl_delay(agent)`, `request_rate(agent)`, `site_maps()`, `mtime()`, `modified()`. Internal state stored in a `sync.Map` keyed by instance pointer.
+
+VM fix: added `__getattr__` fallback support for `*object.Exception` instances in `getAttr`, mirroring the existing `*object.Instance` behaviour.
+
+18 test fixtures cover all sub-modules (fixture 229).
+
 ## v0.0.228 - 2026-04-26
 
 `wsgiref` package — all six sub-modules.
