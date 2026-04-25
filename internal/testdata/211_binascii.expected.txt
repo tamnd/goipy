@@ -1,0 +1,14 @@
+hexlify_basic ok
+hexlify_sep ok
+base64 ok
+a2b_base64_strict ok
+crc32 ok
+crc_hqx ok
+uu ok
+qp ok
+qp_header ok
+rle_hqx ok
+hqx ok
+errors ok
+error_on_bad_hex ok
+ALL OK
