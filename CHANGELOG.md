@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.223 - 2026-04-26
+
+`xml.sax.handler` deep coverage per Python 3.14.
+
+Adds the missing `version = "2.0beta"` module attribute. Fixes `all_properties` ordering to match Python exactly: `dom-node` now appears before `declaration-handler` in the list. Fixes `ErrorHandler.warning` to call `print(exception)` rather than silently do nothing, matching Python's base-class implementation.
+
+14 test fixtures verify every constant value and ordering, all five handler base classes, `EntityResolver.resolveEntity` return value, `ErrorHandler` raise/no-op semantics, and `LexicalHandler` no-op stubs (fixture 223).
+
 ## v0.0.222 - 2026-04-25
 
 Full `xml.sax` coverage per Python 3.14: the push-based SAX2 parser, all four handler base classes, saxutils helpers, and the xmlreader types.

@@ -1,0 +1,15 @@
+version ok
+feature_constants ok
+property_constants ok
+all_features_order ok
+all_properties_order ok
+content_handler_base_noop ok
+content_handler_subclass_args ok
+dtd_handler ok
+entity_resolver ok
+warn
+error_handler_warning_noop ok
+error_handler_error_raises ok
+error_handler_fatal_raises ok
+lexical_handler_noop ok
+content_handler_parse_pi ok

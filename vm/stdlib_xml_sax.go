@@ -3,6 +3,7 @@ package vm
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -659,7 +660,11 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 		}
 		return nil, object.Errorf(i.exception, "fatalError")
 	}})
-	errorHandlerCls.Dict.SetStr("warning", &object.BuiltinFunc{Name: "warning", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+	errorHandlerCls.Dict.SetStr("warning", &object.BuiltinFunc{Name: "warning", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) >= 2 {
+			ii := interp.(*Interp)
+			fmt.Fprint(ii.Stdout, object.Str_(a[1])+"\n")
+		}
 		return object.None, nil
 	}})
 	m.Dict.SetStr("ErrorHandler", errorHandlerCls)
@@ -685,14 +690,15 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 	}
 	props := []object.Object{
 		&object.Str{V: "http://xml.org/sax/properties/lexical-handler"},
-		&object.Str{V: "http://xml.org/sax/properties/declaration-handler"},
 		&object.Str{V: "http://xml.org/sax/properties/dom-node"},
+		&object.Str{V: "http://xml.org/sax/properties/declaration-handler"},
 		&object.Str{V: "http://xml.org/sax/properties/xml-string"},
 		&object.Str{V: "http://www.python.org/sax/properties/encoding"},
 		&object.Str{V: "http://www.python.org/sax/properties/interning-dict"},
 	}
 	m.Dict.SetStr("all_features", &object.List{V: features})
 	m.Dict.SetStr("all_properties", &object.List{V: props})
+	m.Dict.SetStr("version", &object.Str{V: "2.0beta"})
 
 	return m
 }
