@@ -1,0 +1,14 @@
+test_dumps_basic ok
+test_dumps_indent ok
+test_dumps_separators ok
+test_dumps_ensure_ascii ok
+test_dumps_allow_nan ok
+test_dumps_skipkeys ok
+test_dumps_default ok
+test_loads_basic ok
+test_loads_object_hook ok
+test_loads_parse_types ok
+test_json_decode_error ok
+test_json_encoder_decoder ok
+test_dump_load ok
+ALL OK
