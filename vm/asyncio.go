@@ -241,6 +241,46 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSignal(), true
 	case "mmap":
 		return i.buildMmap(), true
+	case "email":
+		return i.buildEmail(), true
+	case "email.message":
+		return i.buildEmailMessage(), true
+	case "email.mime":
+		return i.buildEmailMime(), true
+	case "email.mime.base":
+		return i.buildEmailMimeBase(), true
+	case "email.mime.nonmultipart":
+		return i.buildEmailMimeNonMultipart(), true
+	case "email.mime.multipart":
+		return i.buildEmailMimeMultipart(), true
+	case "email.mime.text":
+		return i.buildEmailMimeText(), true
+	case "email.mime.application":
+		return i.buildEmailMimeApplication(), true
+	case "email.mime.image":
+		return i.buildEmailMimeImage(), true
+	case "email.mime.audio":
+		return i.buildEmailMimeAudio(), true
+	case "email.mime.message":
+		return i.buildEmailMimeMessage(), true
+	case "email.utils":
+		return i.buildEmailUtils(), true
+	case "email.header":
+		return i.buildEmailHeader(), true
+	case "email.encoders":
+		return i.buildEmailEncoders(), true
+	case "email.errors":
+		return i.buildEmailErrors(), true
+	case "email.generator":
+		return i.buildEmailGenerator(), true
+	case "email.parser":
+		return i.buildEmailParser(), true
+	case "email.policy":
+		return i.buildEmailPolicy(), true
+	case "email.charset":
+		return i.buildEmailCharset(), true
+	case "email.headerregistry":
+		return &object.Module{Name: "email.headerregistry", Dict: object.NewDict()}, true
 	}
 	return nil, false
 }
