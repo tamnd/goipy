@@ -57,10 +57,10 @@ func (i *Interp) buildHtmlEntities() *object.Module {
 
 // htmlParserState holds the mutable state for one HTMLParser instance.
 type htmlParserState struct {
-	buf            string
-	line           int
-	col            int
-	lastStartTag   string
+	buf             string
+	line            int
+	col             int
+	lastStartTag    string
 	convertCharrefs bool
 }
 
@@ -197,10 +197,29 @@ func (i *Interp) buildHtmlParser() *object.Module {
 		return object.None, nil
 	}})
 
-	// close
-	htmlParserCls.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		// Process any buffered data. For our implementation the buffer is always
-		// flushed during feed(), so this is a no-op.
+	// close — flush remaining buffer as raw data
+	htmlParserCls.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		ii := interp.(*Interp)
+		st := getHtmlParserState(self)
+		if st == nil || st.buf == "" {
+			return object.None, nil
+		}
+		// Flush any remaining buffer as raw data.
+		remainder := st.buf
+		st.buf = ""
+		if remainder != "" {
+			convertCharrefs := st.convertCharrefs
+			if err := htmlFireText(ii, self, remainder, convertCharrefs); err != nil {
+				return nil, err
+			}
+		}
 		return object.None, nil
 	}})
 
@@ -220,12 +239,13 @@ func (i *Interp) buildHtmlParser() *object.Module {
 		ii := interp.(*Interp)
 
 		st := getHtmlParserState(self)
-		convertCharrefs := true
-		if st != nil {
-			convertCharrefs = st.convertCharrefs
+		if st == nil {
+			// Create default state if __init__ wasn't called (rare but safe)
+			st = &htmlParserState{line: 1, col: 0, convertCharrefs: true}
+			htmlParserStateMap.Store(self, st)
 		}
 
-		return object.None, htmlFeed(ii, self, data.V, convertCharrefs, st)
+		return object.None, htmlFeed(ii, self, data.V, st)
 	}})
 
 	m.Dict.SetStr("HTMLParser", htmlParserCls)
@@ -264,197 +284,309 @@ func boolObj(b bool) *object.Bool {
 	return object.False
 }
 
-// htmlFeed parses the HTML string and calls callbacks on the Python instance.
-func htmlFeed(ii *Interp, self *object.Instance, input string, convertCharrefs bool, st *htmlParserState) error {
-	pos := 0
-	n := len(input)
-
-	fireData := func(text string) error {
-		if text == "" {
-			return nil
-		}
-		if convertCharrefs {
-			text = htmlUnescape(text)
-		}
-		fn, err := ii.getAttr(self, "handle_data")
-		if err != nil {
-			return nil
-		}
-		_, err = ii.callObject(fn, []object.Object{&object.Str{V: text}}, nil)
-		return err
+// htmlCallbackStr calls a named method on self with a single string argument.
+func htmlCallbackStr(ii *Interp, self *object.Instance, method, arg string) error {
+	fn, err := ii.getAttr(self, method)
+	if err != nil {
+		return nil
 	}
+	_, err = ii.callObject(fn, []object.Object{&object.Str{V: arg}}, nil)
+	return err
+}
 
-	for pos < n {
-		// Find next '<'
-		lt := strings.IndexByte(input[pos:], '<')
-		if lt < 0 {
-			// rest is text
-			return fireData(input[pos:])
+// htmlFireText emits text data, handling convert_charrefs and entity/charref
+// callbacks as appropriate.
+func htmlFireText(ii *Interp, self *object.Instance, text string, convertCharrefs bool) error {
+	if text == "" {
+		return nil
+	}
+	if convertCharrefs {
+		// Decode references inline and emit single handle_data.
+		decoded := htmlUnescape(text)
+		return htmlCallbackStr(ii, self, "handle_data", decoded)
+	}
+	// convert_charrefs=False: scan for & references and fire entityref/charref.
+	return htmlFireTextSegments(ii, self, text)
+}
+
+// htmlFireTextSegments scans text for & references when convert_charrefs=False.
+// It fires handle_entityref, handle_charref, and handle_data as appropriate.
+func htmlFireTextSegments(ii *Interp, self *object.Instance, text string) error {
+	for len(text) > 0 {
+		amp := strings.IndexByte(text, '&')
+		if amp < 0 {
+			return htmlCallbackStr(ii, self, "handle_data", text)
 		}
-		// text before '<'
-		if lt > 0 {
-			if err := fireData(input[pos : pos+lt]); err != nil {
+		// Emit text before '&'.
+		if amp > 0 {
+			if err := htmlCallbackStr(ii, self, "handle_data", text[:amp]); err != nil {
 				return err
 			}
 		}
-		pos += lt
-		// now at '<'
+		text = text[amp+1:] // skip the '&'
 
-		rest := input[pos:]
+		// Find the ';' that terminates the reference.
+		semi := strings.IndexByte(text, ';')
+		if semi < 0 {
+			// No terminating ';' — treat '&' + rest as literal data.
+			return htmlCallbackStr(ii, self, "handle_data", "&"+text)
+		}
+		ref := text[:semi]
+		text = text[semi+1:] // skip past ';'
 
-		// Comment: <!-- ... -->
-		if strings.HasPrefix(rest, "<!--") {
-			end := strings.Index(rest[4:], "-->")
-			if end < 0 {
-				// unterminated — treat rest as text
-				if err := fireData(rest); err != nil {
-					return err
-				}
-				pos = n
-				continue
+		if ref == "" {
+			// bare '&;' — treat as data
+			if err := htmlCallbackStr(ii, self, "handle_data", "&;"); err != nil {
+				return err
 			}
-			comment := rest[4 : 4+end]
-			fn, err := ii.getAttr(self, "handle_comment")
-			if err == nil {
-				if _, err2 := ii.callObject(fn, []object.Object{&object.Str{V: comment}}, nil); err2 != nil {
-					return err2
-				}
-			}
-			pos += 4 + end + 3
 			continue
 		}
 
-		// Processing instruction: <?...?>
-		if strings.HasPrefix(rest, "<?") {
-			end := strings.Index(rest[2:], "?>")
-			if end < 0 {
-				if err := fireData(rest); err != nil {
-					return err
-				}
-				pos = n
-				continue
+		if ref[0] == '#' {
+			// Numeric character reference: &#NNN; or &#xNNN;
+			numPart := ref[1:]
+			if err := htmlCallbackStr(ii, self, "handle_charref", numPart); err != nil {
+				return err
 			}
-			piData := rest[2 : 2+end]
-			fn, err := ii.getAttr(self, "handle_pi")
-			if err == nil {
-				if _, err2 := ii.callObject(fn, []object.Object{&object.Str{V: piData}}, nil); err2 != nil {
-					return err2
-				}
+		} else {
+			// Named entity reference: &name;
+			if err := htmlCallbackStr(ii, self, "handle_entityref", ref); err != nil {
+				return err
 			}
-			pos += 2 + end + 2
-			continue
+		}
+	}
+	return nil
+}
+
+// htmlAdvancePos updates line/col tracking as we advance through scanned characters.
+func htmlAdvancePos(st *htmlParserState, s string) {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			st.line++
+			st.col = 0
+		} else {
+			st.col++
+		}
+	}
+}
+
+// htmlFeed parses the HTML string and calls callbacks on the Python instance.
+// It appends input to st.buf and processes complete tokens, leaving any
+// incomplete token in st.buf for the next feed() call.
+func htmlFeed(ii *Interp, self *object.Instance, input string, st *htmlParserState) error {
+	convertCharrefs := st.convertCharrefs
+	st.buf += input
+	s := st.buf
+
+	pos := 0
+	n := len(s)
+
+	for pos < n {
+		// Find the next '<'.
+		lt := strings.IndexByte(s[pos:], '<')
+		if lt < 0 {
+			// All remaining text — no incomplete tag possible.
+			if err := htmlFireText(ii, self, s[pos:], convertCharrefs); err != nil {
+				return err
+			}
+			htmlAdvancePos(st, s[pos:])
+			pos = n
+			break
 		}
 
-		// Declaration: <!...>  (DOCTYPE, CDATA, etc.)
-		if strings.HasPrefix(rest, "<!") && len(rest) > 2 && rest[2] != '-' {
-			end := strings.IndexByte(rest[2:], '>')
-			if end < 0 {
-				if err := fireData(rest); err != nil {
-					return err
-				}
-				pos = n
-				continue
+		// Emit text before '<'.
+		if lt > 0 {
+			chunk := s[pos : pos+lt]
+			if err := htmlFireText(ii, self, chunk, convertCharrefs); err != nil {
+				return err
 			}
-			declContent := rest[2 : 2+end]
-			var fn object.Object
-			var getErr error
-			if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(declContent)), "DOCTYPE") ||
-				strings.HasPrefix(strings.ToUpper(strings.TrimSpace(declContent)), "[") ||
-				isStandardDecl(declContent) {
-				fn, getErr = ii.getAttr(self, "handle_decl")
+			htmlAdvancePos(st, chunk)
+			pos += lt
+		}
+
+		// pos is now at '<'.
+		rest := s[pos:]
+
+		// Try to consume a complete token.
+		consumed, err := htmlTryConsumeToken(ii, self, rest, st, convertCharrefs)
+		if err != nil {
+			return err
+		}
+		if consumed < 0 {
+			// Incomplete token — stop; leave from pos onwards in buffer.
+			break
+		}
+		pos += consumed
+	}
+
+	st.buf = s[pos:]
+	return nil
+}
+
+// htmlTryConsumeToken tries to parse and handle a single HTML token starting
+// at '<' in s.  Returns the number of bytes consumed, or -1 if the token
+// is incomplete (no closing delimiter found yet).
+func htmlTryConsumeToken(ii *Interp, self *object.Instance, s string, st *htmlParserState, convertCharrefs bool) (int, error) {
+	// s[0] == '<' guaranteed by caller.
+
+	// Comment: <!-- ... -->
+	if strings.HasPrefix(s, "<!--") {
+		end := strings.Index(s[4:], "-->")
+		if end < 0 {
+			return -1, nil // incomplete
+		}
+		comment := s[4 : 4+end]
+		tokenRaw := s[:4+end+3]
+		htmlAdvancePos(st, tokenRaw)
+		if err := htmlCallbackStr(ii, self, "handle_comment", comment); err != nil {
+			return 0, err
+		}
+		return 4 + end + 3, nil
+	}
+
+	// Processing instruction: <?...?>
+	if strings.HasPrefix(s, "<?") {
+		end := strings.Index(s[2:], "?>")
+		if end < 0 {
+			return -1, nil // incomplete
+		}
+		piData := s[2 : 2+end]
+		tokenRaw := s[:2+end+2]
+		htmlAdvancePos(st, tokenRaw)
+		if err := htmlCallbackStr(ii, self, "handle_pi", piData); err != nil {
+			return 0, err
+		}
+		return 2 + end + 2, nil
+	}
+
+	// CDATA section: <![CDATA[...]]>  (or any <![...]]>)
+	if strings.HasPrefix(s, "<![") {
+		end := strings.Index(s[3:], "]]>")
+		if end < 0 {
+			return -1, nil // incomplete
+		}
+		// unknown_decl receives content between "<![" and "]]>"
+		cdataContent := s[3 : 3+end]
+		// CPython passes "CDATA[content" for <![CDATA[content]]>
+		// but more generally passes everything between "<![" and "]]>".
+		tokenRaw := s[:3+end+3]
+		htmlAdvancePos(st, tokenRaw)
+		if err := htmlCallbackStr(ii, self, "unknown_decl", cdataContent); err != nil {
+			return 0, err
+		}
+		return 3 + end + 3, nil
+	}
+
+	// Declaration: <!...>  (DOCTYPE, etc.) — but not <!--
+	if strings.HasPrefix(s, "<!") && len(s) > 2 && s[2] != '-' {
+		end := strings.IndexByte(s[2:], '>')
+		if end < 0 {
+			return -1, nil // incomplete
+		}
+		declContent := s[2 : 2+end]
+		tokenRaw := s[:2+end+1]
+		htmlAdvancePos(st, tokenRaw)
+		if isStandardDecl(declContent) {
+			if err := htmlCallbackStr(ii, self, "handle_decl", declContent); err != nil {
+				return 0, err
+			}
+		} else {
+			if err := htmlCallbackStr(ii, self, "unknown_decl", declContent); err != nil {
+				return 0, err
+			}
+		}
+		return 2 + end + 1, nil
+	}
+
+	// End tag: </tag>
+	if strings.HasPrefix(s, "</") {
+		end := strings.IndexByte(s[2:], '>')
+		if end < 0 {
+			return -1, nil // incomplete
+		}
+		tagName := strings.ToLower(strings.TrimSpace(s[2 : 2+end]))
+		tokenRaw := s[:2+end+1]
+		htmlAdvancePos(st, tokenRaw)
+		fn, err := ii.getAttr(self, "handle_endtag")
+		if err == nil {
+			if _, err2 := ii.callObject(fn, []object.Object{&object.Str{V: tagName}}, nil); err2 != nil {
+				return 0, err2
+			}
+		}
+		return 2 + end + 1, nil
+	}
+
+	// Start tag or self-closing: <tag ...> or <tag .../>
+	// Tag name must start with a letter, '_', or ':' (not digit per spec,
+	// but tags like <h1> start with 'h' which is a letter).
+	if len(s) > 1 && (isLetter(s[1]) || s[1] == '_' || s[1] == ':') {
+		tagEnd, selfClose, rawTag, tagName, attrs, ok := parseStartTag(s)
+		if !ok {
+			// Incomplete — no closing '>'.
+			return -1, nil
+		}
+		if tagEnd < 0 {
+			// Malformed — treat '<' as literal data.
+			return 1, htmlFireText(ii, self, "<", convertCharrefs)
+		}
+
+		// Update position tracking to start of this tag.
+		st.lastStartTag = rawTag
+
+		// Build attrs list: boolean attrs get None value.
+		attrsList := make([]object.Object, len(attrs))
+		for idx, av := range attrs {
+			var valObj object.Object
+			if av[1] == "\x00" {
+				// Sentinel for boolean attribute.
+				valObj = object.None
 			} else {
-				fn, getErr = ii.getAttr(self, "unknown_decl")
-			}
-			if getErr == nil {
-				if _, err2 := ii.callObject(fn, []object.Object{&object.Str{V: declContent}}, nil); err2 != nil {
-					return err2
-				}
-			}
-			pos += 2 + end + 1
-			continue
-		}
-
-		// End tag: </tag>
-		if strings.HasPrefix(rest, "</") {
-			end := strings.IndexByte(rest[2:], '>')
-			if end < 0 {
-				if err := fireData(rest); err != nil {
-					return err
-				}
-				pos = n
-				continue
-			}
-			tagName := strings.ToLower(strings.TrimSpace(rest[2 : 2+end]))
-			fn, err := ii.getAttr(self, "handle_endtag")
-			if err == nil {
-				if _, err2 := ii.callObject(fn, []object.Object{&object.Str{V: tagName}}, nil); err2 != nil {
-					return err2
-				}
-			}
-			pos += 2 + end + 1
-			continue
-		}
-
-		// Start tag or self-closing: <tag ...> or <tag .../>
-		if len(rest) > 1 && (rest[1] == '_' || rest[1] == ':' || isLetter(rest[1])) {
-			tagEnd, selfClose, rawTag, tagName, attrs := parseStartTag(rest)
-			if tagEnd < 0 {
-				// malformed — output as text
-				if err := fireData("<"); err != nil {
-					return err
-				}
-				pos++
-				continue
-			}
-			if st != nil {
-				st.lastStartTag = rawTag
-			}
-			// Build attrs list
-			attrsList := make([]object.Object, len(attrs))
-			for idx, av := range attrs {
 				attrVal := av[1]
 				if convertCharrefs {
 					attrVal = htmlUnescape(attrVal)
 				}
-				attrsList[idx] = &object.Tuple{V: []object.Object{
-					&object.Str{V: av[0]},
-					&object.Str{V: attrVal},
-				}}
+				valObj = &object.Str{V: attrVal}
 			}
-			attrsObj := &object.List{V: attrsList}
+			attrsList[idx] = &object.Tuple{V: []object.Object{
+				&object.Str{V: av[0]},
+				valObj,
+			}}
+		}
+		attrsObj := &object.List{V: attrsList}
 
-			if selfClose {
-				fn, err := ii.getAttr(self, "handle_startendtag")
-				if err == nil {
-					if _, err2 := ii.callObject(fn, []object.Object{
-						&object.Str{V: tagName},
-						attrsObj,
-					}, nil); err2 != nil {
-						return err2
-					}
-				}
-			} else {
-				fn, err := ii.getAttr(self, "handle_starttag")
-				if err == nil {
-					if _, err2 := ii.callObject(fn, []object.Object{
-						&object.Str{V: tagName},
-						attrsObj,
-					}, nil); err2 != nil {
-						return err2
-					}
+		// Update line/col to position of this tag.
+		htmlAdvancePos(st, rawTag)
+
+		if selfClose {
+			fn, err := ii.getAttr(self, "handle_startendtag")
+			if err == nil {
+				if _, err2 := ii.callObject(fn, []object.Object{
+					&object.Str{V: tagName},
+					attrsObj,
+				}, nil); err2 != nil {
+					return 0, err2
 				}
 			}
-			pos += tagEnd
-			continue
+		} else {
+			fn, err := ii.getAttr(self, "handle_starttag")
+			if err == nil {
+				if _, err2 := ii.callObject(fn, []object.Object{
+					&object.Str{V: tagName},
+					attrsObj,
+				}, nil); err2 != nil {
+					return 0, err2
+				}
+			}
 		}
-
-		// Not a recognized tag — treat '<' as literal text
-		if err := fireData("<"); err != nil {
-			return err
-		}
-		pos++
+		return tagEnd, nil
 	}
-	return nil
+
+	// Not a recognized tag start — treat '<' as literal data.
+	if err := htmlFireText(ii, self, "<", convertCharrefs); err != nil {
+		return 0, err
+	}
+	htmlAdvancePos(st, "<")
+	return 1, nil
 }
 
 // isStandardDecl returns true if a declaration content looks like DOCTYPE or similar.
@@ -473,27 +605,30 @@ func isLetter(b byte) bool {
 }
 
 // parseStartTag parses a start tag starting with '<' in s.
-// Returns (consumed, selfClose, rawTag, tagName, attrs) where consumed is -1 on failure.
-func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName string, attrs [][2]string) {
+// Returns (consumed, selfClose, rawTag, tagName, attrs, ok) where:
+//   - consumed == -1 and ok == true  → malformed (not a valid tag)
+//   - ok == false                    → incomplete (no closing '>' yet)
+//   - ok == true and consumed >= 0   → successfully parsed
+//
+// Boolean attributes are encoded with value "\x00" (NUL sentinel).
+func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName string, attrs [][2]string, ok bool) {
 	// s starts with '<'
 	if len(s) < 2 {
-		return -1, false, "", "", nil
+		return -1, false, "", "", nil, false // incomplete
 	}
-	// find the matching '>'
-	// We need to handle quoted attribute values
 	i := 1
 	n := len(s)
 
-	// tag name
+	// tag name: letters, digits, '_', '-', ':', '.'
 	for i < n && !isSpace(s[i]) && s[i] != '>' && s[i] != '/' {
 		i++
 	}
 	if i >= n {
-		return -1, false, "", "", nil
+		return -1, false, "", "", nil, false // incomplete — no '>' seen yet
 	}
 	tagName = strings.ToLower(s[1:i])
 	if tagName == "" {
-		return -1, false, "", "", nil
+		return -1, false, "", "", nil, true // malformed
 	}
 
 	// parse attributes
@@ -503,20 +638,22 @@ func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName stri
 			i++
 		}
 		if i >= n {
-			return -1, false, "", "", nil
+			return -1, false, "", "", nil, false // incomplete
 		}
 		if s[i] == '>' {
 			i++
-			end := i
-			return end, false, s[:end], tagName, attrs
+			return i, false, s[:i], tagName, attrs, true
 		}
 		if s[i] == '/' {
 			i++
-			if i < n && s[i] == '>' {
-				i++
-				return i, true, s[:i], tagName, attrs
+			if i >= n {
+				return -1, false, "", "", nil, false // incomplete
 			}
-			// lone '/' — skip
+			if s[i] == '>' {
+				i++
+				return i, true, s[:i], tagName, attrs, true
+			}
+			// lone '/' inside tag — skip
 			continue
 		}
 		// attribute name
@@ -526,7 +663,10 @@ func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName stri
 		}
 		attrName := strings.ToLower(s[attrStart:i])
 		if attrName == "" {
-			i++
+			if i >= n {
+				return -1, false, "", "", nil, false // incomplete
+			}
+			i++ // skip unknown char
 			continue
 		}
 		// skip whitespace
@@ -534,12 +674,12 @@ func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName stri
 			i++
 		}
 		if i >= n {
-			attrs = append(attrs, [2]string{attrName, ""})
-			return -1, false, "", "", nil
+			// boolean attr but tag not closed yet
+			return -1, false, "", "", nil, false
 		}
 		if s[i] != '=' {
-			// boolean attribute
-			attrs = append(attrs, [2]string{attrName, ""})
+			// boolean attribute — use NUL sentinel so caller can set None
+			attrs = append(attrs, [2]string{attrName, "\x00"})
 			continue
 		}
 		i++ // skip '='
@@ -548,33 +688,27 @@ func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName stri
 			i++
 		}
 		if i >= n {
-			attrs = append(attrs, [2]string{attrName, ""})
-			return -1, false, "", "", nil
+			return -1, false, "", "", nil, false // incomplete
 		}
 		var attrVal string
 		if s[i] == '"' {
 			i++
 			end := strings.IndexByte(s[i:], '"')
 			if end < 0 {
-				// unterminated
-				attrVal = s[i:]
-				i = n
-			} else {
-				attrVal = s[i : i+end]
-				i = i + end + 1
+				return -1, false, "", "", nil, false // incomplete — no closing quote
 			}
+			attrVal = s[i : i+end]
+			i = i + end + 1
 		} else if s[i] == '\'' {
 			i++
 			end := strings.IndexByte(s[i:], '\'')
 			if end < 0 {
-				attrVal = s[i:]
-				i = n
-			} else {
-				attrVal = s[i : i+end]
-				i = i + end + 1
+				return -1, false, "", "", nil, false // incomplete
 			}
+			attrVal = s[i : i+end]
+			i = i + end + 1
 		} else {
-			// unquoted
+			// unquoted value
 			start := i
 			for i < n && !isSpace(s[i]) && s[i] != '>' && s[i] != '/' {
 				i++
@@ -583,7 +717,8 @@ func parseStartTag(s string) (consumed int, selfClose bool, rawTag, tagName stri
 		}
 		attrs = append(attrs, [2]string{attrName, attrVal})
 	}
-	return -1, false, "", "", nil
+	// Reached end of s without finding '>'
+	return -1, false, "", "", nil, false // incomplete
 }
 
 // isSpace returns true if b is ASCII whitespace.
