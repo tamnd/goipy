@@ -1,0 +1,13 @@
+constants ok
+exceptions ok
+context creation ok
+create_default_context ok
+context options ok
+load_cert_chain ok
+default_verify_paths ok
+der/pem ok
+tls loopback ok
+ssl socket attrs ok
+get_server_certificate ok
+rand ok
+ALL OK
