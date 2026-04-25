@@ -1,0 +1,13 @@
+escape_basic ok
+escape_quote_false ok
+unescape_basic ok
+unescape_numeric ok
+unescape_html4 ok
+entities_name2codepoint ok
+entities_codepoint2name ok
+entities_html5 ok
+parser_basic ok
+parser_comment ok
+parser_doctype ok
+parser_selfclose ok
+ALL OK
