@@ -1,0 +1,14 @@
+firstchild_lastchild ok
+prev_next_sibling ok
+clone_shallow ok
+clone_deep ok
+normalize ok
+chardata_methods ok
+chardata_assignment ok
+split_text ok
+document_fragment ok
+import_node ok
+named_node_map_ns ok
+has_attribute_ns ok
+dom_implementation_create_document ok
+ALL OK
