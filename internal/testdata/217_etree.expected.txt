@@ -1,0 +1,13 @@
+comment_serialization ok
+pi_serialization ok
+qname_basic ok
+qname_uri_tag ok
+qname_no_ns ok
+qname_eq ok
+treebuilder_basic ok
+treebuilder_nested ok
+iterparse_start_end ok
+iterparse_end_only ok
+iterparse_start_only ok
+canonicalize ok
+ALL OK
