@@ -1,0 +1,18 @@
+name ok
+get no default ok
+get arg default ok
+var default ok
+set get ok
+reset ok
+token attrs ok
+copy context ok
+context run isolation ok
+context mapping ok
+context copy ok
+set context manager ok
+token context manager ok
+nested ok
+thread isolation ok
+context run return ok
+context iter ok
+ALL OK

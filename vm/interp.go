@@ -80,6 +80,10 @@ type Interp struct {
 
 	// logStates holds per-module logState for logging/logging.config sharing.
 	logStates map[string]*logState
+
+	// ctxStack is the per-goroutine context variable stack (contextvars module).
+	// Each entry is an active Context; the last element is the current context.
+	ctxStack []*cvContext
 }
 
 // New builds a fresh interpreter.
@@ -125,6 +129,16 @@ func (i *Interp) threadCopy() *Interp {
 		for k, v := range i.logStates {
 			tc.logStates[k] = v
 		}
+	}
+	// Each goroutine gets its own copy of the context stack so threads
+	// can't see each other's ContextVar mutations.
+	if len(i.ctxStack) > 0 {
+		tc.ctxStack = make([]*cvContext, len(i.ctxStack))
+		for k, ctx := range i.ctxStack {
+			tc.ctxStack[k] = ctx.clone()
+		}
+	} else {
+		tc.ctxStack = nil
 	}
 	return &tc
 }
