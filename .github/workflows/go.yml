@@ -26,7 +26,7 @@ jobs:
         run: |
           python3 -c "
           import py_compile, glob, os
-          for src in sorted(glob.glob('internal/testdata/*.py')):
+          for src in sorted(glob.glob('internal/testdata/**/*.py', recursive=True)):
               dst = src[:-3] + '.pyc'
               py_compile.compile(src, cfile=dst, doraise=True)
           "
