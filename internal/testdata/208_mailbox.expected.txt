@@ -1,0 +1,11 @@
+mbox_basic ok
+mbox_multi ok
+mbox_discard ok
+mbox_contains ok
+mbox_clear ok
+maildir_basic ok
+maildir_remove ok
+maildir_discard ok
+errors ok
+mbox_get_string_bytes ok
+ALL OK
