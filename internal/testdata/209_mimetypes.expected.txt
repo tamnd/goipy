@@ -1,0 +1,12 @@
+guess_type_basic ok
+guess_type_encoding ok
+guess_type_unknown ok
+guess_type_url ok
+guess_all_extensions ok
+guess_extension ok
+add_type ok
+init ok
+suffix_map ok
+read_mime_types ok
+mimetypes_class ok
+ALL OK
