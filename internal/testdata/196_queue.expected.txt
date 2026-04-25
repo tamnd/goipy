@@ -1,0 +1,17 @@
+queue fifo ok
+lifoqueue ok
+priorityqueue ok
+qsize empty full ok
+nowait ok
+block false ok
+timeout ok
+task_done join ok
+task_done over ok
+simple queue ok
+simple queue nowait ok
+shutdown ok
+shutdown immediate ok
+exception hierarchy ok
+threaded ok
+unlimited ok
+ALL OK
