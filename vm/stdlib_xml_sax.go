@@ -705,86 +705,142 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 
 // ── xml.sax.saxutils ─────────────────────────────────────────────────────────
 
+// saxutilsApplyEntities applies string replacements from a Python dict.
+func saxutilsApplyEntities(s string, d *object.Dict) string {
+	if d == nil {
+		return s
+	}
+	ks, vs := d.Items()
+	for idx, k := range ks {
+		if ks2, ok := k.(*object.Str); ok {
+			if vs2, ok := vs[idx].(*object.Str); ok {
+				s = strings.ReplaceAll(s, ks2.V, vs2.V)
+			}
+		}
+	}
+	return s
+}
+
+// saxutilsEscape matches Python's xml.sax.saxutils.escape order: & > < then entities.
+func saxutilsEscape(s string, entities *object.Dict) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	return saxutilsApplyEntities(s, entities)
+}
+
+// saxutilsQuoteattrStr quotes an already-escaped string as an XML attribute value.
+func saxutilsQuoteattrStr(s string) string {
+	hasDouble := strings.ContainsRune(s, '"')
+	hasSingle := strings.ContainsRune(s, '\'')
+	if hasDouble {
+		if hasSingle {
+			return `"` + strings.ReplaceAll(s, `"`, "&quot;") + `"`
+		}
+		return "'" + s + "'"
+	}
+	return `"` + s + `"`
+}
+
 func (i *Interp) buildXmlSaxUtils() *object.Module {
 	m := &object.Module{Name: "xml.sax.saxutils", Dict: object.NewDict()}
 
 	// escape(data, entities={})
-	m.Dict.SetStr("escape", &object.BuiltinFunc{Name: "escape", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	m.Dict.SetStr("escape", &object.BuiltinFunc{Name: "escape", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
-		s := ""
-		if sv, ok := a[0].(*object.Str); ok {
-			s = sv.V
+		s, _ := a[0].(*object.Str)
+		if s == nil {
+			return &object.Str{V: ""}, nil
 		}
-		s = strings.ReplaceAll(s, "&", "&amp;")
-		s = strings.ReplaceAll(s, "<", "&lt;")
-		s = strings.ReplaceAll(s, ">", "&gt;")
-		// extra entities
+		var ents *object.Dict
 		if len(a) >= 2 {
-			if d, ok := a[1].(*object.Dict); ok {
-				ks, vs := d.Items()
-				for idx2, k := range ks {
-					if ks2, ok2 := k.(*object.Str); ok2 {
-						if vs2, ok3 := vs[idx2].(*object.Str); ok3 {
-							s = strings.ReplaceAll(s, ks2.V, vs2.V)
-						}
-					}
-				}
-			}
+			ents, _ = a[1].(*object.Dict)
 		}
-		return &object.Str{V: s}, nil
+		return &object.Str{V: saxutilsEscape(s.V, ents)}, nil
 	}})
 
 	// unescape(data, entities={})
-	m.Dict.SetStr("unescape", &object.BuiltinFunc{Name: "unescape", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	// Order: &lt;→< , &gt;→> , custom entities, &amp;→& (last)
+	m.Dict.SetStr("unescape", &object.BuiltinFunc{Name: "unescape", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
-		s := ""
-		if sv, ok := a[0].(*object.Str); ok {
-			s = sv.V
+		sv, _ := a[0].(*object.Str)
+		if sv == nil {
+			return &object.Str{V: ""}, nil
 		}
-		// extra entities first (before standard ones)
+		s := sv.V
+		s = strings.ReplaceAll(s, "&lt;", "<")
+		s = strings.ReplaceAll(s, "&gt;", ">")
 		if len(a) >= 2 {
 			if d, ok := a[1].(*object.Dict); ok {
-				ks, vs := d.Items()
-				for idx2, k := range ks {
-					if ks2, ok2 := k.(*object.Str); ok2 {
-						if vs2, ok3 := vs[idx2].(*object.Str); ok3 {
-							s = strings.ReplaceAll(s, ks2.V, vs2.V)
-						}
-					}
-				}
+				s = saxutilsApplyEntities(s, d)
 			}
 		}
 		s = strings.ReplaceAll(s, "&amp;", "&")
-		s = strings.ReplaceAll(s, "&lt;", "<")
-		s = strings.ReplaceAll(s, "&gt;", ">")
 		return &object.Str{V: s}, nil
 	}})
 
 	// quoteattr(data, entities={})
-	m.Dict.SetStr("quoteattr", &object.BuiltinFunc{Name: "quoteattr", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+	// Escapes &, >, <, \n→&#10;, \r→&#13;, \t→&#9; then quotes.
+	m.Dict.SetStr("quoteattr", &object.BuiltinFunc{Name: "quoteattr", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: `""`}, nil
 		}
-		s := ""
-		if sv, ok := a[0].(*object.Str); ok {
-			s = sv.V
+		sv, _ := a[0].(*object.Str)
+		if sv == nil {
+			return &object.Str{V: `""`}, nil
 		}
-		s = strings.ReplaceAll(s, "&", "&amp;")
-		s = strings.ReplaceAll(s, "<", "&lt;")
-		s = strings.ReplaceAll(s, ">", "&gt;")
-		if strings.ContainsRune(s, '"') && !strings.ContainsRune(s, '\'') {
-			return &object.Str{V: "'" + s + "'"}, nil
+		var userEnts *object.Dict
+		if len(a) >= 2 {
+			userEnts, _ = a[1].(*object.Dict)
 		}
-		s = strings.ReplaceAll(s, "\"", "&quot;")
-		return &object.Str{V: "\"" + s + "\""}, nil
+		// Build merged entity map: user + whitespace specials
+		wsEnts := object.NewDict()
+		wsEnts.SetStr("\n", &object.Str{V: "&#10;"})
+		wsEnts.SetStr("\r", &object.Str{V: "&#13;"})
+		wsEnts.SetStr("\t", &object.Str{V: "&#9;"})
+		if userEnts != nil {
+			ks, vs := userEnts.Items()
+			for idx, k := range ks {
+				wsEnts.Set(k, vs[idx])
+			}
+		}
+		s := saxutilsEscape(sv.V, wsEnts)
+		return &object.Str{V: saxutilsQuoteattrStr(s)}, nil
 	}})
 
-	// XMLGenerator class (ContentHandler subclass that writes XML)
+	// ── XMLGenerator ────────────────────────────────────────────────────────
+
 	xmlGenCls := &object.Class{Name: "XMLGenerator", Dict: object.NewDict()}
+
+	// helpers that operate on an XMLGenerator instance
+	xmlGenGetOut := func(self *object.Instance) object.Object {
+		if v, ok := self.Dict.GetStr("_out"); ok {
+			return v
+		}
+		return object.None
+	}
+	xmlGenShortEmpty := func(self *object.Instance) bool {
+		if v, ok := self.Dict.GetStr("_short_empty_elements"); ok {
+			return object.Truthy(v)
+		}
+		return false
+	}
+	xmlGenPending := func(self *object.Instance) bool {
+		if v, ok := self.Dict.GetStr("_pending_start_element"); ok {
+			return object.Truthy(v)
+		}
+		return false
+	}
+	xmlGenFlushPending := func(ii *Interp, self *object.Instance) {
+		if xmlGenPending(self) {
+			saxGenWrite(ii, xmlGenGetOut(self), ">")
+			self.Dict.SetStr("_pending_start_element", object.False)
+		}
+	}
 
 	xmlGenCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
@@ -821,6 +877,7 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		self.Dict.SetStr("_out", out)
 		self.Dict.SetStr("_encoding", &object.Str{V: encoding})
 		self.Dict.SetStr("_short_empty_elements", object.BoolOf(shortEmpty))
+		self.Dict.SetStr("_pending_start_element", object.False)
 		return object.None, nil
 	}})
 
@@ -829,19 +886,29 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 			return object.None, nil
 		}
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
 		enc := "iso-8859-1"
 		if v, ok := self.Dict.GetStr("_encoding"); ok {
 			if s, ok := v.(*object.Str); ok {
 				enc = s.V
 			}
 		}
-		content := `<?xml version="1.0" encoding="` + enc + `"?>` + "\n"
-		saxGenWrite(interp.(*Interp), out, content)
+		saxGenWrite(interp.(*Interp), xmlGenGetOut(self), `<?xml version="1.0" encoding="`+enc+`"?>`+"\n")
 		return object.None, nil
 	}})
 
-	xmlGenCls.Dict.SetStr("endDocument", &object.BuiltinFunc{Name: "endDocument", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+	xmlGenCls.Dict.SetStr("endDocument", &object.BuiltinFunc{Name: "endDocument", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		out := xmlGenGetOut(self)
+		if out == nil || out == object.None {
+			return object.None, nil
+		}
+		fn, err := interp.(*Interp).getAttr(out, "flush")
+		if err == nil {
+			interp.(*Interp).callObject(fn, []object.Object{out}, nil)
+		}
 		return object.None, nil
 	}})
 
@@ -849,8 +916,9 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		if len(a) < 3 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
+		xmlGenFlushPending(ii, self)
 		name := ""
 		if s, ok := a[1].(*object.Str); ok {
 			name = s.V
@@ -858,32 +926,36 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		var buf strings.Builder
 		buf.WriteByte('<')
 		buf.WriteString(name)
-		// attrs
+		writeAttrs := func(k, v string) {
+			buf.WriteByte(' ')
+			buf.WriteString(k)
+			buf.WriteByte('=')
+			buf.WriteString(saxutilsQuoteattrStr(saxutilsEscape(v, nil)))
+		}
 		if attrsInst, ok := a[2].(*object.Instance); ok {
 			m2 := saxAttrsStateMap.Load(attrsInst)
 			for k, v := range m2 {
-				buf.WriteByte(' ')
-				buf.WriteString(k)
-				buf.WriteString(`="`)
-				buf.WriteString(xmlEscapeAttr(v))
-				buf.WriteByte('"')
+				writeAttrs(k, v)
 			}
 		} else if d, ok := a[2].(*object.Dict); ok {
 			ks, vs := d.Items()
 			for idx2, k := range ks {
 				if ks2, ok2 := k.(*object.Str); ok2 {
-					buf.WriteByte(' ')
-					buf.WriteString(ks2.V)
-					buf.WriteString(`="`)
+					v := ""
 					if vs2, ok3 := vs[idx2].(*object.Str); ok3 {
-						buf.WriteString(xmlEscapeAttr(vs2.V))
+						v = vs2.V
 					}
-					buf.WriteByte('"')
+					writeAttrs(ks2.V, v)
 				}
 			}
 		}
-		buf.WriteByte('>')
-		saxGenWrite(interp.(*Interp), out, buf.String())
+		if xmlGenShortEmpty(self) {
+			self.Dict.SetStr("_pending_start_element", object.True)
+			saxGenWrite(ii, xmlGenGetOut(self), buf.String())
+		} else {
+			buf.WriteByte('>')
+			saxGenWrite(ii, xmlGenGetOut(self), buf.String())
+		}
 		return object.None, nil
 	}})
 
@@ -891,13 +963,18 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		if len(a) < 2 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
 		name := ""
 		if s, ok := a[1].(*object.Str); ok {
 			name = s.V
 		}
-		saxGenWrite(interp.(*Interp), out, "</"+name+">")
+		if xmlGenPending(self) {
+			saxGenWrite(ii, xmlGenGetOut(self), "/>")
+			self.Dict.SetStr("_pending_start_element", object.False)
+		} else {
+			saxGenWrite(ii, xmlGenGetOut(self), "</"+name+">")
+		}
 		return object.None, nil
 	}})
 
@@ -905,13 +982,17 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		if len(a) < 2 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
 		content := ""
 		if s, ok := a[1].(*object.Str); ok {
 			content = s.V
 		}
-		saxGenWrite(interp.(*Interp), out, xmlEscapeText(content))
+		if content == "" {
+			return object.None, nil
+		}
+		xmlGenFlushPending(ii, self)
+		saxGenWrite(ii, xmlGenGetOut(self), xmlEscapeText(content))
 		return object.None, nil
 	}})
 
@@ -919,13 +1000,17 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		if len(a) < 2 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
 		content := ""
 		if s, ok := a[1].(*object.Str); ok {
 			content = s.V
 		}
-		saxGenWrite(interp.(*Interp), out, content)
+		if content == "" {
+			return object.None, nil
+		}
+		xmlGenFlushPending(ii, self)
+		saxGenWrite(ii, xmlGenGetOut(self), content)
 		return object.None, nil
 	}})
 
@@ -933,17 +1018,17 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		if len(a) < 3 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		self := a[0].(*object.Instance)
-		out, _ := self.Dict.GetStr("_out")
-		target := ""
-		data := ""
+		xmlGenFlushPending(ii, self)
+		target, data2 := "", ""
 		if s, ok := a[1].(*object.Str); ok {
 			target = s.V
 		}
 		if s, ok := a[2].(*object.Str); ok {
-			data = s.V
+			data2 = s.V
 		}
-		saxGenWrite(interp.(*Interp), out, "<?"+target+" "+data+"?>")
+		saxGenWrite(ii, xmlGenGetOut(self), "<?"+target+" "+data2+"?>")
 		return object.None, nil
 	}})
 
@@ -953,31 +1038,125 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		}
 		return object.None, nil
 	}})
-	xmlGenCls.Dict.SetStr("startPrefixMapping", &object.BuiltinFunc{Name: "startPrefixMapping", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.None, nil
-	}})
-	xmlGenCls.Dict.SetStr("endPrefixMapping", &object.BuiltinFunc{Name: "endPrefixMapping", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.None, nil
-	}})
-	// startElementNS / endElementNS stubs
-	xmlGenCls.Dict.SetStr("startElementNS", &object.BuiltinFunc{Name: "startElementNS", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.None, nil
-	}})
-	xmlGenCls.Dict.SetStr("endElementNS", &object.BuiltinFunc{Name: "endElementNS", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.None, nil
-	}})
+	for _, n := range []string{"startPrefixMapping", "endPrefixMapping", "startElementNS", "endElementNS", "skippedEntity"} {
+		nm := n
+		xmlGenCls.Dict.SetStr(nm, &object.BuiltinFunc{Name: nm, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		}})
+	}
 
 	m.Dict.SetStr("XMLGenerator", xmlGenCls)
 
-	// XMLFilterBase stub
+	// ── XMLFilterBase ────────────────────────────────────────────────────────
+
 	xmlFilterCls := &object.Class{Name: "XMLFilterBase", Dict: object.NewDict()}
-	xmlFilterCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+
+	xmlFilterCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		if len(a) >= 2 {
+			self.Dict.SetStr("_parent", a[1])
+		} else {
+			self.Dict.SetStr("_parent", object.None)
+		}
+		self.Dict.SetStr("_cont_handler", object.None)
+		self.Dict.SetStr("_err_handler", object.None)
+		self.Dict.SetStr("_dtd_handler", object.None)
+		self.Dict.SetStr("_ent_handler", object.None)
+		return object.None, nil
+	}})
+
+	xmlFilterCls.Dict.SetStr("getParent", &object.BuiltinFunc{Name: "getParent", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		if v, ok := a[0].(*object.Instance).Dict.GetStr("_parent"); ok {
+			return v, nil
+		}
+		return object.None, nil
+	}})
+	xmlFilterCls.Dict.SetStr("setParent", &object.BuiltinFunc{Name: "setParent", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) >= 2 {
 			a[0].(*object.Instance).Dict.SetStr("_parent", a[1])
 		}
 		return object.None, nil
 	}})
+
+	// Handler get/set pairs
+	for _, pair := range [][2]string{
+		{"setContentHandler", "_cont_handler"}, {"getContentHandler", "_cont_handler"},
+		{"setErrorHandler", "_err_handler"}, {"getErrorHandler", "_err_handler"},
+		{"setDTDHandler", "_dtd_handler"}, {"getDTDHandler", "_dtd_handler"},
+		{"setEntityResolver", "_ent_handler"}, {"getEntityResolver", "_ent_handler"},
+	} {
+		method, attr := pair[0], pair[1]
+		m2, a2 := method, attr
+		if strings.HasPrefix(m2, "set") {
+			xmlFilterCls.Dict.SetStr(m2, &object.BuiltinFunc{Name: m2, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				if len(a) >= 2 {
+					a[0].(*object.Instance).Dict.SetStr(a2, a[1])
+				}
+				return object.None, nil
+			}})
+		} else {
+			xmlFilterCls.Dict.SetStr(m2, &object.BuiltinFunc{Name: m2, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				if len(a) < 1 {
+					return object.None, nil
+				}
+				if v, ok := a[0].(*object.Instance).Dict.GetStr(a2); ok {
+					return v, nil
+				}
+				return object.None, nil
+			}})
+		}
+	}
+
+	// XMLReader delegation to _parent
+	for _, n := range []string{"getFeature", "setFeature", "getProperty", "setProperty"} {
+		nm := n
+		xmlFilterCls.Dict.SetStr(nm, &object.BuiltinFunc{Name: nm, Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return object.None, nil
+			}
+			self := a[0].(*object.Instance)
+			parent, ok := self.Dict.GetStr("_parent")
+			if !ok || parent == object.None {
+				return object.None, nil
+			}
+			ii := interp.(*Interp)
+			fn, err := ii.getAttr(parent, nm)
+			if err != nil {
+				return object.None, nil
+			}
+			return ii.callObject(fn, a[1:], nil)
+		}})
+	}
+
 	m.Dict.SetStr("XMLFilterBase", xmlFilterCls)
+
+	// prepare_input_source(source, base="")
+	m.Dict.SetStr("prepare_input_source", &object.BuiltinFunc{Name: "prepare_input_source", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inputSourceCls := &object.Class{Name: "InputSource", Dict: object.NewDict()}
+		src := a[0]
+		switch v := src.(type) {
+		case *object.Str:
+			inst := &object.Instance{Class: inputSourceCls, Dict: object.NewDict()}
+			inst.Dict.SetStr("_system_id", v)
+			inst.Dict.SetStr("_public_id", object.None)
+			inst.Dict.SetStr("_byte_stream", object.None)
+			inst.Dict.SetStr("_char_stream", object.None)
+			inst.Dict.SetStr("_encoding", object.None)
+			return inst, nil
+		case *object.Instance:
+			return v, nil
+		}
+		return object.None, nil
+	}})
 
 	return m
 }

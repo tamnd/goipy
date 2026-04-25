@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.224 - 2026-04-26
+
+`xml.sax.saxutils` deep coverage per Python 3.14.
+
+Fixes `escape` to process `&` → `>` → `<` in the correct order (ampersand first, matching CPython exactly). Fixes `unescape` ordering: `&lt;`/`&gt;` decoded first, custom entities next, `&amp;` last — so `&amp;lt;` correctly becomes `&lt;` rather than `<`. Adds whitespace escaping to `quoteattr` (`\n` → `&#10;`, `\r` → `&#13;`, `\t` → `&#9;`). Rewrites `XMLGenerator` with proper `short_empty_elements` support (`_pending_start_element` flag for `<br/>` collapse), correct attribute quoting via `quoteattr`-style (single-quote wrap when value contains `"`), truthy guard on `characters`/`ignorableWhitespace`, and `flush()` in `endDocument`. Rewrites `XMLFilterBase` with `_parent`, all four handler get/set pairs, and full delegation from `ContentHandler`/`ErrorHandler`/`DTDHandler`/`EntityResolver`. Adds `prepare_input_source` (str → `InputSource`, bytes → `BytesIO`-backed, `InputSource` pass-through).
+
+21 test fixtures cover every function and edge case listed above (fixture 224).
+
 ## v0.0.223 - 2026-04-26
 
 `xml.sax.handler` deep coverage per Python 3.14.
