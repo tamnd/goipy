@@ -281,6 +281,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildEmailCharset(), true
 	case "email.headerregistry":
 		return &object.Module{Name: "email.headerregistry", Dict: object.NewDict()}, true
+	case "mailbox":
+		return i.buildMailbox(), true
 	}
 	return nil, false
 }
