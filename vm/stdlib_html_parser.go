@@ -12,30 +12,19 @@ import (
 func (i *Interp) buildHtmlEntities() *object.Module {
 	m := &object.Module{Name: "html.entities", Dict: object.NewDict()}
 
-	// name2codepoint: dict mapping entity name (without &;) to codepoint int
+	// name2codepoint: 252 HTML4 named entities (name → codepoint int)
 	n2cp := object.NewDict()
-	for name, val := range htmlEntities {
-		if len([]rune(val)) == 1 {
-			cp := int64([]rune(val)[0])
-			n2cp.SetStr(name, object.IntFromInt64(cp))
-		}
+	for name, cp := range htmlEntitiesN2CP {
+		n2cp.SetStr(name, object.IntFromInt64(int64(cp)))
 	}
 	m.Dict.SetStr("name2codepoint", n2cp)
 
-	// codepoint2name: reverse mapping — for duplicates, last writer wins, then
-	// we override with known-canonical names.
+	// codepoint2name: reverse of name2codepoint (codepoint int → name)
 	cp2n := object.NewDict()
-	// Use Items() to iterate all entries in n2cp.
-	n2cpKeys, n2cpVals := n2cp.Items()
-	for idx, k := range n2cpKeys {
-		ks, ok := k.(*object.Str)
-		if !ok {
-			continue
-		}
-		_ = ks
-		cp2n.Set(n2cpVals[idx], &object.Str{V: ks.V})
+	for name, cp := range htmlEntitiesN2CP {
+		cp2n.Set(object.IntFromInt64(int64(cp)), &object.Str{V: name})
 	}
-	// Override known conflicts with canonical CPython names
+	// Override known conflicts with canonical CPython names.
 	overrides := map[int64]string{
 		38: "amp", 60: "lt", 62: "gt", 34: "quot",
 	}
@@ -44,11 +33,10 @@ func (i *Interp) buildHtmlEntities() *object.Module {
 	}
 	m.Dict.SetStr("codepoint2name", cp2n)
 
-	// html5: dict with semicolon-terminated keys → unicode string
-	// We use our htmlEntities table (all HTML4 entries) with ";" suffix.
+	// html5: full W3C HTML5 named character references (2231 entries).
 	h5 := object.NewDict()
-	for name, val := range htmlEntities {
-		h5.SetStr(name+";", &object.Str{V: val})
+	for name, val := range htmlEntitiesHTML5 {
+		h5.SetStr(name, &object.Str{V: val})
 	}
 	m.Dict.SetStr("html5", h5)
 

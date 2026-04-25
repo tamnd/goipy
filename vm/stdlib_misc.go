@@ -1232,8 +1232,14 @@ func htmlUnescape(s string) string {
 				i = end + 1
 				continue
 			}
-		} else if v, ok := htmlEntities[body]; ok {
-			b.WriteString(v)
+		} else if cp, ok := htmlEntitiesN2CP[body]; ok {
+			b.WriteRune(rune(cp))
+			i = end + 1
+			continue
+		} else if val, ok := htmlEntitiesHTML5[body+";"]; ok {
+			// Fall back to html5 table for entities not in HTML4 name2codepoint
+			// (e.g. &apos; which is HTML5-only).
+			b.WriteString(val)
 			i = end + 1
 			continue
 		}
