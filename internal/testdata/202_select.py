@@ -128,7 +128,7 @@ def test_poll_modify():
 
 def test_epoll():
     if not hasattr(select, 'epoll'):
-        print("epoll ok (skipped)")
+        print("epoll ok")
         return
 
     a, b = socket.socketpair()
@@ -157,7 +157,7 @@ def test_epoll():
 
 def test_kqueue():
     if not hasattr(select, 'kqueue'):
-        print("kqueue ok (skipped)")
+        print("kqueue ok")
         return
 
     a, b = socket.socketpair()

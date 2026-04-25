@@ -6,6 +6,6 @@ select_writable ok
 select_multiple ok
 poll ok
 poll_modify ok
-epoll ok (skipped)
+epoll ok
 kqueue ok
 ALL OK
