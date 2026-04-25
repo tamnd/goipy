@@ -1,0 +1,9 @@
+encodestring_basic ok
+encodestring_special ok
+encodestring_quotetabs ok
+encodestring_header ok
+decodestring_basic ok
+decodestring_softbreak ok
+decodestring_header ok
+roundtrip ok
+ALL OK
