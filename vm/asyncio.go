@@ -291,6 +291,30 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildMimetypes(), true
 	case "quopri":
 		return i.buildQuopri(), true
+	case "xml":
+		return i.buildXml(), true
+	case "xml.etree":
+		return i.buildXmlEtree(), true
+	case "xml.etree.ElementTree":
+		return i.buildXmlElementTree(), true
+	case "xml.sax":
+		return i.buildXmlSax(), true
+	case "xml.sax.handler":
+		return i.buildXmlSaxHandler(), true
+	case "xml.sax.saxutils":
+		return i.buildXmlSaxUtils(), true
+	case "xml.sax.xmlreader":
+		return i.buildXmlSaxXmlReader(), true
+	case "xml.dom":
+		return i.buildXmlDom(), true
+	case "xml.dom.minidom":
+		return i.buildXmlDomMinidom(), true
+	case "xml.dom.pulldom":
+		return i.buildXmlDomPulldom(), true
+	case "xml.parsers":
+		return i.buildXmlParsers(), true
+	case "xml.parsers.expat":
+		return i.buildXmlParsersExpat(), true
 	}
 	return nil, false
 }

@@ -1,0 +1,17 @@
+et_fromstring ok
+et_children ok
+et_find ok
+et_iter ok
+et_tostring ok
+et_modify ok
+et_attribs ok
+et_indent ok
+sax_parse ok
+sax_attributes ok
+saxutils_escape ok
+dom_constants ok
+minidom_parse ok
+minidom_create ok
+pulldom ok
+expat ok
+ALL OK
