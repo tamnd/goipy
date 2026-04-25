@@ -1,0 +1,12 @@
+constants ok
+anonymous ok
+file_basic ok
+seek_modes ok
+slicing ok
+find_rfind ok
+readline ok
+flush ok
+madvise ok
+access_read ok
+context_manager ok
+ALL OK
