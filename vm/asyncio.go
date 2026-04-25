@@ -315,6 +315,24 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildXmlParsers(), true
 	case "xml.parsers.expat":
 		return i.buildXmlParsersExpat(), true
+	case "pyexpat":
+		return i.buildPyexpat(), true
+	case "pyexpat.errors":
+		m, _ := i.loadModule("pyexpat")
+		if sub, ok := m.Dict.GetStr("errors"); ok {
+			if sm, ok2 := sub.(*object.Module); ok2 {
+				return sm, true
+			}
+		}
+		return nil, false
+	case "pyexpat.model":
+		m, _ := i.loadModule("pyexpat")
+		if sub, ok := m.Dict.GetStr("model"); ok {
+			if sm, ok2 := sub.(*object.Module); ok2 {
+				return sm, true
+			}
+		}
+		return nil, false
 	}
 	return nil, false
 }
