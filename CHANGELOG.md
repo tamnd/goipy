@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.225 - 2026-04-26
+
+`xml.sax.xmlreader` deep coverage per Python 3.14.
+
+Rewrites `XMLReader` with a proper `__init__` that initialises four default handler slots (`_cont_handler`, `_dtd_handler`, `_ent_handler`, `_err_handler`) from `xml.sax.handler`, adds `getDTDHandler`/`setDTDHandler`/`getEntityResolver`/`setEntityResolver`, and makes `setLocale` raise `SAXNotSupportedException` and `getFeature`/`setFeature`/`getProperty`/`setProperty` raise `SAXNotRecognizedException` with the feature/property name in the message. Rewrites `IncrementalParser` with `__init__(bufsize=65536)`, abstract `feed`/`close`/`reset`/`prepareParser` methods (raise `NotImplementedError`), and a concrete `parse(source)` that reads from the source's byte/char stream in `_bufsize`-sized chunks. Adds `values()` and `get(name, alternative=None)` to `AttributesImpl`, and fixes `getQNameByName`/`getNameByQName` to raise `KeyError` when the name is missing. Fully implements `AttributesNSImpl(attrs, qnames)` with NS tuple keys: all access/lookup methods, `getValueByQName`/`getNameByQName`/`getQNameByName` via reverse scan, and `copy()` returning a new `AttributesNSImpl`.
+
+21 test fixtures cover all of the above (fixture 225).
+
 ## v0.0.224 - 2026-04-26
 
 `xml.sax.saxutils` deep coverage per Python 3.14.

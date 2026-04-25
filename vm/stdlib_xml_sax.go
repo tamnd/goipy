@@ -495,14 +495,36 @@ func (i *Interp) buildSaxAttrsClass() *object.Class {
 		if len(a) < 2 {
 			return object.None, nil
 		}
-		return a[1], nil
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		key := ""
+		if s, ok := a[1].(*object.Str); ok {
+			key = s.V
+		}
+		if m2 != nil {
+			if _, ok := m2[key]; ok {
+				return a[1], nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "%q", key)
 	}})
 
 	cls.Dict.SetStr("getNameByQName", &object.BuiltinFunc{Name: "getNameByQName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 2 {
 			return object.None, nil
 		}
-		return a[1], nil
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		key := ""
+		if s, ok := a[1].(*object.Str); ok {
+			key = s.V
+		}
+		if m2 != nil {
+			if _, ok := m2[key]; ok {
+				return a[1], nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "%q", key)
 	}})
 
 	cls.Dict.SetStr("getValueByQName", &object.BuiltinFunc{Name: "getValueByQName", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -577,6 +599,43 @@ func (i *Interp) buildSaxAttrsClass() *object.Class {
 			idx++
 			return v, true, nil
 		}}, nil
+	}})
+
+	cls.Dict.SetStr("values", &object.BuiltinFunc{Name: "values", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.List{V: nil}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, 0, len(m2))
+		for _, v := range m2 {
+			items = append(items, &object.Str{V: v})
+		}
+		return &object.List{V: items}, nil
+	}})
+
+	cls.Dict.SetStr("get", &object.BuiltinFunc{Name: "get", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		key := ""
+		if s, ok := a[1].(*object.Str); ok {
+			key = s.V
+		}
+		if m2 != nil {
+			if v, ok := m2[key]; ok {
+				return &object.Str{V: v}, nil
+			}
+		}
+		if len(a) >= 3 {
+			return a[2], nil
+		}
+		return object.None, nil
 	}})
 
 	return cls
@@ -1172,32 +1231,277 @@ func saxGenWrite(ii *Interp, out object.Object, content string) {
 	ii.callObject(fn, []object.Object{&object.Str{V: content}}, nil)
 }
 
+// saxNSAttrsState holds NS-aware attribute data for AttributesNSImpl instances.
+type saxNSAttrsState struct {
+	attrKeys  [][2]string // (ns_uri, local_name) pairs
+	attrVals  []string    // attribute values parallel to attrKeys
+	qnameKeys [][2]string // (ns_uri, local_name) pairs for qnames
+	qnameVals []string    // qname strings parallel to qnameKeys
+}
+
+var saxNSAttrsStateMap sync.Map
+
 // ── xml.sax.xmlreader ────────────────────────────────────────────────────────
 
 func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 	m := &object.Module{Name: "xml.sax.xmlreader", Dict: object.NewDict()}
 
+	// SAX exceptions are also exported from xmlreader
+	saxExcCls := &object.Class{Name: "SAXException", Dict: object.NewDict(), Bases: []*object.Class{i.exception}}
+	saxNotRecCls := &object.Class{Name: "SAXNotRecognizedException", Dict: object.NewDict(), Bases: []*object.Class{saxExcCls}}
+	saxNotSupCls := &object.Class{Name: "SAXNotSupportedException", Dict: object.NewDict(), Bases: []*object.Class{saxExcCls}}
+	m.Dict.SetStr("SAXNotRecognizedException", saxNotRecCls)
+	m.Dict.SetStr("SAXNotSupportedException", saxNotSupCls)
+
+	// xmlReaderHandlerInit initialises the four default handler slots on self.
+	xmlReaderHandlerInit := func(interp any, self *object.Instance) {
+		ii := interp.(*Interp)
+		makeInst := func(clsName string) object.Object {
+			hm, err := ii.loadModule("xml.sax.handler")
+			if err != nil {
+				return object.None
+			}
+			cv, ok := hm.Dict.GetStr(clsName)
+			if !ok {
+				return object.None
+			}
+			cls, ok := cv.(*object.Class)
+			if !ok {
+				return object.None
+			}
+			return &object.Instance{Class: cls, Dict: object.NewDict()}
+		}
+		self.Dict.SetStr("_cont_handler", makeInst("ContentHandler"))
+		self.Dict.SetStr("_dtd_handler", makeInst("DTDHandler"))
+		self.Dict.SetStr("_ent_handler", makeInst("EntityResolver"))
+		self.Dict.SetStr("_err_handler", makeInst("ErrorHandler"))
+	}
+
+	// Handler get/set helper for XMLReader instance dict.
+	xmlReaderHandlerGet := func(key string) *object.BuiltinFunc {
+		return &object.BuiltinFunc{Name: "get" + key[1:], Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return object.None, nil
+			}
+			if self, ok := a[0].(*object.Instance); ok {
+				if v, ok2 := self.Dict.GetStr(key); ok2 {
+					return v, nil
+				}
+			}
+			return object.None, nil
+		}}
+	}
+	xmlReaderHandlerSet := func(key string) *object.BuiltinFunc {
+		return &object.BuiltinFunc{Name: "set" + key[1:], Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) >= 2 {
+				if self, ok := a[0].(*object.Instance); ok {
+					self.Dict.SetStr(key, a[1])
+				}
+			}
+			return object.None, nil
+		}}
+	}
+
 	// XMLReader
 	xmlReaderCls := &object.Class{Name: "XMLReader", Dict: object.NewDict()}
-	for _, name := range []string{
-		"parse", "getContentHandler", "setContentHandler",
-		"getErrorHandler", "setErrorHandler",
-		"getFeature", "setFeature",
-		"getProperty", "setProperty",
-	} {
-		n := name
-		xmlReaderCls.Dict.SetStr(n, &object.BuiltinFunc{Name: n, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	xmlReaderCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
 			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		xmlReaderHandlerInit(interp, self)
+		return object.None, nil
+	}})
+	xmlReaderCls.Dict.SetStr("parse", &object.BuiltinFunc{Name: "parse", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return nil, object.Errorf(i.notImpl, "This method must be implemented!")
+	}})
+	xmlReaderCls.Dict.SetStr("setLocale", &object.BuiltinFunc{Name: "setLocale", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return nil, object.Errorf(saxNotSupCls, "Locale support not implemented")
+	}})
+	for _, key := range []string{"Feature", "Property"} {
+		k := key
+		xmlReaderCls.Dict.SetStr("get"+k, &object.BuiltinFunc{Name: "get" + k, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			name := ""
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					name = s.V
+				}
+			}
+			return nil, object.Errorf(saxNotRecCls, "%s '%s' not recognized", k, name)
 		}})
+		xmlReaderCls.Dict.SetStr("set"+k, &object.BuiltinFunc{Name: "set" + k, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			name := ""
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					name = s.V
+				}
+			}
+			return nil, object.Errorf(saxNotRecCls, "%s '%s' not recognized", k, name)
+		}})
+	}
+	for _, pair := range [][2]string{
+		{"getContentHandler", "_cont_handler"}, {"setContentHandler", "_cont_handler"},
+		{"getDTDHandler", "_dtd_handler"}, {"setDTDHandler", "_dtd_handler"},
+		{"getEntityResolver", "_ent_handler"}, {"setEntityResolver", "_ent_handler"},
+		{"getErrorHandler", "_err_handler"}, {"setErrorHandler", "_err_handler"},
+	} {
+		name, key := pair[0], pair[1]
+		if strings.HasPrefix(name, "get") {
+			xmlReaderCls.Dict.SetStr(name, xmlReaderHandlerGet(key))
+		} else {
+			xmlReaderCls.Dict.SetStr(name, xmlReaderHandlerSet(key))
+		}
 	}
 	m.Dict.SetStr("XMLReader", xmlReaderCls)
 
-	// IncrementalParser
-	incParserCls := &object.Class{Name: "IncrementalParser", Dict: object.NewDict()}
-	for _, name := range []string{"feed", "close", "prepareParser", "reset"} {
-		n := name
-		incParserCls.Dict.SetStr(n, &object.BuiltinFunc{Name: n, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+	// IncrementalParser(bufsize=65536) – subclass of XMLReader
+	incParserCls := &object.Class{Name: "IncrementalParser", Dict: object.NewDict(), Bases: []*object.Class{xmlReaderCls}}
+	incParserCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
 			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		bufsize := int64(65536)
+		if len(a) >= 2 {
+			if n, ok := a[1].(*object.Int); ok {
+				bufsize = n.Int64()
+			}
+		} else if kw != nil {
+			if v, ok := kw.GetStr("bufsize"); ok {
+				if n, ok2 := v.(*object.Int); ok2 {
+					bufsize = n.Int64()
+				}
+			}
+		}
+		self.Dict.SetStr("_bufsize", object.IntFromInt64(bufsize))
+		xmlReaderHandlerInit(interp, self)
+		return object.None, nil
+	}})
+	// Abstract methods — raise NotImplementedError
+	for _, pair := range [][2]string{
+		{"feed", "This method must be implemented!"},
+		{"close", "This method must be implemented!"},
+		{"reset", "This method must be implemented!"},
+		{"prepareParser", "prepareParser must be overridden!"},
+	} {
+		name, msg := pair[0], pair[1]
+		n, ms := name, msg
+		incParserCls.Dict.SetStr(n, &object.BuiltinFunc{Name: n, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return nil, object.Errorf(i.notImpl, "%s", ms)
+		}})
+	}
+	// Concrete parse() — reads source in bufsize chunks, calls feed()/close()
+	incParserCls.Dict.SetStr("parse", &object.BuiltinFunc{Name: "parse", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		ii := interp.(*Interp)
+		self := a[0].(*object.Instance)
+		src := a[1]
+
+		// get bufsize
+		bufsize := int64(65536)
+		if v, ok := self.Dict.GetStr("_bufsize"); ok {
+			if n, ok2 := v.(*object.Int); ok2 {
+				bufsize = n.Int64()
+			}
+		}
+
+		// get byteStream or charStream
+		var stream object.Object
+		for _, attr := range []string{"getCharacterStream", "getByteStream"} {
+			fn, err := ii.getAttr(src, attr)
+			if err != nil {
+				continue
+			}
+			res, err := ii.callObject(fn, nil, nil)
+			if err != nil || res == object.None {
+				continue
+			}
+			stream = res
+			break
+		}
+		if stream == nil {
+			return object.None, nil
+		}
+
+		// read stream in chunks
+		readFn, err := ii.getAttr(stream, "read")
+		if err != nil {
+			return object.None, nil
+		}
+		feedFn, err2 := ii.getAttr(self, "feed")
+		if err2 != nil {
+			return object.None, nil
+		}
+
+		for {
+			chunk, rerr := ii.callObject(readFn, []object.Object{object.IntFromInt64(bufsize)}, nil)
+			if rerr != nil {
+				return nil, rerr
+			}
+			// empty bytes/str means EOF
+			empty := false
+			switch v := chunk.(type) {
+			case *object.Bytes:
+				empty = len(v.V) == 0
+			case *object.Str:
+				empty = len(v.V) == 0
+			default:
+				empty = chunk == object.None
+			}
+			if empty {
+				break
+			}
+			if _, ferr := ii.callObject(feedFn, []object.Object{chunk}, nil); ferr != nil {
+				return nil, ferr
+			}
+		}
+
+		closeFn, cerr := ii.getAttr(self, "close")
+		if cerr == nil {
+			if _, cerr2 := ii.callObject(closeFn, nil, nil); cerr2 != nil {
+				return nil, cerr2
+			}
+		}
+		return object.None, nil
+	}})
+	// Inherit XMLReader handler get/set methods
+	for _, pair := range [][2]string{
+		{"getContentHandler", "_cont_handler"}, {"setContentHandler", "_cont_handler"},
+		{"getDTDHandler", "_dtd_handler"}, {"setDTDHandler", "_dtd_handler"},
+		{"getEntityResolver", "_ent_handler"}, {"setEntityResolver", "_ent_handler"},
+		{"getErrorHandler", "_err_handler"}, {"setErrorHandler", "_err_handler"},
+	} {
+		name, key := pair[0], pair[1]
+		if strings.HasPrefix(name, "get") {
+			incParserCls.Dict.SetStr(name, xmlReaderHandlerGet(key))
+		} else {
+			incParserCls.Dict.SetStr(name, xmlReaderHandlerSet(key))
+		}
+	}
+	incParserCls.Dict.SetStr("setLocale", &object.BuiltinFunc{Name: "setLocale", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return nil, object.Errorf(saxNotSupCls, "Locale support not implemented")
+	}})
+	for _, key := range []string{"Feature", "Property"} {
+		k := key
+		incParserCls.Dict.SetStr("get"+k, &object.BuiltinFunc{Name: "get" + k, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			name := ""
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					name = s.V
+				}
+			}
+			return nil, object.Errorf(saxNotRecCls, "%s '%s' not recognized", k, name)
+		}})
+		incParserCls.Dict.SetStr("set"+k, &object.BuiltinFunc{Name: "set" + k, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			name := ""
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					name = s.V
+				}
+			}
+			return nil, object.Errorf(saxNotRecCls, "%s '%s' not recognized", k, name)
 		}})
 	}
 	m.Dict.SetStr("IncrementalParser", incParserCls)
@@ -1267,7 +1571,7 @@ func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 	}
 	m.Dict.SetStr("InputSource", inputSourceCls)
 
-	// AttributesImpl(attrs_dict)
+	// AttributesImpl(attrs_dict) — full implementation with values()/get()
 	attrsCls := i.buildSaxAttrsClass()
 	attrsCls2 := &object.Class{Name: "AttributesImpl", Dict: object.NewDict()}
 	attrsCls2.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -1289,11 +1593,10 @@ func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 		saxAttrsStateMap.Store(self, m3)
 		return object.None, nil
 	}})
-	// Copy all methods from attrsCls
 	for _, name := range []string{
 		"getNames", "getType", "getValue", "getLength",
 		"__len__", "__getitem__", "__contains__", "__iter__",
-		"keys", "items", "copy",
+		"keys", "items", "values", "get", "copy",
 		"getQNameByName", "getNameByQName", "getValueByQName", "getQNames",
 	} {
 		if v, ok := attrsCls.Dict.GetStr(name); ok {
@@ -1302,10 +1605,303 @@ func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 	}
 	m.Dict.SetStr("AttributesImpl", attrsCls2)
 
-	// AttributesNSImpl stub
+	// AttributesNSImpl(attrs, qnames) — NS-aware full implementation
 	attrsNSCls := &object.Class{Name: "AttributesNSImpl", Dict: object.NewDict()}
-	attrsNSCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+
+	// helper: extract [2]string key from a Python tuple (ns_uri, local_name)
+	nsTupleKey := func(obj object.Object) ([2]string, bool) {
+		t, ok := obj.(*object.Tuple)
+		if !ok || len(t.V) < 2 {
+			return [2]string{}, false
+		}
+		ns, ok1 := t.V[0].(*object.Str)
+		local, ok2 := t.V[1].(*object.Str)
+		if !ok1 || !ok2 {
+			return [2]string{}, false
+		}
+		return [2]string{ns.V, local.V}, true
+	}
+
+	attrsNSCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := &saxNSAttrsState{}
+		if ad, ok := a[1].(*object.Dict); ok {
+			ks, vs := ad.Items()
+			for idx2, k := range ks {
+				key, ok2 := nsTupleKey(k)
+				if !ok2 {
+					continue
+				}
+				val := ""
+				if s, ok3 := vs[idx2].(*object.Str); ok3 {
+					val = s.V
+				}
+				st.attrKeys = append(st.attrKeys, key)
+				st.attrVals = append(st.attrVals, val)
+			}
+		}
+		if qd, ok := a[2].(*object.Dict); ok {
+			ks, vs := qd.Items()
+			for idx2, k := range ks {
+				key, ok2 := nsTupleKey(k)
+				if !ok2 {
+					continue
+				}
+				qname := ""
+				if s, ok3 := vs[idx2].(*object.Str); ok3 {
+					qname = s.V
+				}
+				st.qnameKeys = append(st.qnameKeys, key)
+				st.qnameVals = append(st.qnameVals, qname)
+			}
+		}
+		saxNSAttrsStateMap.Store(self, st)
 		return object.None, nil
+	}})
+
+	nsLoad := func(a []object.Object) *saxNSAttrsState {
+		if len(a) < 1 {
+			return nil
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return nil
+		}
+		v, _ := saxNSAttrsStateMap.Load(self)
+		if v == nil {
+			return nil
+		}
+		return v.(*saxNSAttrsState)
+	}
+
+	attrsNSCls.Dict.SetStr("getLength", &object.BuiltinFunc{Name: "getLength", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return object.IntFromInt64(0), nil
+		}
+		return object.IntFromInt64(int64(len(st.attrKeys))), nil
+	}})
+	attrsNSCls.Dict.SetStr("__len__", &object.BuiltinFunc{Name: "__len__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return object.IntFromInt64(0), nil
+		}
+		return object.IntFromInt64(int64(len(st.attrKeys))), nil
+	}})
+	attrsNSCls.Dict.SetStr("getType", &object.BuiltinFunc{Name: "getType", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return &object.Str{V: "CDATA"}, nil
+	}})
+	attrsNSCls.Dict.SetStr("getValue", &object.BuiltinFunc{Name: "getValue", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st == nil {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		key, ok := nsTupleKey(a[1])
+		if !ok {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		for idx2, k := range st.attrKeys {
+			if k == key {
+				return &object.Str{V: st.attrVals[idx2]}, nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "key not found")
+	}})
+	attrsNSCls.Dict.SetStr("getNames", &object.BuiltinFunc{Name: "getNames", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, len(st.attrKeys))
+		for idx2, k := range st.attrKeys {
+			items[idx2] = &object.Tuple{V: []object.Object{&object.Str{V: k[0]}, &object.Str{V: k[1]}}}
+		}
+		return &object.List{V: items}, nil
+	}})
+	attrsNSCls.Dict.SetStr("getQNames", &object.BuiltinFunc{Name: "getQNames", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, len(st.qnameVals))
+		for idx2, q := range st.qnameVals {
+			items[idx2] = &object.Str{V: q}
+		}
+		return &object.List{V: items}, nil
+	}})
+	attrsNSCls.Dict.SetStr("getQNameByName", &object.BuiltinFunc{Name: "getQNameByName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st == nil {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		key, ok := nsTupleKey(a[1])
+		if !ok {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		for idx2, k := range st.qnameKeys {
+			if k == key {
+				return &object.Str{V: st.qnameVals[idx2]}, nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "key not found")
+	}})
+	attrsNSCls.Dict.SetStr("getNameByQName", &object.BuiltinFunc{Name: "getNameByQName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st == nil {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		qname := ""
+		if s, ok := a[1].(*object.Str); ok {
+			qname = s.V
+		}
+		for idx2, q := range st.qnameVals {
+			if q == qname {
+				k := st.qnameKeys[idx2]
+				return &object.Tuple{V: []object.Object{&object.Str{V: k[0]}, &object.Str{V: k[1]}}}, nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "%q", qname)
+	}})
+	attrsNSCls.Dict.SetStr("getValueByQName", &object.BuiltinFunc{Name: "getValueByQName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st == nil {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		qname := ""
+		if s, ok := a[1].(*object.Str); ok {
+			qname = s.V
+		}
+		for idx2, q := range st.qnameVals {
+			if q == qname {
+				k := st.qnameKeys[idx2]
+				for idx3, ak := range st.attrKeys {
+					if ak == k {
+						return &object.Str{V: st.attrVals[idx3]}, nil
+					}
+				}
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "%q", qname)
+	}})
+	attrsNSCls.Dict.SetStr("keys", &object.BuiltinFunc{Name: "keys", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, len(st.attrKeys))
+		for idx2, k := range st.attrKeys {
+			items[idx2] = &object.Tuple{V: []object.Object{&object.Str{V: k[0]}, &object.Str{V: k[1]}}}
+		}
+		return &object.List{V: items}, nil
+	}})
+	attrsNSCls.Dict.SetStr("values", &object.BuiltinFunc{Name: "values", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, len(st.attrVals))
+		for idx2, v := range st.attrVals {
+			items[idx2] = &object.Str{V: v}
+		}
+		return &object.List{V: items}, nil
+	}})
+	attrsNSCls.Dict.SetStr("items", &object.BuiltinFunc{Name: "items", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		if st == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, len(st.attrKeys))
+		for idx2, k := range st.attrKeys {
+			key := &object.Tuple{V: []object.Object{&object.Str{V: k[0]}, &object.Str{V: k[1]}}}
+			val := &object.Str{V: st.attrVals[idx2]}
+			items[idx2] = &object.Tuple{V: []object.Object{key, val}}
+		}
+		return &object.List{V: items}, nil
+	}})
+	attrsNSCls.Dict.SetStr("get", &object.BuiltinFunc{Name: "get", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st != nil {
+			key, ok := nsTupleKey(a[1])
+			if ok {
+				for idx2, k := range st.attrKeys {
+					if k == key {
+						return &object.Str{V: st.attrVals[idx2]}, nil
+					}
+				}
+			}
+		}
+		if len(a) >= 3 {
+			return a[2], nil
+		}
+		return object.None, nil
+	}})
+	attrsNSCls.Dict.SetStr("__getitem__", &object.BuiltinFunc{Name: "__getitem__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		st := nsLoad(a)
+		if st != nil {
+			key, ok := nsTupleKey(a[1])
+			if ok {
+				for idx2, k := range st.attrKeys {
+					if k == key {
+						return &object.Str{V: st.attrVals[idx2]}, nil
+					}
+				}
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "key not found")
+	}})
+	attrsNSCls.Dict.SetStr("__contains__", &object.BuiltinFunc{Name: "__contains__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		st := nsLoad(a)
+		if st == nil {
+			return object.False, nil
+		}
+		key, ok := nsTupleKey(a[1])
+		if !ok {
+			return object.False, nil
+		}
+		for _, k := range st.attrKeys {
+			if k == key {
+				return object.True, nil
+			}
+		}
+		return object.False, nil
+	}})
+	attrsNSCls.Dict.SetStr("copy", &object.BuiltinFunc{Name: "copy", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		st := nsLoad(a)
+		newInst := &object.Instance{Class: attrsNSCls, Dict: object.NewDict()}
+		if st != nil {
+			newSt := &saxNSAttrsState{
+				attrKeys:  append([][2]string{}, st.attrKeys...),
+				attrVals:  append([]string{}, st.attrVals...),
+				qnameKeys: append([][2]string{}, st.qnameKeys...),
+				qnameVals: append([]string{}, st.qnameVals...),
+			}
+			saxNSAttrsStateMap.Store(newInst, newSt)
+		}
+		return newInst, nil
 	}})
 	m.Dict.SetStr("AttributesNSImpl", attrsNSCls)
 
