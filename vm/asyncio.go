@@ -283,6 +283,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return &object.Module{Name: "email.headerregistry", Dict: object.NewDict()}, true
 	case "mailbox":
 		return i.buildMailbox(), true
+	case "mimetypes":
+		return i.buildMimetypes(), true
 	}
 	return nil, false
 }
