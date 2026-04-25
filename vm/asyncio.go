@@ -149,6 +149,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSubprocess(), true
 	case "sched":
 		return i.buildSched(), true
+	case "queue":
+		return i.buildQueue(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
