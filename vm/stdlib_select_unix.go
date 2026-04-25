@@ -11,41 +11,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// getSockFd extracts the OS file descriptor from a Python socket instance,
-// a plain integer, or any object whose inst.Dict contains "fileno".
-func (i *Interp) getSockFd(obj object.Object) (int, bool) {
-	// Plain integer fd
-	if n, ok := toInt64(obj); ok {
-		return int(n), n >= 0
-	}
-	// Socket instance registered in sockStateRegistry
-	if st := sockStateOf(obj); st != nil {
-		st.mu.RLock()
-		conn, ln := st.conn, st.listener
-		st.mu.RUnlock()
-		if conn != nil {
-			if fd := connFd(conn); fd >= 0 {
-				return fd, true
-			}
-		}
-		if ln != nil {
-			if fd := connFd(ln); fd >= 0 {
-				return fd, true
-			}
-		}
-	}
-	// Any object with a fileno() in its inst.Dict
-	if inst, ok := obj.(*object.Instance); ok {
-		if fn, ok2 := inst.Dict.GetStr("fileno"); ok2 {
-			if r, err := i.callObject(fn, nil, nil); err == nil {
-				if n, ok3 := toInt64(r); ok3 && n >= 0 {
-					return int(n), true
-				}
-			}
-		}
-	}
-	return -1, false
-}
 
 // pollrdhup is 0x2000 on Linux; defined here as fallback for non-Linux Unix.
 // Overridden in stdlib_select_linux.go with the real unix.POLLRDHUP.
@@ -316,24 +281,5 @@ func (i *Interp) buildSelect() *object.Module {
 	return m
 }
 
-func emptySelectResult() object.Object {
-	return &object.Tuple{V: []object.Object{
-		&object.List{V: nil},
-		&object.List{V: nil},
-		&object.List{V: nil},
-	}}
-}
-
-// pyListToSlice converts a Python list/tuple to []object.Object.
-func pyListToSlice(obj object.Object) []object.Object {
-	switch v := obj.(type) {
-	case *object.List:
-		return v.V
-	case *object.Tuple:
-		return v.V
-	}
-	return nil
-}
-
-var _ net.Conn    // ensure net imported
-var _ = time.Now  // ensure time imported
+var _ net.Conn   // ensure net imported
+var _ = time.Now // ensure time imported

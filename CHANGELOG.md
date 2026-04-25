@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.0.218.1 - 2026-04-25
+
+Patch release adding Windows support. The stdlib modules that used Unix-only syscalls (`os`, `signal`, `socket`, `shutil`, `time`, `mmap`, `select`, `selectors`) now have Windows-compatible implementations. The release workflow now builds and ships a `windows/amd64` binary alongside the four Unix targets.
+
 ## v0.0.218 - 2026-04-25
 
 First release of goipy. The version number tracks the number of merged PRs; v0.0.218 means 218 test fixtures passing against CPython 3.14 bytecode.
@@ -60,5 +64,3 @@ Each release ships pre-built binaries for:
 - `darwin/arm64`
 
 All binaries are statically linked (CGO_ENABLED=0) and built with `-ldflags="-s -w"`.
-
-Windows is not yet supported. Several stdlib modules (`socket`, `os`, `signal`, `mmap`, `shutil`) use Unix syscalls that have no Windows equivalent. Windows support is planned for a future release.

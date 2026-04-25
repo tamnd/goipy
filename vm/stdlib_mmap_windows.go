@@ -1,13 +1,16 @@
-//go:build unix
+//go:build windows
 
 package vm
 
 import (
 	"bytes"
+	"errors"
 	"sync"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 
 	"github.com/tamnd/goipy/object"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -17,13 +20,19 @@ const (
 	mmapAccessCopy    = 3
 )
 
-// mmapState is the backing store for a Python mmap instance.
+// mmapState is the backing store for a Python mmap instance on Windows.
 type mmapState struct {
-	mu     sync.RWMutex
-	data   []byte
-	pos    int
-	access int
-	closed bool
+	mu      sync.RWMutex
+	data    []byte
+	pos     int
+	access  int
+	closed  bool
+	mapObj  windows.Handle // handle from CreateFileMapping
+}
+
+// mmapResize is not available on Windows.
+func mmapResize(_ []byte, _ int) ([]byte, error) {
+	return nil, errors.New("mmap resize not supported on Windows")
 }
 
 func (i *Interp) buildMmap() *object.Module {
@@ -34,38 +43,30 @@ func (i *Interp) buildMmap() *object.Module {
 		m.Dict.SetStr(name, object.NewInt(int64(val)))
 	}
 
-	// ── Constants ─────────────────────────────────────────────────────────────
 	setInt("ACCESS_DEFAULT", mmapAccessDefault)
 	setInt("ACCESS_READ", mmapAccessRead)
 	setInt("ACCESS_WRITE", mmapAccessWrite)
 	setInt("ACCESS_COPY", mmapAccessCopy)
-	setInt("PROT_READ", unix.PROT_READ)
-	setInt("PROT_WRITE", unix.PROT_WRITE)
-	setInt("PROT_EXEC", unix.PROT_EXEC)
-	setInt("MAP_SHARED", unix.MAP_SHARED)
-	setInt("MAP_PRIVATE", unix.MAP_PRIVATE)
-	setInt("MAP_ANON", unix.MAP_ANON)
-	setInt("MAP_ANONYMOUS", unix.MAP_ANON)
-	ps := unix.Getpagesize()
+	// Windows protection constants (matching POSIX values for compatibility)
+	setInt("PROT_READ", 0x01)
+	setInt("PROT_WRITE", 0x02)
+	setInt("PROT_EXEC", 0x04)
+	setInt("MAP_SHARED", 0x01)
+	setInt("MAP_PRIVATE", 0x02)
+	setInt("MAP_ANON", 0x20)
+	setInt("MAP_ANONYMOUS", 0x20)
+	ps := windows.Getpagesize()
+	if ps == 0 {
+		ps = 4096
+	}
 	setInt("PAGESIZE", ps)
 	setInt("ALLOCATIONGRANULARITY", ps)
 
-	// MADV constants (common subset)
-	setInt("MADV_NORMAL", unix.MADV_NORMAL)
-	setInt("MADV_RANDOM", unix.MADV_RANDOM)
-	setInt("MADV_SEQUENTIAL", unix.MADV_SEQUENTIAL)
-	setInt("MADV_WILLNEED", unix.MADV_WILLNEED)
-	setInt("MADV_DONTNEED", unix.MADV_DONTNEED)
-	setInt("MADV_FREE", int(unix.MADV_FREE))
-
-	// ── mmap class ────────────────────────────────────────────────────────────
 	mmapCls := &object.Class{Name: "mmap", Dict: object.NewDict()}
 	m.Dict.SetStr("mmap", mmapCls)
 
-	// ── mmap() constructor ────────────────────────────────────────────────────
 	mmapCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__",
 		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-			// First arg is the instance (self).
 			if len(a) < 3 {
 				return nil, object.Errorf(i.typeErr, "mmap() requires fileno and length")
 			}
@@ -106,17 +107,18 @@ func (i *Interp) buildMmap() *object.Module {
 				}
 			}
 
-			fd := int(fileno)
+			fd := windows.Handle(fileno)
+			anon := fileno == -1
 			mapLen := int(length)
-			anon := fd == -1
 
-			// If length==0, get the file size.
 			if mapLen == 0 && !anon {
-				var st unix.Stat_t
-				if err := unix.Fstat(fd, &st); err != nil {
+				// Get file size
+				var fi windows.ByHandleFileInformation
+				if err := windows.GetFileInformationByHandle(fd, &fi); err != nil {
 					return nil, object.Errorf(errCls, "mmap: fstat: %v", err)
 				}
-				mapLen = int(st.Size) - int(offset)
+				fileSize := int64(fi.FileSizeHigh)<<32 | int64(fi.FileSizeLow)
+				mapLen = int(fileSize) - int(offset)
 				if mapLen <= 0 {
 					return nil, object.Errorf(errCls, "mmap: file is empty or offset past end")
 				}
@@ -125,40 +127,47 @@ func (i *Interp) buildMmap() *object.Module {
 				return nil, object.Errorf(errCls, "mmap: length must be > 0 for anonymous mapping")
 			}
 
-			// Determine prot and flags from access.
-			prot := unix.PROT_READ | unix.PROT_WRITE
-			flags := unix.MAP_SHARED
+			// Determine protection flags.
+			var protect uint32 = windows.PAGE_READWRITE
+			var viewAccess uint32 = windows.FILE_MAP_WRITE
 			switch access {
 			case mmapAccessRead:
-				prot = unix.PROT_READ
-				flags = unix.MAP_SHARED
+				protect = windows.PAGE_READONLY
+				viewAccess = windows.FILE_MAP_READ
 			case mmapAccessCopy:
-				prot = unix.PROT_READ | unix.PROT_WRITE
-				flags = unix.MAP_PRIVATE
+				protect = windows.PAGE_WRITECOPY
+				viewAccess = windows.FILE_MAP_COPY
 			}
+
+			fileHandle := fd
 			if anon {
-				flags = unix.MAP_ANONYMOUS | unix.MAP_PRIVATE
-				if access == mmapAccessRead {
-					prot = unix.PROT_READ
-				}
+				fileHandle = ^windows.Handle(0) // INVALID_HANDLE_VALUE
 			}
 
-			data, err := unix.Mmap(fd, offset, mapLen, prot, flags)
+			maxSizeHigh := uint32((int64(mapLen) + offset) >> 32)
+			maxSizeLow := uint32((int64(mapLen) + offset) & 0xffffffff)
+			mapObj, err := windows.CreateFileMapping(fileHandle, nil, protect, maxSizeHigh, maxSizeLow, nil)
 			if err != nil {
-				return nil, object.Errorf(errCls, "mmap: %v", err)
+				return nil, object.Errorf(errCls, "mmap: CreateFileMapping: %v", err)
 			}
 
-			st := &mmapState{data: data, access: int(access)}
+			offsetHigh := uint32(offset >> 32)
+			offsetLow := uint32(offset & 0xffffffff)
+			addr, err := windows.MapViewOfFile(mapObj, viewAccess, offsetHigh, offsetLow, uintptr(mapLen))
+			if err != nil {
+				windows.CloseHandle(mapObj) //nolint
+				return nil, object.Errorf(errCls, "mmap: MapViewOfFile: %v", err)
+			}
+
+			data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), mapLen)
+			st := &mmapState{data: data, access: int(access), mapObj: mapObj}
 			mmapAttach(i, inst, st, errCls)
 			return object.None, nil
 		}})
 
-	// Make mmap callable as mmap.mmap(fd, length, ...) — acts as a class
-	// that creates an instance and calls __init__.
 	mmapCallable := &object.BuiltinFunc{Name: "mmap",
 		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 			inst := &object.Instance{Class: mmapCls, Dict: object.NewDict()}
-			// Call __init__ with inst prepended.
 			initArgs := append([]object.Object{inst}, a...)
 			fn, ok := mmapCls.Dict.GetStr("__init__")
 			if !ok {
@@ -194,7 +203,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 		return nil
 	}
 
-	// ── read([n]) ──────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("read", &object.BuiltinFunc{Name: "read",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -217,7 +225,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return &object.Bytes{V: out}, nil
 		}})
 
-	// ── write(data) ────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("write", &object.BuiltinFunc{Name: "write",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -240,7 +247,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(n)), nil
 		}})
 
-	// ── read_byte() ────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("read_byte", &object.BuiltinFunc{Name: "read_byte",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -256,7 +262,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(b)), nil
 		}})
 
-	// ── write_byte(byte) ───────────────────────────────────────────────────────
 	inst.Dict.SetStr("write_byte", &object.BuiltinFunc{Name: "write_byte",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -282,7 +287,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.None, nil
 		}})
 
-	// ── readline() ─────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("readline", &object.BuiltinFunc{Name: "readline",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -305,7 +309,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return &object.Bytes{V: line}, nil
 		}})
 
-	// ── seek(pos[, whence]) ────────────────────────────────────────────────────
 	inst.Dict.SetStr("seek", &object.BuiltinFunc{Name: "seek",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -326,11 +329,11 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			defer st.mu.Unlock()
 			newpos := int(pos)
 			switch whence {
-			case 0: // SEEK_SET
+			case 0:
 				newpos = int(pos)
-			case 1: // SEEK_CUR
+			case 1:
 				newpos = st.pos + int(pos)
-			case 2: // SEEK_END
+			case 2:
 				newpos = len(st.data) + int(pos)
 			default:
 				return nil, object.Errorf(i.valueErr, "invalid whence value")
@@ -345,7 +348,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(newpos)), nil
 		}})
 
-	// ── tell() ─────────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("tell", &object.BuiltinFunc{Name: "tell",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -357,7 +359,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(pos)), nil
 		}})
 
-	// ── size() ─────────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("size", &object.BuiltinFunc{Name: "size",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -369,13 +370,11 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(n)), nil
 		}})
 
-	// ── seekable() ────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("seekable", &object.BuiltinFunc{Name: "seekable",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.True, nil
 		}})
 
-	// ── find(sub[, start[, end]]) ─────────────────────────────────────────────
 	inst.Dict.SetStr("find", &object.BuiltinFunc{Name: "find",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -415,7 +414,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(start + idx)), nil
 		}})
 
-	// ── rfind(sub[, start[, end]]) ────────────────────────────────────────────
 	inst.Dict.SetStr("rfind", &object.BuiltinFunc{Name: "rfind",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -455,7 +453,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(start + idx)), nil
 		}})
 
-	// ── flush([offset, size]) ─────────────────────────────────────────────────
 	inst.Dict.SetStr("flush", &object.BuiltinFunc{Name: "flush",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -472,45 +469,19 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 					region = data[off : off+sz]
 				}
 			}
-			if err := unix.Msync(region, unix.MS_SYNC); err != nil {
-				return nil, object.Errorf(errCls, "flush: %v", err)
+			if len(region) > 0 {
+				if err := windows.FlushViewOfFile(uintptr(unsafe.Pointer(&region[0])), uintptr(len(region))); err != nil {
+					return nil, object.Errorf(errCls, "flush: %v", err)
+				}
 			}
 			return object.NewInt(0), nil
 		}})
 
-	// ── madvise(option[, start, length]) ─────────────────────────────────────
 	inst.Dict.SetStr("madvise", &object.BuiltinFunc{Name: "madvise",
-		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if err := checkOpen(); err != nil {
-				return nil, err
-			}
-			if len(a) == 0 {
-				return nil, object.Errorf(i.typeErr, "madvise() requires option")
-			}
-			option, ok := toInt64(a[0])
-			if !ok {
-				return nil, object.Errorf(i.typeErr, "madvise() option must be int")
-			}
-			st.mu.RLock()
-			data := st.data
-			st.mu.RUnlock()
-			region := data
-			if len(a) >= 3 {
-				start, _ := toInt64(a[1])
-				length, _ := toInt64(a[2])
-				end := int(start + length)
-				if end > len(data) {
-					end = len(data)
-				}
-				region = data[start:end]
-			}
-			if err := unix.Madvise(region, int(option)); err != nil {
-				return nil, object.Errorf(errCls, "madvise: %v", err)
-			}
-			return object.None, nil
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil // no-op on Windows
 		}})
 
-	// ── move(dest, src, count) ────────────────────────────────────────────────
 	inst.Dict.SetStr("move", &object.BuiltinFunc{Name: "move",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -534,7 +505,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.None, nil
 		}})
 
-	// ── resize(newsize) ───────────────────────────────────────────────────────
 	inst.Dict.SetStr("resize", &object.BuiltinFunc{Name: "resize",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -549,35 +519,35 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			}
 			st.mu.Lock()
 			defer st.mu.Unlock()
-			newData, err := mmapResize(st.data, int(newsize))
+			_, err := mmapResize(st.data, int(newsize))
 			if err != nil {
-				return nil, object.Errorf(i.systemErr, "mmap: resizing not available--no mremap()")
-			}
-			st.data = newData
-			if st.pos > len(st.data) {
-				st.pos = len(st.data)
+				return nil, object.Errorf(i.systemErr, "mmap: resizing not available on Windows")
 			}
 			return object.None, nil
 		}})
 
-	// ── close() ───────────────────────────────────────────────────────────────
 	doClose := func() {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		if !st.closed {
-			unix.Munmap(st.data) //nolint
+			if len(st.data) > 0 {
+				windows.UnmapViewOfFile(uintptr(unsafe.Pointer(&st.data[0]))) //nolint
+			}
+			if st.mapObj != 0 {
+				windows.CloseHandle(st.mapObj) //nolint
+			}
 			st.data = nil
 			st.closed = true
 			inst.Dict.SetStr("closed", object.True)
 		}
 	}
+
 	inst.Dict.SetStr("close", &object.BuiltinFunc{Name: "close",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			doClose()
 			return object.None, nil
 		}})
 
-	// ── __enter__ / __exit__ ──────────────────────────────────────────────────
 	inst.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return inst, nil
@@ -588,7 +558,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.False, nil
 		}})
 
-	// ── __len__ ───────────────────────────────────────────────────────────────
 	inst.Dict.SetStr("__len__", &object.BuiltinFunc{Name: "__len__",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			st.mu.RLock()
@@ -597,7 +566,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(n)), nil
 		}})
 
-	// ── __getitem__ ───────────────────────────────────────────────────────────
 	inst.Dict.SetStr("__getitem__", &object.BuiltinFunc{Name: "__getitem__",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -623,7 +591,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 					copy(out, data[start:stop])
 					return &object.Bytes{V: out}, nil
 				}
-				// stepped slice
 				var out []byte
 				for idx := start; idx < stop; idx += step {
 					out = append(out, data[idx])
@@ -643,7 +610,6 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.NewInt(int64(data[idx])), nil
 		}})
 
-	// ── __setitem__ ───────────────────────────────────────────────────────────
 	inst.Dict.SetStr("__setitem__", &object.BuiltinFunc{Name: "__setitem__",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if err := checkOpen(); err != nil {
@@ -688,4 +654,3 @@ func mmapAttach(i *Interp, inst *object.Instance, st *mmapState, errCls *object.
 			return object.None, nil
 		}})
 }
-

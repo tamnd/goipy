@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/tamnd/goipy/object"
@@ -194,18 +193,10 @@ func (i *Interp) buildTime() *object.Module {
 
 	// --- process_time / process_time_ns ---
 	m.Dict.SetStr("process_time", &object.BuiltinFunc{Name: "process_time", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		var ru syscall.Rusage
-		_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
-		secs := float64(ru.Utime.Sec) + float64(ru.Stime.Sec) +
-			float64(ru.Utime.Usec+ru.Stime.Usec)/1e6
-		return &object.Float{V: secs}, nil
+		return &object.Float{V: processTimeSecs()}, nil
 	}})
 	m.Dict.SetStr("process_time_ns", &object.BuiltinFunc{Name: "process_time_ns", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		var ru syscall.Rusage
-		_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
-		ns := (int64(ru.Utime.Sec)+int64(ru.Stime.Sec))*1e9 +
-			int64(ru.Utime.Usec+ru.Stime.Usec)*1000
-		return object.NewInt(ns), nil
+		return object.NewInt(processTimeNs()), nil
 	}})
 
 	// --- thread_time / thread_time_ns (platform-specific, best-effort) ---
