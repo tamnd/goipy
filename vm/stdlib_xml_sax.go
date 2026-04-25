@@ -17,49 +17,88 @@ func (i *Interp) buildXmlSax() *object.Module {
 
 	// SAXException
 	saxExcCls := &object.Class{Name: "SAXException", Dict: object.NewDict(), Bases: []*object.Class{i.exception}}
+	saxExcGetDict := func(a []object.Object) *object.Dict {
+		if len(a) < 1 {
+			return nil
+		}
+		switch v := a[0].(type) {
+		case *object.Instance:
+			return v.Dict
+		case *object.Exception:
+			if v.Dict == nil {
+				v.Dict = object.NewDict()
+			}
+			return v.Dict
+		}
+		return nil
+	}
 	saxExcCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		if len(a) >= 2 {
-			self := a[0].(*object.Instance)
-			if s, ok := a[1].(*object.Str); ok {
-				self.Dict.SetStr("_message", s)
-				self.Dict.SetStr("args", &object.Tuple{V: []object.Object{s}})
-			}
-			if len(a) >= 3 {
-				self.Dict.SetStr("_exception", a[2])
-			} else {
-				self.Dict.SetStr("_exception", object.None)
-			}
+		d := saxExcGetDict(a)
+		if d == nil || len(a) < 2 {
+			return object.None, nil
+		}
+		if s, ok := a[1].(*object.Str); ok {
+			d.SetStr("_message", s)
+			d.SetStr("args", &object.Tuple{V: []object.Object{s}})
+		}
+		if len(a) >= 3 {
+			d.SetStr("_exception", a[2])
+		} else {
+			d.SetStr("_exception", object.None)
 		}
 		return object.None, nil
 	}})
 	saxExcCls.Dict.SetStr("getMessage", &object.BuiltinFunc{Name: "getMessage", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return object.None, nil
+		d := saxExcGetDict(a)
+		if d == nil {
+			return &object.Str{V: ""}, nil
 		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_message"); ok {
+		if v, ok := d.GetStr("_message"); ok {
 			return v, nil
+		}
+		if len(a) >= 1 {
+			if e, ok := a[0].(*object.Exception); ok {
+				if e.Msg != "" {
+					return &object.Str{V: e.Msg}, nil
+				}
+				if e.Args != nil && len(e.Args.V) >= 1 {
+					if s, ok := e.Args.V[0].(*object.Str); ok {
+						return s, nil
+					}
+				}
+			}
 		}
 		return &object.Str{V: ""}, nil
 	}})
 	saxExcCls.Dict.SetStr("getException", &object.BuiltinFunc{Name: "getException", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
+		d := saxExcGetDict(a)
+		if d == nil {
 			return object.None, nil
 		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_exception"); ok {
+		if v, ok := d.GetStr("_exception"); ok {
 			return v, nil
 		}
 		return object.None, nil
 	}})
 	saxExcCls.Dict.SetStr("__str__", &object.BuiltinFunc{Name: "__str__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return &object.Str{V: "SAXException"}, nil
+		d := saxExcGetDict(a)
+		if d != nil {
+			if v, ok := d.GetStr("_message"); ok {
+				if s, ok := v.(*object.Str); ok {
+					return s, nil
+				}
+			}
 		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_message"); ok {
-			if s, ok := v.(*object.Str); ok {
-				return s, nil
+		if len(a) >= 1 {
+			if e, ok := a[0].(*object.Exception); ok {
+				if e.Msg != "" {
+					return &object.Str{V: e.Msg}, nil
+				}
+				if e.Args != nil && len(e.Args.V) >= 1 {
+					if s, ok := e.Args.V[0].(*object.Str); ok {
+						return s, nil
+					}
+				}
 			}
 		}
 		return &object.Str{V: "SAXException"}, nil
@@ -69,58 +108,108 @@ func (i *Interp) buildXmlSax() *object.Module {
 	// SAXParseException
 	saxParseExcCls := &object.Class{Name: "SAXParseException", Dict: object.NewDict(), Bases: []*object.Class{saxExcCls}}
 	saxParseExcCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		if len(a) >= 2 {
-			self := a[0].(*object.Instance)
-			if s, ok := a[1].(*object.Str); ok {
-				self.Dict.SetStr("_message", s)
-			}
-			self.Dict.SetStr("_lineNumber", object.IntFromInt64(0))
-			self.Dict.SetStr("_columnNumber", object.IntFromInt64(0))
-			self.Dict.SetStr("_systemId", object.None)
-			self.Dict.SetStr("_publicId", object.None)
-		}
-		return object.None, nil
-	}})
-	saxParseExcCls.Dict.SetStr("getLineNumber", &object.BuiltinFunc{Name: "getLineNumber", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return object.IntFromInt64(0), nil
-		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_lineNumber"); ok {
-			return v, nil
-		}
-		return object.IntFromInt64(0), nil
-	}})
-	saxParseExcCls.Dict.SetStr("getColumnNumber", &object.BuiltinFunc{Name: "getColumnNumber", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
-			return object.IntFromInt64(0), nil
-		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_columnNumber"); ok {
-			return v, nil
-		}
-		return object.IntFromInt64(0), nil
-	}})
-	saxParseExcCls.Dict.SetStr("getSystemId", &object.BuiltinFunc{Name: "getSystemId", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		if len(a) < 1 {
+		d := saxExcGetDict(a)
+		if d == nil || len(a) < 2 {
 			return object.None, nil
 		}
-		self := a[0].(*object.Instance)
-		if v, ok := self.Dict.GetStr("_systemId"); ok {
-			return v, nil
+		if s, ok := a[1].(*object.Str); ok {
+			d.SetStr("_message", s)
+		}
+		// a[2] = exception, a[3] = locator
+		locator := object.Object(object.None)
+		if len(a) >= 4 {
+			locator = a[3]
+		} else if len(a) >= 3 {
+			locator = a[2]
+		}
+		lineNo := object.Object(object.IntFromInt64(-1))
+		colNo := object.Object(object.IntFromInt64(-1))
+		sysId := object.Object(object.None)
+		pubId := object.Object(object.None)
+		if locator != object.None {
+			if loc, ok := locator.(*object.Instance); ok {
+				if v, ok2 := loc.Dict.GetStr("_lineNumber"); ok2 {
+					lineNo = v
+				}
+				if v, ok2 := loc.Dict.GetStr("_columnNumber"); ok2 {
+					colNo = v
+				}
+				if v, ok2 := loc.Dict.GetStr("_systemId"); ok2 {
+					sysId = v
+				}
+				if v, ok2 := loc.Dict.GetStr("_publicId"); ok2 {
+					pubId = v
+				}
+			}
+		}
+		d.SetStr("_lineNumber", lineNo)
+		d.SetStr("_columnNumber", colNo)
+		d.SetStr("_systemId", sysId)
+		d.SetStr("_publicId", pubId)
+		return object.None, nil
+	}})
+	saxParseGetLocator := func(a []object.Object) *object.Instance {
+		if len(a) < 1 {
+			return nil
+		}
+		var args *object.Tuple
+		switch v := a[0].(type) {
+		case *object.Exception:
+			args = v.Args
+		}
+		if args == nil || len(args.V) < 3 {
+			return nil
+		}
+		if loc, ok := args.V[2].(*object.Instance); ok {
+			return loc
+		}
+		return nil
+	}
+	saxParseExcCls.Dict.SetStr("getLineNumber", &object.BuiltinFunc{Name: "getLineNumber", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if loc := saxParseGetLocator(a); loc != nil {
+			fn, err := interp.(*Interp).getAttr(loc, "getLineNumber")
+			if err == nil {
+				return interp.(*Interp).callObject(fn, []object.Object{loc}, nil)
+			}
+		}
+		return object.IntFromInt64(-1), nil
+	}})
+	saxParseExcCls.Dict.SetStr("getColumnNumber", &object.BuiltinFunc{Name: "getColumnNumber", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if loc := saxParseGetLocator(a); loc != nil {
+			fn, err := interp.(*Interp).getAttr(loc, "getColumnNumber")
+			if err == nil {
+				return interp.(*Interp).callObject(fn, []object.Object{loc}, nil)
+			}
+		}
+		return object.IntFromInt64(-1), nil
+	}})
+	saxParseExcCls.Dict.SetStr("getSystemId", &object.BuiltinFunc{Name: "getSystemId", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if loc := saxParseGetLocator(a); loc != nil {
+			fn, err := interp.(*Interp).getAttr(loc, "getSystemId")
+			if err == nil {
+				return interp.(*Interp).callObject(fn, []object.Object{loc}, nil)
+			}
 		}
 		return object.None, nil
 	}})
-	saxParseExcCls.Dict.SetStr("getPublicId", &object.BuiltinFunc{Name: "getPublicId", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	saxParseExcCls.Dict.SetStr("getPublicId", &object.BuiltinFunc{Name: "getPublicId", Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if loc := saxParseGetLocator(a); loc != nil {
+			fn, err := interp.(*Interp).getAttr(loc, "getPublicId")
+			if err == nil {
+				return interp.(*Interp).callObject(fn, []object.Object{loc}, nil)
+			}
+		}
 		return object.None, nil
 	}})
 	m.Dict.SetStr("SAXParseException", saxParseExcCls)
 
-	// SAXNotRecognizedException, SAXNotSupportedException
+	// SAXNotRecognizedException, SAXNotSupportedException, SAXReaderNotAvailable
 	saxNotRecCls := &object.Class{Name: "SAXNotRecognizedException", Dict: object.NewDict(), Bases: []*object.Class{saxExcCls}}
 	saxNotSupCls := &object.Class{Name: "SAXNotSupportedException", Dict: object.NewDict(), Bases: []*object.Class{saxExcCls}}
+	saxNotAvailCls := &object.Class{Name: "SAXReaderNotAvailable", Dict: object.NewDict(), Bases: []*object.Class{saxNotSupCls}}
 	m.Dict.SetStr("SAXNotRecognizedException", saxNotRecCls)
 	m.Dict.SetStr("SAXNotSupportedException", saxNotSupCls)
+	m.Dict.SetStr("SAXReaderNotAvailable", saxNotAvailCls)
 
 	// make_parser()
 	m.Dict.SetStr("make_parser", &object.BuiltinFunc{Name: "make_parser", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -132,17 +221,20 @@ func (i *Interp) buildXmlSax() *object.Module {
 		if len(a) < 2 {
 			return object.None, nil
 		}
+		ii := interp.(*Interp)
 		var data []byte
 		switch v := a[0].(type) {
 		case *object.Str:
-			// treat as file path - skip for now
-			_ = v
+			raw, err := etReadFile(v.V)
+			if err != nil {
+				return nil, object.Errorf(ii.valueErr, "parse: cannot read %q: %v", v.V, err)
+			}
+			data = raw
 		case *object.Bytes:
 			data = v.V
 		case *object.Bytearray:
 			data = v.V
 		default:
-			ii := interp.(*Interp)
 			fn, err := ii.getAttr(a[0], "read")
 			if err == nil {
 				res, rerr := ii.callObject(fn, nil, nil)
@@ -366,6 +458,126 @@ func (i *Interp) buildSaxAttrsClass() *object.Class {
 		return object.BoolOf(ok), nil
 	}})
 
+	cls.Dict.SetStr("keys", &object.BuiltinFunc{Name: "keys", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.List{V: nil}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, 0, len(m2))
+		for k := range m2 {
+			items = append(items, &object.Str{V: k})
+		}
+		return &object.List{V: items}, nil
+	}})
+
+	cls.Dict.SetStr("items", &object.BuiltinFunc{Name: "items", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.List{V: nil}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, 0, len(m2))
+		for k, v := range m2 {
+			items = append(items, &object.Tuple{V: []object.Object{&object.Str{V: k}, &object.Str{V: v}}})
+		}
+		return &object.List{V: items}, nil
+	}})
+
+	cls.Dict.SetStr("getQNameByName", &object.BuiltinFunc{Name: "getQNameByName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		return a[1], nil
+	}})
+
+	cls.Dict.SetStr("getNameByQName", &object.BuiltinFunc{Name: "getNameByQName", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		return a[1], nil
+	}})
+
+	cls.Dict.SetStr("getValueByQName", &object.BuiltinFunc{Name: "getValueByQName", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return nil, object.Errorf(i.keyErr, "key not found")
+		}
+		key := ""
+		if s, ok := a[1].(*object.Str); ok {
+			key = s.V
+		}
+		if v, ok := m2[key]; ok {
+			return &object.Str{V: v}, nil
+		}
+		return nil, object.Errorf(i.keyErr, "key %q not found", key)
+	}})
+
+	cls.Dict.SetStr("getQNames", &object.BuiltinFunc{Name: "getQNames", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.List{V: nil}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, 0, len(m2))
+		for k := range m2 {
+			items = append(items, &object.Str{V: k})
+		}
+		return &object.List{V: items}, nil
+	}})
+
+	cls.Dict.SetStr("copy", &object.BuiltinFunc{Name: "copy", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.Instance{Class: cls, Dict: object.NewDict()}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		newMap := make(map[string]string)
+		for k, v := range m2 {
+			newMap[k] = v
+		}
+		newInst := &object.Instance{Class: cls, Dict: object.NewDict()}
+		saxAttrsStateMap.Store(newInst, newMap)
+		return newInst, nil
+	}})
+
+	cls.Dict.SetStr("__iter__", &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.List{V: nil}, nil
+		}
+		self := a[0].(*object.Instance)
+		m2 := saxAttrsStateMap.Load(self)
+		if m2 == nil {
+			return &object.List{V: nil}, nil
+		}
+		items := make([]object.Object, 0, len(m2))
+		for k := range m2 {
+			items = append(items, &object.Str{V: k})
+		}
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(items) {
+				return nil, false, nil
+			}
+			v := items[idx]
+			idx++
+			return v, true, nil
+		}}, nil
+	}})
+
 	return cls
 }
 
@@ -385,8 +597,8 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 	m.Dict.SetStr("property_declaration_handler", &object.Str{V: "http://xml.org/sax/properties/declaration-handler"})
 	m.Dict.SetStr("property_dom_node", &object.Str{V: "http://xml.org/sax/properties/dom-node"})
 	m.Dict.SetStr("property_xml_string", &object.Str{V: "http://xml.org/sax/properties/xml-string"})
-	m.Dict.SetStr("property_encoding", &object.Str{V: "http://xml.org/sax/properties/encoding"})
-	m.Dict.SetStr("property_interning_dict", &object.Str{V: "http://xml.org/sax/properties/interning-dict"})
+	m.Dict.SetStr("property_encoding", &object.Str{V: "http://www.python.org/sax/properties/encoding"})
+	m.Dict.SetStr("property_interning_dict", &object.Str{V: "http://www.python.org/sax/properties/interning-dict"})
 
 	// ContentHandler base class
 	contentHandlerCls := &object.Class{Name: "ContentHandler", Dict: object.NewDict()}
@@ -431,12 +643,18 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 	errorHandlerCls := &object.Class{Name: "ErrorHandler", Dict: object.NewDict()}
 	errorHandlerCls.Dict.SetStr("error", &object.BuiltinFunc{Name: "error", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) >= 2 {
+			if exc, ok := a[1].(*object.Exception); ok {
+				return nil, exc
+			}
 			return nil, object.Errorf(i.exception, "%v", a[1])
 		}
 		return nil, object.Errorf(i.exception, "error")
 	}})
 	errorHandlerCls.Dict.SetStr("fatalError", &object.BuiltinFunc{Name: "fatalError", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) >= 2 {
+			if exc, ok := a[1].(*object.Exception); ok {
+				return nil, exc
+			}
 			return nil, object.Errorf(i.exception, "%v", a[1])
 		}
 		return nil, object.Errorf(i.exception, "fatalError")
@@ -445,6 +663,36 @@ func (i *Interp) buildXmlSaxHandler() *object.Module {
 		return object.None, nil
 	}})
 	m.Dict.SetStr("ErrorHandler", errorHandlerCls)
+
+	// LexicalHandler base class (no-op stubs)
+	lexHandlerCls := &object.Class{Name: "LexicalHandler", Dict: object.NewDict()}
+	for _, name := range []string{"comment", "startDTD", "endDTD", "startCDATA", "endCDATA"} {
+		n := name
+		lexHandlerCls.Dict.SetStr(n, &object.BuiltinFunc{Name: n, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		}})
+	}
+	m.Dict.SetStr("LexicalHandler", lexHandlerCls)
+
+	// all_features / all_properties lists
+	features := []object.Object{
+		&object.Str{V: "http://xml.org/sax/features/namespaces"},
+		&object.Str{V: "http://xml.org/sax/features/namespace-prefixes"},
+		&object.Str{V: "http://xml.org/sax/features/string-interning"},
+		&object.Str{V: "http://xml.org/sax/features/validation"},
+		&object.Str{V: "http://xml.org/sax/features/external-general-entities"},
+		&object.Str{V: "http://xml.org/sax/features/external-parameter-entities"},
+	}
+	props := []object.Object{
+		&object.Str{V: "http://xml.org/sax/properties/lexical-handler"},
+		&object.Str{V: "http://xml.org/sax/properties/declaration-handler"},
+		&object.Str{V: "http://xml.org/sax/properties/dom-node"},
+		&object.Str{V: "http://xml.org/sax/properties/xml-string"},
+		&object.Str{V: "http://www.python.org/sax/properties/encoding"},
+		&object.Str{V: "http://www.python.org/sax/properties/interning-dict"},
+	}
+	m.Dict.SetStr("all_features", &object.List{V: features})
+	m.Dict.SetStr("all_properties", &object.List{V: props})
 
 	return m
 }
@@ -507,8 +755,6 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		s = strings.ReplaceAll(s, "&amp;", "&")
 		s = strings.ReplaceAll(s, "&lt;", "<")
 		s = strings.ReplaceAll(s, "&gt;", ">")
-		s = strings.ReplaceAll(s, "&quot;", "\"")
-		s = strings.ReplaceAll(s, "&apos;", "'")
 		return &object.Str{V: s}, nil
 	}})
 
@@ -544,6 +790,14 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		shortEmpty := false
 		if len(a) >= 2 {
 			out = a[1]
+		}
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				encoding = s.V
+			}
+		}
+		if len(a) >= 4 {
+			shortEmpty = object.Truthy(a[3])
 		}
 		if kw != nil {
 			if v, ok := kw.GetStr("out"); ok {
@@ -687,6 +941,18 @@ func (i *Interp) buildXmlSaxUtils() *object.Module {
 		return object.None, nil
 	}})
 
+	xmlGenCls.Dict.SetStr("setDocumentLocator", &object.BuiltinFunc{Name: "setDocumentLocator", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) >= 2 {
+			a[0].(*object.Instance).Dict.SetStr("_locator", a[1])
+		}
+		return object.None, nil
+	}})
+	xmlGenCls.Dict.SetStr("startPrefixMapping", &object.BuiltinFunc{Name: "startPrefixMapping", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	xmlGenCls.Dict.SetStr("endPrefixMapping", &object.BuiltinFunc{Name: "endPrefixMapping", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
 	// startElementNS / endElementNS stubs
 	xmlGenCls.Dict.SetStr("startElementNS", &object.BuiltinFunc{Name: "startElementNS", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.None, nil
@@ -753,12 +1019,18 @@ func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 
 	// Locator
 	locatorCls := &object.Class{Name: "Locator", Dict: object.NewDict()}
-	for _, name := range []string{"getColumnNumber", "getLineNumber", "getPublicId", "getSystemId"} {
+	for _, name := range []string{"getPublicId", "getSystemId"} {
 		n := name
 		locatorCls.Dict.SetStr(n, &object.BuiltinFunc{Name: n, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.None, nil
 		}})
 	}
+	locatorCls.Dict.SetStr("getColumnNumber", &object.BuiltinFunc{Name: "getColumnNumber", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.IntFromInt64(-1), nil
+	}})
+	locatorCls.Dict.SetStr("getLineNumber", &object.BuiltinFunc{Name: "getLineNumber", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.IntFromInt64(-1), nil
+	}})
 	m.Dict.SetStr("Locator", locatorCls)
 
 	// InputSource
@@ -832,8 +1104,13 @@ func (i *Interp) buildXmlSaxXmlReader() *object.Module {
 		saxAttrsStateMap.Store(self, m3)
 		return object.None, nil
 	}})
-	// Copy methods from attrsCls
-	for _, name := range []string{"getNames", "getType", "getValue", "getLength", "__len__", "__getitem__", "__contains__"} {
+	// Copy all methods from attrsCls
+	for _, name := range []string{
+		"getNames", "getType", "getValue", "getLength",
+		"__len__", "__getitem__", "__contains__", "__iter__",
+		"keys", "items", "copy",
+		"getQNameByName", "getNameByQName", "getValueByQName", "getQNames",
+	} {
 		if v, ok := attrsCls.Dict.GetStr(name); ok {
 			attrsCls2.Dict.SetStr(name, v)
 		}
@@ -896,6 +1173,60 @@ func (i *Interp) makeSAXParser(saxParseExcCls *object.Class) *object.Instance {
 		}
 		handler, _ := self.Dict.GetStr("_handler")
 		return object.None, i.saxParse(data, handler, saxParseExcCls)
+	}})
+	cls.Dict.SetStr("setErrorHandler", &object.BuiltinFunc{Name: "setErrorHandler", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) >= 2 {
+			a[0].(*object.Instance).Dict.SetStr("_error_handler", a[1])
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("getErrorHandler", &object.BuiltinFunc{Name: "getErrorHandler", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		if v, ok := a[0].(*object.Instance).Dict.GetStr("_error_handler"); ok {
+			return v, nil
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("setDTDHandler", &object.BuiltinFunc{Name: "setDTDHandler", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) >= 2 {
+			a[0].(*object.Instance).Dict.SetStr("_dtd_handler", a[1])
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("getDTDHandler", &object.BuiltinFunc{Name: "getDTDHandler", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		if v, ok := a[0].(*object.Instance).Dict.GetStr("_dtd_handler"); ok {
+			return v, nil
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("setEntityResolver", &object.BuiltinFunc{Name: "setEntityResolver", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) >= 2 {
+			a[0].(*object.Instance).Dict.SetStr("_entity_resolver", a[1])
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("getEntityResolver", &object.BuiltinFunc{Name: "getEntityResolver", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		if v, ok := a[0].(*object.Instance).Dict.GetStr("_entity_resolver"); ok {
+			return v, nil
+		}
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("reset", &object.BuiltinFunc{Name: "reset", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("setProperty", &object.BuiltinFunc{Name: "setProperty", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("getProperty", &object.BuiltinFunc{Name: "getProperty", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
 	}})
 	cls.Dict.SetStr("setFeature", &object.BuiltinFunc{Name: "setFeature", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.None, nil

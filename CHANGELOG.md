@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.222 - 2026-04-25
+
+Full `xml.sax` coverage per Python 3.14: the push-based SAX2 parser, all four handler base classes, saxutils helpers, and the xmlreader types.
+
+`xml.sax` — `SAXException`, `SAXParseException`, `SAXNotRecognizedException`, `SAXNotSupportedException`, `SAXReaderNotAvailable` are all proper exception subclasses. `parseString` and `parse` (file-like, bytes, or path) dispatch `startDocument`, `startElement`, `endElement`, `characters`, `processingInstruction`, `endDocument` to any `ContentHandler`. `make_parser()` returns an `ExpatParser` with the full get/set handler API: `setContentHandler`, `getContentHandler`, `setErrorHandler`, `getErrorHandler`, `setDTDHandler`, `getDTDHandler`, `setEntityResolver`, `getEntityResolver`, `setFeature`, `getFeature`, `setProperty`, `getProperty`, `reset`.
+
+`xml.sax.handler` — `ContentHandler` (13 no-op methods), `DTDHandler`, `EntityResolver`, `ErrorHandler` (error/fatalError raise, warning is no-op), `LexicalHandler` (comment, startDTD, endDTD, startCDATA, endCDATA). All six `feature_*` and six `property_*` string constants; `all_features` and `all_properties` lists.
+
+`xml.sax.saxutils` — `escape`, `unescape`, `quoteattr`; `XMLGenerator` writes `<?xml ...?>`, elements, and escaped text to any file-like; `XMLFilterBase` stub.
+
+`xml.sax.xmlreader` — `XMLReader`, `IncrementalParser`, `Locator` (`getColumnNumber`/`getLineNumber` return −1), `InputSource` (full getter/setter set), `AttributesImpl` (keys, items, copy, getQNames, getValueByQName, getQNameByName, getNameByQName, __len__, __getitem__, __contains__), `AttributesNSImpl`.
+
+Also fixes exception method dispatch: methods defined on exception subclass dicts are now returned as bound methods, making user-defined methods on exception instances callable without panicking.
+
+23 test fixtures cover all of the above (fixture 222).
+
 ## v0.0.221 - 2026-04-25
 
 This release completes `xml.dom.pulldom` with a working pull API, real DOM nodes, and `expandNode`.
