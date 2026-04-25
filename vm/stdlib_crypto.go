@@ -23,10 +23,48 @@ import (
 
 // --- binascii module -------------------------------------------------------
 
+// crcHqx computes CRC-CCITT (polynomial 0x1021) over data, starting from crc.
+func crcHqx(data []byte, crc uint16) uint16 {
+	for _, b := range data {
+		crc ^= uint16(b) << 8
+		for j := 0; j < 8; j++ {
+			if crc&0x8000 != 0 {
+				crc = (crc << 1) ^ 0x1021
+			} else {
+				crc <<= 1
+			}
+		}
+	}
+	return crc
+}
+
+// hqxTable is the BinHex4 6-bit encoding alphabet (64 chars).
+const hqxTable = `!"#$%&'()*+,-012345689@ABCDEFGHIJKLMNPQRSTUVXYZ[` + "`" + `abcdefhijklmpqr`
+
+func hqxEncode(b byte) byte { return hqxTable[b&0x3f] }
+
+func hqxDecode(b byte) (byte, bool) {
+	for i, c := range []byte(hqxTable) {
+		if c == b {
+			return byte(i), true
+		}
+	}
+	return 0, false
+}
+
 func (i *Interp) buildBinascii() *object.Module {
 	m := &object.Module{Name: "binascii", Dict: object.NewDict()}
 
-	hexlify := &object.BuiltinFunc{Name: "hexlify", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	// binascii.Error — subclass of ValueError
+	binErr := &object.Class{Name: "Error", Bases: []*object.Class{i.valueErr}, Dict: object.NewDict()}
+	m.Dict.SetStr("Error", binErr)
+
+	// binascii.Incomplete — subclass of Exception
+	binIncomplete := &object.Class{Name: "Incomplete", Bases: []*object.Class{i.exception}, Dict: object.NewDict()}
+	m.Dict.SetStr("Incomplete", binIncomplete)
+
+	// hexlify / b2a_hex with sep / bytes_per_sep support
+	hexlify := &object.BuiltinFunc{Name: "hexlify", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "hexlify() missing data")
 		}
@@ -34,7 +72,84 @@ func (i *Interp) buildBinascii() *object.Module {
 		if err != nil {
 			return nil, err
 		}
-		return &object.Bytes{V: []byte(hex.EncodeToString(data))}, nil
+		encoded := hex.EncodeToString(data)
+		// Check for sep kwarg
+		var sepBytes []byte
+		if kw != nil {
+			if sv, ok := kw.GetStr("sep"); ok && sv != object.None {
+				switch s := sv.(type) {
+				case *object.Str:
+					sepBytes = []byte(s.V)
+				case *object.Bytes:
+					sepBytes = s.V
+				case *object.Bytearray:
+					sepBytes = s.V
+				default:
+					return nil, object.Errorf(i.typeErr, "sep must be str or bytes")
+				}
+				if len(sepBytes) != 1 {
+					return nil, object.Errorf(i.valueErr, "sep must be length 1")
+				}
+			}
+		}
+		if len(sepBytes) == 0 {
+			return &object.Bytes{V: []byte(encoded)}, nil
+		}
+		// bytes_per_sep default is 1
+		bps := int64(1)
+		if kw != nil {
+			if bv, ok := kw.GetStr("bytes_per_sep"); ok {
+				if n, ok2 := toInt64(bv); ok2 {
+					bps = n
+				}
+			}
+		}
+		if bps == 0 {
+			return &object.Bytes{V: []byte(encoded)}, nil
+		}
+		// Split the hex string into groups of abs(bps)*2 hex chars.
+		// Positive bps: group from left; negative: group from right.
+		abs := bps
+		if abs < 0 {
+			abs = -abs
+		}
+		groupLen := int(abs) * 2 // hex chars per group
+		hexBytes := []byte(encoded)
+		n := len(hexBytes)
+		if n == 0 {
+			return &object.Bytes{V: hexBytes}, nil
+		}
+		var groups [][]byte
+		if bps > 0 {
+			// left-to-right grouping
+			for start := 0; start < n; start += groupLen {
+				end := start + groupLen
+				if end > n {
+					end = n
+				}
+				groups = append(groups, hexBytes[start:end])
+			}
+		} else {
+			// right-to-left grouping (last group may be smaller at the start)
+			for end := n; end > 0; end -= groupLen {
+				start := end - groupLen
+				if start < 0 {
+					start = 0
+				}
+				groups = append([][]byte{hexBytes[start:end]}, groups...)
+			}
+		}
+		// Join groups with sep
+		sep := sepBytes[0]
+		total := n + 1*(len(groups)-1)
+		out := make([]byte, 0, total)
+		for idx, g := range groups {
+			if idx > 0 {
+				out = append(out, sep)
+			}
+			out = append(out, g...)
+		}
+		return &object.Bytes{V: out}, nil
 	}}
 	m.Dict.SetStr("hexlify", hexlify)
 	m.Dict.SetStr("b2a_hex", hexlify)
@@ -56,7 +171,7 @@ func (i *Interp) buildBinascii() *object.Module {
 		}
 		out, err := hex.DecodeString(src)
 		if err != nil {
-			return nil, object.Errorf(i.valueErr, "%s", err.Error())
+			return nil, object.NewException(binErr, err.Error())
 		}
 		return &object.Bytes{V: out}, nil
 	}}
@@ -74,9 +189,7 @@ func (i *Interp) buildBinascii() *object.Module {
 		newline := true
 		if kw != nil {
 			if v, ok := kw.GetStr("newline"); ok {
-				if b, ok := v.(*object.Bool); ok {
-					newline = b.V
-				}
+				newline = object.Truthy(v)
 			}
 		}
 		enc := base64.StdEncoding.EncodeToString(data)
@@ -86,7 +199,7 @@ func (i *Interp) buildBinascii() *object.Module {
 		return &object.Bytes{V: []byte(enc)}, nil
 	}})
 
-	m.Dict.SetStr("a2b_base64", &object.BuiltinFunc{Name: "a2b_base64", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	m.Dict.SetStr("a2b_base64", &object.BuiltinFunc{Name: "a2b_base64", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return nil, object.Errorf(i.typeErr, "a2b_base64() missing data")
 		}
@@ -94,20 +207,36 @@ func (i *Interp) buildBinascii() *object.Module {
 		if err != nil {
 			return nil, err
 		}
-		// CPython's a2b_base64 accepts with or without trailing newline and
-		// is lenient about whitespace.
-		src := strings.Map(func(r rune) rune {
-			if r == '\n' || r == '\r' || r == ' ' || r == '\t' {
-				return -1
+		strictMode := false
+		if kw != nil {
+			if v, ok := kw.GetStr("strict_mode"); ok {
+				strictMode = object.Truthy(v)
 			}
-			return r
-		}, string(data))
-		out, err := base64.StdEncoding.DecodeString(src)
-		if err != nil {
-			// Try raw (no padding).
-			out, err = base64.RawStdEncoding.DecodeString(src)
-			if err != nil {
-				return nil, object.Errorf(i.valueErr, "%s", err.Error())
+		}
+		src := string(data)
+		if strictMode {
+			// In strict mode: only allow A-Z, a-z, 0-9, +, /, = characters.
+			for _, c := range src {
+				valid := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+					(c >= '0' && c <= '9') || c == '+' || c == '/' || c == '='
+				if !valid {
+					return nil, object.NewException(binErr, "Only base64 data is allowed")
+				}
+			}
+		} else {
+			// Non-strict: strip whitespace.
+			src = strings.Map(func(r rune) rune {
+				if r == '\n' || r == '\r' || r == ' ' || r == '\t' {
+					return -1
+				}
+				return r
+			}, src)
+		}
+		out, err2 := base64.StdEncoding.DecodeString(src)
+		if err2 != nil {
+			out, err2 = base64.RawStdEncoding.DecodeString(src)
+			if err2 != nil {
+				return nil, object.NewException(binErr, err2.Error())
 			}
 		}
 		return &object.Bytes{V: out}, nil
@@ -128,6 +257,426 @@ func (i *Interp) buildBinascii() *object.Module {
 			}
 		}
 		return newIntU64(uint64(crc32.Update(seed, crc32.IEEETable, data))), nil
+	}})
+
+	// b2a_uu: UU-encode one line (max 45 input bytes).
+	m.Dict.SetStr("b2a_uu", &object.BuiltinFunc{Name: "b2a_uu", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "b2a_uu() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		if len(data) > 45 {
+			return nil, object.NewException(binErr, "At most 45 bytes at once")
+		}
+		backtick := false
+		if kw != nil {
+			if v, ok := kw.GetStr("backtick"); ok {
+				backtick = object.Truthy(v)
+			}
+		}
+		uuChar := func(v byte) byte {
+			c := (v & 0x3f) + 0x20
+			if backtick && c == 0x20 {
+				return '`'
+			}
+			return c
+		}
+		out := make([]byte, 0, 2+((len(data)+2)/3)*4)
+		// Length character
+		lenByte := byte(len(data)) + 0x20
+		if backtick && len(data) == 0 {
+			lenByte = '`'
+		}
+		out = append(out, lenByte)
+		// Encode 3-byte groups
+		for i := 0; i < len(data); i += 3 {
+			var b0, b1, b2 byte
+			b0 = data[i]
+			if i+1 < len(data) {
+				b1 = data[i+1]
+			}
+			if i+2 < len(data) {
+				b2 = data[i+2]
+			}
+			out = append(out,
+				uuChar(b0>>2),
+				uuChar((b0<<4)|(b1>>4)),
+				uuChar((b1<<2)|(b2>>6)),
+				uuChar(b2),
+			)
+		}
+		out = append(out, '\n')
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// a2b_uu: UU-decode one line.
+	m.Dict.SetStr("a2b_uu", &object.BuiltinFunc{Name: "a2b_uu", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "a2b_uu() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		// Strip trailing newline
+		if len(data) > 0 && data[len(data)-1] == '\n' {
+			data = data[:len(data)-1]
+		}
+		if len(data) == 0 {
+			return &object.Bytes{V: []byte{}}, nil
+		}
+		// First char is length
+		lc := data[0]
+		if lc == '`' {
+			lc = 0x20
+		}
+		length := int(lc - 0x20)
+		if length < 0 {
+			length = 0
+		}
+		uuVal := func(c byte) byte {
+			if c == '`' {
+				return 0
+			}
+			return (c - 0x20) & 0x3f
+		}
+		rest := data[1:]
+		out := make([]byte, 0, length)
+		for i := 0; i+3 < len(rest) && len(out) < length; i += 4 {
+			v0 := uuVal(rest[i])
+			v1 := uuVal(rest[i+1])
+			v2 := uuVal(rest[i+2])
+			v3 := uuVal(rest[i+3])
+			if len(out) < length {
+				out = append(out, (v0<<2)|(v1>>4))
+			}
+			if len(out) < length {
+				out = append(out, (v1<<4)|(v2>>2))
+			}
+			if len(out) < length {
+				out = append(out, (v2<<6)|v3)
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b2a_qp: Quoted-printable encode.
+	m.Dict.SetStr("b2a_qp", &object.BuiltinFunc{Name: "b2a_qp", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "b2a_qp() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		quotetabs := false
+		istext := true
+		header := false
+		if kw != nil {
+			if v, ok := kw.GetStr("quotetabs"); ok {
+				quotetabs = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("istext"); ok {
+				istext = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("header"); ok {
+				header = object.Truthy(v)
+			}
+		}
+		if len(a) >= 2 {
+			quotetabs = object.Truthy(a[1])
+		}
+		if len(a) >= 3 {
+			istext = object.Truthy(a[2])
+		}
+		if len(a) >= 4 {
+			header = object.Truthy(a[3])
+		}
+
+		var out []byte
+		lineLen := 0
+		const maxLine = 76
+
+		addSoftBreak := func() {
+			out = append(out, '=', '\n')
+			lineLen = 0
+		}
+		addByte := func(b byte) {
+			if lineLen+1 > maxLine {
+				addSoftBreak()
+			}
+			out = append(out, b)
+			lineLen++
+		}
+		addEncoded := func(b byte) {
+			const hexDigits = "0123456789ABCDEF"
+			if lineLen+3 > maxLine {
+				addSoftBreak()
+			}
+			out = append(out, '=', hexDigits[b>>4], hexDigits[b&0xf])
+			lineLen += 3
+		}
+
+		for j := 0; j < len(data); j++ {
+			c := data[j]
+			if header && c == ' ' {
+				addByte('_')
+			} else if istext && c == '\n' {
+				// Preserve newline as line break
+				// Trim trailing space/tab from line
+				out = append(out, '\n')
+				lineLen = 0
+			} else if istext && c == '\r' && j+1 < len(data) && data[j+1] == '\n' {
+				out = append(out, '\r', '\n')
+				lineLen = 0
+				j++ // skip \n
+			} else if c == '\t' || c == ' ' {
+				if quotetabs {
+					addEncoded(c)
+				} else {
+					// Space/tab: encode if it would be at end of line or before newline
+					isLast := j+1 >= len(data)
+					beforeNewline := j+1 < len(data) && (data[j+1] == '\n' || data[j+1] == '\r')
+					if isLast || beforeNewline {
+						addEncoded(c)
+					} else {
+						addByte(c)
+					}
+				}
+			} else if c == '=' || c > 126 || (c < 32 && c != '\t') {
+				addEncoded(c)
+			} else {
+				addByte(c)
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// a2b_qp: Quoted-printable decode.
+	m.Dict.SetStr("a2b_qp", &object.BuiltinFunc{Name: "a2b_qp", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "a2b_qp() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		header := false
+		if kw != nil {
+			if v, ok := kw.GetStr("header"); ok {
+				header = object.Truthy(v)
+			}
+		}
+		if len(a) >= 2 {
+			header = object.Truthy(a[1])
+		}
+
+		var out []byte
+		hexVal := func(c byte) (byte, bool) {
+			if c >= '0' && c <= '9' {
+				return c - '0', true
+			}
+			if c >= 'A' && c <= 'F' {
+				return c - 'A' + 10, true
+			}
+			if c >= 'a' && c <= 'f' {
+				return c - 'a' + 10, true
+			}
+			return 0, false
+		}
+		for j := 0; j < len(data); j++ {
+			c := data[j]
+			if header && c == '_' {
+				out = append(out, ' ')
+			} else if c == '=' && j+1 < len(data) {
+				next := data[j+1]
+				if next == '\n' {
+					// soft line break
+					j++
+				} else if next == '\r' && j+2 < len(data) && data[j+2] == '\n' {
+					// soft line break with CRLF
+					j += 2
+				} else if j+2 < len(data) {
+					hi, ok1 := hexVal(next)
+					lo, ok2 := hexVal(data[j+2])
+					if ok1 && ok2 {
+						out = append(out, (hi<<4)|lo)
+						j += 2
+					} else {
+						out = append(out, c)
+					}
+				} else {
+					out = append(out, c)
+				}
+			} else {
+				out = append(out, c)
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// crc_hqx: CRC-CCITT (16-bit) used by BinHex4.
+	m.Dict.SetStr("crc_hqx", &object.BuiltinFunc{Name: "crc_hqx", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "crc_hqx() requires data and crc")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		crcVal, ok := toInt64(a[1])
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "crc_hqx() crc must be int")
+		}
+		result := crcHqx(data, uint16(crcVal))
+		return newIntU64(uint64(result)), nil
+	}})
+
+	// rlecode_hqx: BinHex4 RLE compress.
+	m.Dict.SetStr("rlecode_hqx", &object.BuiltinFunc{Name: "rlecode_hqx", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "rlecode_hqx() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		var out []byte
+		n := len(data)
+		for j := 0; j < n; {
+			b := data[j]
+			if b == 0x90 {
+				// Each 0x90 byte must be escaped as 0x90, 0x00
+				out = append(out, 0x90, 0x00)
+				j++
+				continue
+			}
+			// Count run length (non-0x90 bytes only)
+			run := 1
+			for j+run < n && data[j+run] == b && run < 255 {
+				run++
+			}
+			if run >= 3 {
+				out = append(out, b, 0x90, byte(run))
+				j += run
+			} else {
+				out = append(out, b)
+				j++
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// rledecode_hqx: BinHex4 RLE decompress.
+	m.Dict.SetStr("rledecode_hqx", &object.BuiltinFunc{Name: "rledecode_hqx", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "rledecode_hqx() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		var out []byte
+		n := len(data)
+		for j := 0; j < n; {
+			b := data[j]
+			j++
+			if b == 0x90 {
+				if j >= n {
+					return nil, object.NewException(binIncomplete, "incomplete RLE sequence")
+				}
+				count := data[j]
+				j++
+				if count == 0 {
+					// Escaped literal 0x90
+					out = append(out, 0x90)
+				} else if len(out) == 0 {
+					return nil, object.NewException(binErr, "RLE count with no previous byte")
+				} else {
+					// Repeat the last emitted byte (count-1) more times.
+					// The byte was already emitted; total = count.
+					prev := out[len(out)-1]
+					for k := 1; k < int(count); k++ {
+						out = append(out, prev)
+					}
+				}
+			} else {
+				out = append(out, b)
+			}
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b2a_hqx: BinHex4 encode (applies 6-bit encoding).
+	m.Dict.SetStr("b2a_hqx", &object.BuiltinFunc{Name: "b2a_hqx", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "b2a_hqx() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		// Pack 6-bit groups from input bytes (like base64 structure)
+		var out []byte
+		bits := 0
+		buf := 0
+		for _, b := range data {
+			buf = (buf << 8) | int(b)
+			bits += 8
+			for bits >= 6 {
+				bits -= 6
+				idx := (buf >> bits) & 0x3f
+				out = append(out, hqxEncode(byte(idx)))
+			}
+		}
+		if bits > 0 {
+			idx := (buf << (6 - bits)) & 0x3f
+			out = append(out, hqxEncode(byte(idx)))
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// a2b_hqx: BinHex4 decode; returns (data, done) tuple.
+	m.Dict.SetStr("a2b_hqx", &object.BuiltinFunc{Name: "a2b_hqx", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) == 0 {
+			return nil, object.Errorf(i.typeErr, "a2b_hqx() missing data")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		done := 0
+		// Strip trailing ':' (BinHex end marker)
+		if len(data) > 0 && data[len(data)-1] == ':' {
+			done = 1
+			data = data[:len(data)-1]
+		}
+		var out []byte
+		bits := 0
+		buf := 0
+		for _, b := range data {
+			v, ok := hqxDecode(b)
+			if !ok {
+				return nil, object.NewException(binErr, "Illegal char")
+			}
+			buf = (buf << 6) | int(v)
+			bits += 6
+			if bits >= 8 {
+				bits -= 8
+				out = append(out, byte((buf>>bits)&0xff))
+			}
+		}
+		// Leftover bits are padding (zeros) from the encoder's trailing group.
+		// Only raise Incomplete when we have enough bits for another byte but
+		// the stream is cut off — treat remaining < 6 bits as padding.
+		result := &object.Tuple{V: []object.Object{
+			&object.Bytes{V: out},
+			object.NewInt(int64(done)),
+		}}
+		return result, nil
 	}})
 
 	return m
