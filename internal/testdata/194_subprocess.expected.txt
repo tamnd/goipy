@@ -1,0 +1,31 @@
+run capture ok
+run text ok
+run bytes ok
+run shell ok
+run input ok
+run input bytes ok
+run stderr ok
+run devnull ok
+run cwd ok
+run env ok
+run check ok
+run nonzero ok
+check_returncode ok
+called_error_attrs ok
+run timeout ok
+run timeout_expired ok
+popen basic ok
+popen communicate input ok
+popen poll ok
+popen wait ok
+popen pid ok
+popen kill ok
+call ok
+check_call ok
+check_output ok
+getoutput ok
+getstatusoutput ok
+constants ok
+exception hierarchy ok
+shell pipe ok
+ALL OK
