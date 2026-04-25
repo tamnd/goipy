@@ -335,6 +335,20 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return nil, false
 	case "webbrowser":
 		return i.buildWebbrowser(), true
+	case "wsgiref":
+		return i.buildWsgiref(), true
+	case "wsgiref.util":
+		return i.buildWsgirefUtil(), true
+	case "wsgiref.headers":
+		return i.buildWsgirefHeaders(), true
+	case "wsgiref.simple_server":
+		return i.buildWsgirefSimpleServer(), true
+	case "wsgiref.handlers":
+		return i.buildWsgirefHandlers(), true
+	case "wsgiref.validate":
+		return i.buildWsgirefValidate(), true
+	case "wsgiref.types":
+		return i.buildWsgirefTypes(), true
 	}
 	return nil, false
 }
