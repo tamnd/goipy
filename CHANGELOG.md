@@ -102,3 +102,105 @@ Each release ships pre-built binaries for:
 - `darwin/arm64`
 
 All binaries are statically linked (CGO_ENABLED=0) and built with `-ldflags="-s -w"`.
+
+## v0.0.217 - 2026-04-25
+
+`xml.etree.ElementTree` extended: `QName`, `TreeBuilder`, `iterparse` with
+`start`/`end`/`start-ns`/`end-ns` events, `canonicalize`.
+
+## v0.0.216 - 2026-04-25
+
+Full `xml` package: `xml.etree.ElementTree` (parse, Element, SubElement,
+tostring, fromstring), `xml.sax` (ContentHandler, parse, parseString),
+`xml.dom` (base classes, constants), `xml.parsers.expat`.
+
+## v0.0.215 - 2026-04-25
+
+`html.entities` extended to full CPython 3.14 spec: all 2231 named character
+references in `html5` and `name2codepoint`/`codepoint2name` mappings.
+
+## v0.0.214 - 2026-04-25
+
+`html.parser` extended to full CPython 3.14 spec: `handle_starttag`,
+`handle_endtag`, `handle_startendtag`, `handle_data`, `handle_comment`,
+`handle_decl`, `handle_pi`, `handle_entityref`, `unknown_decl`.
+`convert_charrefs`, `CDATA_CONTENT_ELEMENTS`.
+
+## v0.0.213 - 2026-04-25
+
+`html`: `unescape`, `escape`. `html.parser`: `HTMLParser`. `html.entities`:
+`html5`, `name2codepoint`, `codepoint2name`.
+
+## v0.0.212 - 2026-04-25
+
+`quopri`: `encode`, `decode`, `encodestring`, `decodestring`. Quoted-printable
+encoding per RFC 2045. `header` mode flag.
+
+## v0.0.211 - 2026-04-25
+
+`binascii` extended to full CPython 3.14 spec: `b2a_qp`, `a2b_qp`,
+`b2a_hqx`, `a2b_hqx`, `rlecode_hqx`, `rledecode_hqx`, `crc_hqx`,
+`b2a_uu`, `a2b_uu`, `b2a_base64` with `newline` param, `Error`, `Incomplete`.
+
+## v0.0.210 - 2026-04-25
+
+`base64` extended to full CPython 3.14 spec: `encodebytes`, `decodebytes`,
+`b85encode`, `b85decode`, `a85encode`, `a85decode`, `b16encode`, `b16decode`,
+`b32encode`, `b32decode`, `b32hexencode`, `b32hexdecode`, `urlsafe_b64encode`,
+`urlsafe_b64decode`.
+
+## v0.0.209 - 2026-04-25
+
+`mimetypes`: `guess_type`, `guess_extension`, `guess_all_extensions`,
+`add_type`, `init`, `read_mime_types`, `MimeTypes`. Common MIME types
+pre-loaded.
+
+## v0.0.208 - 2026-04-25
+
+`mailbox`: `mbox`, `Maildir`, `MaildirMessage`, `mboxMessage`. `add`,
+`remove`, `update`, `flush`, `lock`, `unlock`. `NoSuchMailboxError`.
+
+## v0.0.207 - 2026-04-25
+
+`json` extended to full CPython 3.14 feature set: `JSONDecodeError` with
+`pos`/`lineno`/`colno`, `JSONEncoder` with `check_circular`, `allow_nan`,
+`sort_keys`, `default` hook. `JSONDecoder` with `object_hook`,
+`object_pairs_hook`, `parse_float`, `parse_int`, `parse_constant`.
+
+## v0.0.206 - 2026-04-25
+
+`email` package: `email.message.Message`, MIME classes (`MIMEText`,
+`MIMEMultipart`, `MIMEBase`, `MIMEImage`, `MIMEAudio`, `MIMEApplication`).
+`email.utils`, `email.header`, `email.encoders`, `email.generator`,
+`email.parser`.
+
+## v0.0.205 - 2026-04-25
+
+`mmap`: file-backed and anonymous mappings. `ACCESS_READ`, `ACCESS_WRITE`,
+`ACCESS_COPY`, `ACCESS_NONE`. `seek`, `tell`, `read`, `write`, `readline`,
+`find`, `rfind`, `flush`, `resize`, `close`. Slice assignment.
+
+## v0.0.204 - 2026-04-25
+
+`signal`: `signal`, `getsignal`, `raise_signal`, `strsignal`, `valid_signals`,
+`pause`, `alarm`, `setitimer`, `getitimer`. Handler registry and OS-level
+signal delivery. `SIG_DFL`, `SIG_IGN`.
+
+## v0.0.203 - 2026-04-25
+
+`selectors`: `DefaultSelector`, `EpollSelector`, `KqueueSelector`,
+`PollSelector`, `SelectSelector`. `register`, `unregister`, `modify`,
+`select`, `get_key`, `get_map`. `EVENT_READ`, `EVENT_WRITE`.
+
+## v0.0.202 - 2026-04-25
+
+`select`: `select`, `poll`, `epoll`, `kqueue`, `kevent`. `POLLIN`, `POLLOUT`,
+`POLLERR`, `POLLHUP`, `POLLNVAL`. `epoll` edge-triggered and level-triggered.
+
+## v0.0.201 - 2026-04-25
+
+`ssl` backed by Go `crypto/tls`: `SSLContext`, `wrap_socket`, `SSLSocket`,
+`SSLError`. `PROTOCOL_TLS_CLIENT`, `PROTOCOL_TLS_SERVER`. Certificate
+loading, hostname verification, `check_hostname`, `verify_mode`.
+
+For releases v0.0.001 through v0.0.200, see the [changelog/](changelog/) folder.
