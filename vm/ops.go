@@ -867,6 +867,10 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		// Fall through to class dict lookup for method access.
 		if e.Class != nil {
 			if v, found := classLookup(e.Class, name); found {
+				switch v.(type) {
+				case *object.BuiltinFunc, *object.Function:
+					return &object.BoundMethod{Self: e, Fn: v}, nil
+				}
 				return v, nil
 			}
 		}
