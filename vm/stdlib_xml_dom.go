@@ -17,6 +17,7 @@ var (
 	domSharedAttrCls         *object.Class
 	domSharedNodeListCls     *object.Class
 	domSharedNamedNodeMapCls *object.Class
+	domSharedImplInst        *object.Instance
 )
 
 func ensureDomSharedClasses(i *Interp) {
@@ -81,6 +82,9 @@ type domNodeState struct {
 	// for text/comment/pi
 	data   string
 	target string // for PI
+	// for DocumentType
+	publicId string
+	systemId string
 }
 
 type domNodeRegistry struct{ m sync.Map }
@@ -127,6 +131,14 @@ func (i *Interp) buildDomSharedClasses() (attrCls, nodeListCls, namedNodeMapCls 
 		inst.Dict.SetStr("nodeValue", &object.Str{V: value})
 		inst.Dict.SetStr("nodeType", object.IntFromInt64(domATTRIBUTE_NODE))
 		inst.Dict.SetStr("ownerElement", object.None)
+		inst.Dict.SetStr("specified", object.False)
+		inst.Dict.SetStr("prefix", object.None)
+		inst.Dict.SetStr("namespaceURI", object.None)
+		local := name
+		if idx := strings.LastIndex(name, ":"); idx >= 0 {
+			local = name[idx+1:]
+		}
+		inst.Dict.SetStr("localName", &object.Str{V: local})
 		return inst
 	}
 
@@ -469,6 +481,30 @@ func (i *Interp) buildDomSharedClasses() (attrCls, nodeListCls, namedNodeMapCls 
 }
 
 // domAttrFromInst extracts (name, value) from an Attr instance.
+// domMakeFullAttr creates an Attr instance with all CPython minidom properties set.
+func domMakeFullAttr(name, value string, ownerElement *object.Instance) object.Object {
+	if domSharedAttrCls == nil {
+		return &object.Str{V: value}
+	}
+	inst := &object.Instance{Class: domSharedAttrCls, Dict: object.NewDict()}
+	inst.Dict.SetStr("name", &object.Str{V: name})
+	inst.Dict.SetStr("nodeName", &object.Str{V: name})
+	inst.Dict.SetStr("value", &object.Str{V: value})
+	inst.Dict.SetStr("nodeValue", &object.Str{V: value})
+	inst.Dict.SetStr("nodeType", object.IntFromInt64(domATTRIBUTE_NODE))
+	inst.Dict.SetStr("ownerElement", ownerElement)
+	inst.Dict.SetStr("specified", object.False)
+	inst.Dict.SetStr("prefix", object.None)
+	inst.Dict.SetStr("namespaceURI", object.None)
+	// localName: strip prefix if present
+	local := name
+	if idx := strings.LastIndex(name, ":"); idx >= 0 {
+		local = name[idx+1:]
+	}
+	inst.Dict.SetStr("localName", &object.Str{V: local})
+	return inst
+}
+
 func domAttrFromInst(inst *object.Instance) (name, value string) {
 	if v, ok := inst.Dict.GetStr("name"); ok {
 		if s, ok2 := v.(*object.Str); ok2 {
@@ -645,6 +681,7 @@ func (i *Interp) buildXmlDom() *object.Module {
 
 	// Singleton implementation
 	implInst := &object.Instance{Class: implCls, Dict: object.NewDict()}
+	domSharedImplInst = implInst
 
 	// getDOMImplementation(name=None, features=())
 	m.Dict.SetStr("getDOMImplementation", &object.BuiltinFunc{Name: "getDOMImplementation", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
@@ -931,34 +968,100 @@ func (i *Interp) installDomNodeMethods(cls *object.Class) {
 		return object.BoolOf(len(st.attrs) > 0), nil
 	}})
 
-	// toxml(encoding=None) -> str
+	// toxml(encoding=None, standalone=None) -> str
 	cls.Dict.SetStr("toxml", &object.BuiltinFunc{Name: "toxml", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
 		self := a[0].(*object.Instance)
 		var buf strings.Builder
-		domSerialize(&buf, self, false, "", 0)
+		domWriteXML(&buf, self, "", "", "")
 		return &object.Str{V: buf.String()}, nil
 	}})
 
-	// toprettyxml(indent='\t', newl='\n', encoding=None)
+	// toprettyxml(indent='\t', newl='\n', encoding=None, standalone=None)
 	cls.Dict.SetStr("toprettyxml", &object.BuiltinFunc{Name: "toprettyxml", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
 		self := a[0].(*object.Instance)
-		indent := "\t"
+		indent, newl := "\t", "\n"
 		if kw != nil {
 			if v, ok := kw.GetStr("indent"); ok {
-				if s, ok := v.(*object.Str); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
 					indent = s.V
+				}
+			}
+			if v, ok := kw.GetStr("newl"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					newl = s.V
+				}
+			}
+		}
+		if len(a) >= 2 {
+			if s, ok := a[1].(*object.Str); ok {
+				indent = s.V
+			}
+		}
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				newl = s.V
+			}
+		}
+		var buf strings.Builder
+		domWriteXML(&buf, self, "", indent, newl)
+		return &object.Str{V: buf.String()}, nil
+	}})
+
+	// writexml(writer, indent='', addindent='', newl='')
+	cls.Dict.SetStr("writexml", &object.BuiltinFunc{Name: "writexml", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		writer := a[1]
+		indent, addindent, newl := "", "", ""
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				indent = s.V
+			}
+		}
+		if len(a) >= 4 {
+			if s, ok := a[3].(*object.Str); ok {
+				addindent = s.V
+			}
+		}
+		if len(a) >= 5 {
+			if s, ok := a[4].(*object.Str); ok {
+				newl = s.V
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("indent"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					indent = s.V
+				}
+			}
+			if v, ok := kw.GetStr("addindent"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					addindent = s.V
+				}
+			}
+			if v, ok := kw.GetStr("newl"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					newl = s.V
 				}
 			}
 		}
 		var buf strings.Builder
-		domSerialize(&buf, self, true, indent, 0)
-		return &object.Str{V: buf.String()}, nil
+		domWriteXML(&buf, self, indent, addindent, newl)
+		ii := interp.(*Interp)
+		writeFn, err := ii.getAttr(writer, "write")
+		if err != nil {
+			return object.None, nil
+		}
+		_, werr := ii.callObject(writeFn, []object.Object{&object.Str{V: buf.String()}}, nil)
+		return object.None, werr
 	}})
 
 	// unlink() - for compatibility
@@ -1245,17 +1348,7 @@ func (i *Interp) installDomElementMethods(cls *object.Class) {
 		}
 		for _, da := range st.attrs {
 			if da.name == name {
-				if domSharedAttrCls != nil {
-					inst := &object.Instance{Class: domSharedAttrCls, Dict: object.NewDict()}
-					inst.Dict.SetStr("name", &object.Str{V: da.name})
-					inst.Dict.SetStr("nodeName", &object.Str{V: da.name})
-					inst.Dict.SetStr("value", &object.Str{V: da.value})
-					inst.Dict.SetStr("nodeValue", &object.Str{V: da.value})
-					inst.Dict.SetStr("nodeType", object.IntFromInt64(domATTRIBUTE_NODE))
-					inst.Dict.SetStr("ownerElement", self)
-					return inst, nil
-				}
-				return &object.Str{V: da.value}, nil
+				return domMakeFullAttr(da.name, da.value, self), nil
 			}
 		}
 		return object.None, nil
@@ -1604,35 +1697,166 @@ func (i *Interp) installDomDocumentMethods(docCls, elemCls, textCls, commentCls,
 		return result, nil
 	}})
 
-	// toxml(encoding=None) -> str
+	// toxml(encoding=None, standalone=None) -> str or bytes
 	docCls.Dict.SetStr("toxml", &object.BuiltinFunc{Name: "toxml", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
 		self := a[0].(*object.Instance)
+		enc, sa := domParseEncodingStandalone(a[1:], kw)
 		var buf strings.Builder
-		domSerialize(&buf, self, false, "", 0)
+		buf.WriteString(xmlMakeDecl(enc, sa))
+		domWriteXML(&buf, self, "", "", "")
+		if enc != "" {
+			return &object.Bytes{V: []byte(buf.String())}, nil
+		}
 		return &object.Str{V: buf.String()}, nil
 	}})
 
-	// toprettyxml
+	// toprettyxml(indent='\t', newl='\n', encoding=None, standalone=None)
 	docCls.Dict.SetStr("toprettyxml", &object.BuiltinFunc{Name: "toprettyxml", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return &object.Str{V: ""}, nil
 		}
 		self := a[0].(*object.Instance)
-		indent := "\t"
+		indent, newl := "\t", "\n"
+		enc, sa := "", object.Object(object.None)
 		if kw != nil {
 			if v, ok := kw.GetStr("indent"); ok {
-				if s, ok := v.(*object.Str); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
 					indent = s.V
 				}
 			}
+			if v, ok := kw.GetStr("newl"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					newl = s.V
+				}
+			}
+		}
+		if len(a) >= 2 {
+			if s, ok := a[1].(*object.Str); ok {
+				indent = s.V
+			}
+		}
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				newl = s.V
+			}
+		}
+		var extra2 []object.Object
+		if len(a) > 3 {
+			extra2 = a[3:]
+		}
+		enc2, sa2 := domParseEncodingStandalone(extra2, kw)
+		if enc2 != "" {
+			enc = enc2
+		}
+		if sa2 != object.None {
+			sa = sa2
 		}
 		var buf strings.Builder
-		domSerialize(&buf, self, true, indent, 0)
+		buf.WriteString(xmlMakeDecl(enc, sa))
+		buf.WriteString(newl)
+		domWriteXML(&buf, self, "", indent, newl)
+		if enc != "" {
+			return &object.Bytes{V: []byte(buf.String())}, nil
+		}
 		return &object.Str{V: buf.String()}, nil
 	}})
+
+	// writexml(writer, indent='', addindent='', newl='', encoding=None, standalone=None)
+	docCls.Dict.SetStr("writexml", &object.BuiltinFunc{Name: "writexml", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		writer := a[1]
+		indent, addindent, newl := "", "", ""
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				indent = s.V
+			}
+		}
+		if len(a) >= 4 {
+			if s, ok := a[3].(*object.Str); ok {
+				addindent = s.V
+			}
+		}
+		if len(a) >= 5 {
+			if s, ok := a[4].(*object.Str); ok {
+				newl = s.V
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("indent"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					indent = s.V
+				}
+			}
+			if v, ok := kw.GetStr("addindent"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					addindent = s.V
+				}
+			}
+			if v, ok := kw.GetStr("newl"); ok {
+				if s, ok2 := v.(*object.Str); ok2 {
+					newl = s.V
+				}
+			}
+		}
+		var extra []object.Object
+		if len(a) > 5 {
+			extra = a[5:]
+		}
+		enc, sa := domParseEncodingStandalone(extra, kw)
+		var buf strings.Builder
+		buf.WriteString(xmlMakeDecl(enc, sa))
+		buf.WriteString(newl)
+		domWriteXML(&buf, self, indent, addindent, newl)
+		ii := interp.(*Interp)
+		writeFn, err := ii.getAttr(writer, "write")
+		if err != nil {
+			return object.None, nil
+		}
+		_, werr := ii.callObject(writeFn, []object.Object{&object.Str{V: buf.String()}}, nil)
+		return object.None, werr
+	}})
+
+	// __enter__ / __exit__ for context manager
+	docCls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		return a[0], nil
+	}})
+	docCls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		// calls unlink() equivalent: nothing to do in our implementation
+		return object.False, nil
+	}})
+
+	// doctype property — returns stored doctype or None
+	docCls.Dict.SetStr("doctype", &object.Property{Fget: &object.BuiltinFunc{Name: "doctype", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		for _, ch := range st.children {
+			chSt := getDomNode(ch)
+			if chSt != nil && chSt.nodeType == domDOCUMENT_TYPE_NODE {
+				return ch, nil
+			}
+		}
+		return object.None, nil
+	}}})
+
+	// implementation — always the DOMImplementation singleton
+	docCls.Dict.SetStr("implementation", &object.Property{Fget: &object.BuiltinFunc{Name: "implementation", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return domSharedImplInst, nil
+	}}})
 
 	// appendChild for Document (adds to top-level)
 	docCls.Dict.SetStr("appendChild", &object.BuiltinFunc{Name: "appendChild", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -1817,129 +2041,28 @@ func domSyncNodeDict(inst *object.Instance, st *domNodeState) {
 	}
 	inst.Dict.SetStr("namespaceURI", object.None)
 	inst.Dict.SetStr("prefix", object.None)
-	if st.nodeType == domELEMENT_NODE {
-		inst.Dict.SetStr("localName", &object.Str{V: st.nodeName})
+	// localName: local part of the nodeName (no prefix) for element/attr
+	switch st.nodeType {
+	case domELEMENT_NODE, domATTRIBUTE_NODE:
+		local := st.nodeName
+		if idx := strings.LastIndex(local, ":"); idx >= 0 {
+			local = local[idx+1:]
+		}
+		inst.Dict.SetStr("localName", &object.Str{V: local})
+	default:
+		inst.Dict.SetStr("localName", object.None)
 	}
 	// attributes as NamedNodeMap for Element
 	if st.nodeType == domELEMENT_NODE {
 		inst.Dict.SetStr("attributes", domMakeNamedNodeMap(inst))
 	}
-}
-
-// domSerialize serializes DOM node to string builder.
-func domSerialize(buf *strings.Builder, inst *object.Instance, pretty bool, indent string, level int) {
-	st := getDomNode(inst)
-	if st == nil {
-		// Check if it's a Document by looking for documentElement
-		if docElem, ok := inst.Dict.GetStr("documentElement"); ok && docElem != object.None {
-			if docInst, ok := docElem.(*object.Instance); ok {
-				// It's a Document node
-				docSt := getDomNode(inst)
-				if docSt == nil {
-					// Write preamble
-					if !pretty {
-						buf.WriteString(`<?xml version="1.0" ?>`)
-					} else {
-						buf.WriteString(`<?xml version="1.0" ?>` + "\n")
-					}
-					domSerialize(buf, docInst, pretty, indent, level)
-					return
-				}
-			}
-		}
-		return
-	}
-
-	pfx := ""
-	if pretty {
-		pfx = strings.Repeat(indent, level)
-	}
-
-	switch st.nodeType {
-	case domDOCUMENT_NODE:
-		if !pretty {
-			buf.WriteString(`<?xml version="1.0" ?>`)
-		} else {
-			buf.WriteString(`<?xml version="1.0" ?>` + "\n")
-		}
-		for _, child := range st.children {
-			domSerialize(buf, child, pretty, indent, level)
-		}
-	case domELEMENT_NODE:
-		if pretty {
-			buf.WriteString(pfx)
-		}
-		buf.WriteByte('<')
-		buf.WriteString(st.nodeName)
-		for _, attr := range st.attrs {
-			buf.WriteByte(' ')
-			buf.WriteString(attr.name)
-			buf.WriteString(`="`)
-			buf.WriteString(xmlEscapeAttr(attr.value))
-			buf.WriteByte('"')
-		}
-		if len(st.children) == 0 {
-			buf.WriteString("/>")
-		} else {
-			buf.WriteByte('>')
-			if pretty {
-				buf.WriteByte('\n')
-			}
-			for _, child := range st.children {
-				domSerialize(buf, child, pretty, indent, level+1)
-			}
-			if pretty {
-				buf.WriteString(pfx)
-			}
-			buf.WriteString("</")
-			buf.WriteString(st.nodeName)
-			buf.WriteByte('>')
-		}
-		if pretty {
-			buf.WriteByte('\n')
-		}
-	case domTEXT_NODE:
-		if pretty {
-			buf.WriteString(pfx)
-		}
-		buf.WriteString(xmlEscapeText(st.data))
-		if pretty {
-			buf.WriteByte('\n')
-		}
-	case domCDATA_SECTION_NODE:
-		if pretty {
-			buf.WriteString(pfx)
-		}
-		buf.WriteString("<![CDATA[")
-		buf.WriteString(st.data)
-		buf.WriteString("]]>")
-		if pretty {
-			buf.WriteByte('\n')
-		}
-	case domCOMMENT_NODE:
-		if pretty {
-			buf.WriteString(pfx)
-		}
-		buf.WriteString("<!--")
-		buf.WriteString(st.data)
-		buf.WriteString("-->")
-		if pretty {
-			buf.WriteByte('\n')
-		}
-	case domPROCESSING_INSTRUCTION_NODE:
-		if pretty {
-			buf.WriteString(pfx)
-		}
-		buf.WriteString("<?")
-		buf.WriteString(st.target)
-		if st.data != "" {
-			buf.WriteByte(' ')
-			buf.WriteString(st.data)
-		}
-		buf.WriteString("?>")
-		if pretty {
-			buf.WriteByte('\n')
-		}
+	// DocumentType fields
+	if st.nodeType == domDOCUMENT_TYPE_NODE {
+		inst.Dict.SetStr("publicId", &object.Str{V: st.publicId})
+		inst.Dict.SetStr("systemId", &object.Str{V: st.systemId})
+		inst.Dict.SetStr("internalSubset", object.None)
+		inst.Dict.SetStr("entities", object.NewDict())
+		inst.Dict.SetStr("notations", object.NewDict())
 	}
 }
 
@@ -2084,10 +2207,245 @@ func minidomParseBytes(data []byte, docCls, elemCls, textCls, commentCls, piCls,
 				st.parent = parent.inst
 				parent.st.children = append(parent.st.children, inst)
 			}
+		case xml.Directive:
+			directive := strings.TrimSpace(string(t))
+			if strings.HasPrefix(directive, "DOCTYPE ") {
+				rest := strings.TrimSpace(directive[8:])
+				// parse: name [PUBLIC "pubId" "sysId" | SYSTEM "sysId"]
+				name := ""
+				publicId := ""
+				systemId := ""
+				fields := strings.Fields(rest)
+				if len(fields) >= 1 {
+					name = fields[0]
+				}
+				if len(fields) >= 2 {
+					keyword := fields[1]
+					// rebuild remainder after name to extract quoted ids
+					rem := strings.TrimSpace(rest[len(fields[0]):])
+					if keyword == "PUBLIC" || keyword == "SYSTEM" {
+						quoted := extractDocTypeIDs(rem)
+						if keyword == "PUBLIC" && len(quoted) >= 2 {
+							publicId = quoted[0]
+							systemId = quoted[1]
+						} else if keyword == "SYSTEM" && len(quoted) >= 1 {
+							systemId = quoted[0]
+						}
+					}
+				}
+				inst := &object.Instance{Class: docTypeCls, Dict: object.NewDict()}
+				st := &domNodeState{
+					nodeType: domDOCUMENT_TYPE_NODE,
+					nodeName: name,
+					publicId: publicId,
+					systemId: systemId,
+					ownerDoc: docInst,
+				}
+				domNodeMap.Store(inst, st)
+				domSyncNodeDict(inst, st)
+				st.parent = docInst
+				docSt.children = append(docSt.children, inst)
+			}
 		}
 	}
 	_ = docRoot
 	return docInst, nil
+}
+
+// extractDocTypeIDs returns up to 2 double-quoted strings from a DOCTYPE directive remainder.
+func extractDocTypeIDs(s string) []string {
+	var ids []string
+	for len(ids) < 2 {
+		s = strings.TrimSpace(s)
+		if len(s) == 0 {
+			break
+		}
+		// skip keyword PUBLIC/SYSTEM
+		if strings.HasPrefix(s, "PUBLIC") || strings.HasPrefix(s, "SYSTEM") {
+			idx := strings.IndexByte(s, '"')
+			if idx < 0 {
+				break
+			}
+			s = s[idx:]
+			continue
+		}
+		if s[0] != '"' {
+			break
+		}
+		end := strings.IndexByte(s[1:], '"')
+		if end < 0 {
+			break
+		}
+		ids = append(ids, s[1:end+1])
+		s = s[end+2:]
+	}
+	return ids
+}
+
+// xmlMakeDecl builds an XML declaration string matching CPython minidom behavior.
+// Plain case (no encoding, no standalone) uses a trailing space: <?xml version="1.0" ?>
+// Any other case omits the trailing space: <?xml version="1.0" encoding="utf-8"?>
+func xmlMakeDecl(encoding string, standalone object.Object) string {
+	hasStandalone := standalone != nil && standalone != object.None && (standalone == object.True || standalone == object.False)
+	if encoding == "" && !hasStandalone {
+		return `<?xml version="1.0" ?>`
+	}
+	decl := `<?xml version="1.0"`
+	if encoding != "" {
+		decl += ` encoding="` + encoding + `"`
+	}
+	if hasStandalone {
+		if standalone == object.True {
+			decl += ` standalone="yes"`
+		} else {
+			decl += ` standalone="no"`
+		}
+	}
+	decl += "?>"
+	return decl
+}
+
+// domParseEncodingStandalone extracts encoding and standalone from positional/kw args.
+func domParseEncodingStandalone(extra []object.Object, kw *object.Dict) (string, object.Object) {
+	enc := ""
+	sa := object.Object(object.None)
+	if len(extra) >= 1 {
+		if s, ok := extra[0].(*object.Str); ok {
+			enc = s.V
+		}
+	}
+	if len(extra) >= 2 {
+		sa = extra[1]
+	}
+	if kw != nil {
+		if v, ok := kw.GetStr("encoding"); ok {
+			if s, ok2 := v.(*object.Str); ok2 {
+				enc = s.V
+			}
+		}
+		if v, ok := kw.GetStr("standalone"); ok {
+			sa = v
+		}
+	}
+	return enc, sa
+}
+
+// domWriteXML serializes a DOM node to a strings.Builder using CPython minidom rules.
+func domWriteXML(buf *strings.Builder, inst *object.Instance, indent, addindent, newl string) {
+	st := getDomNode(inst)
+	if st == nil {
+		// Bare Document-like node without state (legacy path)
+		if docElem, ok := inst.Dict.GetStr("documentElement"); ok && docElem != object.None {
+			if docInst, ok2 := docElem.(*object.Instance); ok2 {
+				domWriteXML(buf, docInst, indent, addindent, newl)
+			}
+		}
+		return
+	}
+
+	switch st.nodeType {
+	case domDOCUMENT_NODE:
+		for _, child := range st.children {
+			domWriteXML(buf, child, indent, addindent, newl)
+		}
+
+	case domELEMENT_NODE:
+		buf.WriteString(indent)
+		buf.WriteByte('<')
+		buf.WriteString(st.nodeName)
+		for _, attr := range st.attrs {
+			buf.WriteByte(' ')
+			buf.WriteString(attr.name)
+			buf.WriteString(`="`)
+			buf.WriteString(xmlEscapeAttr(attr.value))
+			buf.WriteByte('"')
+		}
+		if len(st.children) == 0 {
+			buf.WriteString("/>")
+			buf.WriteString(newl)
+		} else {
+			// Single TEXT_NODE child → inline
+			singleText := false
+			if len(st.children) == 1 {
+				if chSt := getDomNode(st.children[0]); chSt != nil && chSt.nodeType == domTEXT_NODE {
+					singleText = true
+				}
+			}
+			buf.WriteByte('>')
+			if singleText {
+				chSt := getDomNode(st.children[0])
+				buf.WriteString(xmlEscapeText(chSt.data))
+				buf.WriteString("</")
+				buf.WriteString(st.nodeName)
+				buf.WriteByte('>')
+				buf.WriteString(newl)
+			} else {
+				buf.WriteString(newl)
+				childIndent := indent + addindent
+				for _, child := range st.children {
+					domWriteXML(buf, child, childIndent, addindent, newl)
+				}
+				buf.WriteString(indent)
+				buf.WriteString("</")
+				buf.WriteString(st.nodeName)
+				buf.WriteByte('>')
+				buf.WriteString(newl)
+			}
+		}
+
+	case domTEXT_NODE:
+		buf.WriteString(indent)
+		buf.WriteString(xmlEscapeText(st.data))
+		buf.WriteString(newl)
+
+	case domCDATA_SECTION_NODE:
+		buf.WriteString(indent)
+		buf.WriteString("<![CDATA[")
+		buf.WriteString(st.data)
+		buf.WriteString("]]>")
+		buf.WriteString(newl)
+
+	case domCOMMENT_NODE:
+		buf.WriteString(indent)
+		buf.WriteString("<!--")
+		buf.WriteString(st.data)
+		buf.WriteString("-->")
+		buf.WriteString(newl)
+
+	case domPROCESSING_INSTRUCTION_NODE:
+		buf.WriteString(indent)
+		buf.WriteString("<?")
+		buf.WriteString(st.target)
+		if st.data != "" {
+			buf.WriteByte(' ')
+			buf.WriteString(st.data)
+		}
+		buf.WriteString("?>")
+		buf.WriteString(newl)
+
+	case domDOCUMENT_TYPE_NODE:
+		buf.WriteString(indent)
+		buf.WriteString("<!DOCTYPE ")
+		buf.WriteString(st.nodeName)
+		if st.publicId != "" {
+			buf.WriteString(` PUBLIC "`)
+			buf.WriteString(st.publicId)
+			buf.WriteString(`" "`)
+			buf.WriteString(st.systemId)
+			buf.WriteByte('"')
+		} else if st.systemId != "" {
+			buf.WriteString(` SYSTEM "`)
+			buf.WriteString(st.systemId)
+			buf.WriteByte('"')
+		}
+		buf.WriteByte('>')
+		buf.WriteString(newl)
+
+	case domDOCUMENT_FRAGMENT_NODE:
+		for _, child := range st.children {
+			domWriteXML(buf, child, indent, addindent, newl)
+		}
+	}
 }
 
 // domCloneNode creates a shallow or deep clone of a DOM node.
