@@ -3,6 +3,8 @@
 package vm
 
 import (
+	"unsafe"
+
 	"github.com/tamnd/goipy/object"
 	"golang.org/x/sys/unix"
 )
@@ -132,11 +134,15 @@ func (i *Interp) extendSignalModule(m *object.Module, ctx sigCtx) {
 		}})
 
 	// ── sigpending() → frozenset ──────────────────────────────────────────────
+	// unix.Sigpending is not available in golang.org/x/sys; use rt_sigpending(2).
 	m.Dict.SetStr("sigpending", &object.BuiltinFunc{Name: "sigpending",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			var set unix.Sigset_t
-			if err := unix.Sigpending(&set); err != nil {
-				return nil, object.Errorf(errCls, "sigpending: %v", err)
+			_, _, errno := unix.RawSyscall(unix.SYS_RT_SIGPENDING,
+				uintptr(unsafe.Pointer(&set)),
+				uintptr(unsafe.Sizeof(set)), 0)
+			if errno != 0 {
+				return nil, object.Errorf(errCls, "sigpending: %v", errno)
 			}
 			fs := object.NewFrozenset()
 			for word := 0; word < len(set.Val); word++ {
@@ -154,6 +160,7 @@ func (i *Interp) extendSignalModule(m *object.Module, ctx sigCtx) {
 		}})
 
 	// ── sigwait(sigset) → signum ──────────────────────────────────────────────
+	// unix.Sigwait is not in golang.org/x/sys; implement via rt_sigtimedwait(2).
 	m.Dict.SetStr("sigwait", &object.BuiltinFunc{Name: "sigwait",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) == 0 {
@@ -171,11 +178,14 @@ func (i *Interp) extendSignalModule(m *object.Module, ctx sigCtx) {
 					set.Val[word] |= 1 << bit
 				}
 			}
-			sig, err := unix.Sigwait(&set)
-			if err != nil {
-				return nil, object.Errorf(errCls, "sigwait: %v", err)
+			// rt_sigtimedwait with NULL timeout blocks until a signal arrives.
+			r1, _, errno := unix.RawSyscall6(unix.SYS_RT_SIGTIMEDWAIT,
+				uintptr(unsafe.Pointer(&set)),
+				0, 0, uintptr(unsafe.Sizeof(set)), 0, 0)
+			if errno != 0 {
+				return nil, object.Errorf(errCls, "sigwait: %v", errno)
 			}
-			return object.NewInt(int64(sig)), nil
+			return object.NewInt(int64(r1)), nil
 		}})
 }
 
