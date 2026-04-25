@@ -237,6 +237,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSelect(), true
 	case "selectors":
 		return i.buildSelectors(), true
+	case "signal":
+		return i.buildSignal(), true
 	}
 	return nil, false
 }

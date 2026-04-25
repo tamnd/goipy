@@ -1,0 +1,11 @@
+constants ok
+strsignal ok
+valid_signals ok
+default_int_handler ok
+getsignal_default ok
+signal_handler ok
+sig_ign ok
+set_wakeup_fd ok
+alarm ok
+pthread_sigmask ok
+ALL OK
