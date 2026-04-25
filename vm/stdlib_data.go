@@ -16,78 +16,437 @@ import (
 
 // --- json ---
 
-// buildJSON exposes dumps/loads. Encoding walks Python objects manually so
-// that: (a) dict insertion order is preserved by default, (b) Python-only
-// types (Tuple, Set, namedtuple instances) round-trip as JSON arrays,
-// (c) indent and separators match CPython formatting exactly.
+// buildJSON exposes the full json module matching CPython 3.14.
 func (i *Interp) buildJSON() *object.Module {
 	m := &object.Module{Name: "json", Dict: object.NewDict()}
+
+	// JSONDecodeError(ValueError) with msg/doc/pos/lineno/colno attributes.
+	jsonDecodeErrCls := &object.Class{
+		Name:  "JSONDecodeError",
+		Bases: []*object.Class{i.valueErr},
+		Dict:  object.NewDict(),
+	}
+	i.jsonDecodeErr = jsonDecodeErrCls
+	m.Dict.SetStr("JSONDecodeError", jsonDecodeErrCls)
+
+	parseOpts := func(kw *object.Dict, base jsonDumpOpts) jsonDumpOpts {
+		opts := base
+		if kw == nil {
+			return opts
+		}
+		if v, ok := kw.GetStr("indent"); ok {
+			if _, isNone := v.(*object.NoneType); !isNone {
+				if n, ok2 := toInt64(v); ok2 {
+					opts.indent = strings.Repeat(" ", int(n))
+					opts.pretty = true
+					opts.itemSep = ","
+				}
+			}
+		}
+		if v, ok := kw.GetStr("separators"); ok {
+			if t, ok2 := v.(*object.Tuple); ok2 && len(t.V) == 2 {
+				if s, ok3 := t.V[0].(*object.Str); ok3 {
+					opts.itemSep = s.V
+				}
+				if s, ok3 := t.V[1].(*object.Str); ok3 {
+					opts.kvSep = s.V
+				}
+			} else if lst, ok2 := v.(*object.List); ok2 && len(lst.V) == 2 {
+				if s, ok3 := lst.V[0].(*object.Str); ok3 {
+					opts.itemSep = s.V
+				}
+				if s, ok3 := lst.V[1].(*object.Str); ok3 {
+					opts.kvSep = s.V
+				}
+			}
+		}
+		if v, ok := kw.GetStr("sort_keys"); ok {
+			opts.sortKeys = object.Truthy(v)
+		}
+		if v, ok := kw.GetStr("ensure_ascii"); ok {
+			opts.ensureAscii = object.Truthy(v)
+		}
+		if v, ok := kw.GetStr("allow_nan"); ok {
+			opts.allowNan = object.Truthy(v)
+		}
+		if v, ok := kw.GetStr("skipkeys"); ok {
+			opts.skipKeys = object.Truthy(v)
+		}
+		if v, ok := kw.GetStr("default"); ok && v != object.None {
+			opts.defaultFn = v
+		}
+		return opts
+	}
+
+	doLoads := func(s string, kw *object.Dict) (object.Object, error) {
+		var raw any
+		dec := json.NewDecoder(strings.NewReader(s))
+		dec.UseNumber()
+		if err := dec.Decode(&raw); err != nil {
+			return nil, i.jsonDecodeErrorf(s, err.Error())
+		}
+		var objectHook object.Object
+		var parseFloat object.Object
+		var parseIntFn object.Object
+		if kw != nil {
+			if v, ok := kw.GetStr("object_hook"); ok && v != object.None {
+				objectHook = v
+			}
+			if v, ok := kw.GetStr("parse_float"); ok && v != object.None {
+				parseFloat = v
+			}
+			if v, ok := kw.GetStr("parse_int"); ok && v != object.None {
+				parseIntFn = v
+			}
+		}
+		return i.jsonToPyOpts(raw, objectHook, parseFloat, parseIntFn)
+	}
 
 	m.Dict.SetStr("dumps", &object.BuiltinFunc{Name: "dumps", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "dumps() missing required argument")
 		}
-		opts := jsonDumpOpts{itemSep: ", ", kvSep: ": "}
-		if kw != nil {
-			if v, ok := kw.GetStr("indent"); ok {
-				if _, isNone := v.(*object.NoneType); !isNone {
-					if n, ok := toInt64(v); ok {
-						opts.indent = strings.Repeat(" ", int(n))
-						opts.pretty = true
-						opts.itemSep = ","
-					}
-				}
-			}
-			if v, ok := kw.GetStr("separators"); ok {
-				if t, ok := v.(*object.Tuple); ok && len(t.V) == 2 {
-					if s, ok := t.V[0].(*object.Str); ok {
-						opts.itemSep = s.V
-					}
-					if s, ok := t.V[1].(*object.Str); ok {
-						opts.kvSep = s.V
-					}
-				}
-			}
-			if v, ok := kw.GetStr("sort_keys"); ok {
-				opts.sortKeys = object.Truthy(v)
-			}
-		}
+		opts := parseOpts(kw, jsonDumpOpts{itemSep: ", ", kvSep: ": ", ensureAscii: true, allowNan: true})
 		var b strings.Builder
-		if err := jsonEncode(&b, a[0], &opts, 0); err != nil {
+		if err := i.jsonEncode(&b, a[0], &opts, 0, nil); err != nil {
 			return nil, err
 		}
 		return &object.Str{V: b.String()}, nil
 	}})
 
-	m.Dict.SetStr("loads", &object.BuiltinFunc{Name: "loads", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	m.Dict.SetStr("dump", &object.BuiltinFunc{Name: "dump", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "dump() requires obj and fp arguments")
+		}
+		opts := parseOpts(kw, jsonDumpOpts{itemSep: ", ", kvSep: ": ", ensureAscii: true, allowNan: true})
+		var b strings.Builder
+		if err := i.jsonEncode(&b, a[0], &opts, 0, nil); err != nil {
+			return nil, err
+		}
+		// call fp.write(result)
+		fp := a[1]
+		writeFn, err := i.getAttr(fp, "write")
+		if err != nil {
+			return nil, err
+		}
+		_, err = i.callObject(writeFn, []object.Object{&object.Str{V: b.String()}}, nil)
+		return object.None, err
+	}})
+
+	m.Dict.SetStr("loads", &object.BuiltinFunc{Name: "loads", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "loads() missing required argument")
 		}
-		s, ok := a[0].(*object.Str)
-		if !ok {
-			return nil, object.Errorf(i.typeErr, "loads() argument must be str")
+		var s string
+		switch v := a[0].(type) {
+		case *object.Str:
+			s = v.V
+		case *object.Bytes:
+			s = string(v.V)
+		case *object.Bytearray:
+			s = string(v.V)
+		default:
+			return nil, object.Errorf(i.typeErr, "loads() argument must be str, bytes or bytearray")
 		}
-		var raw any
-		dec := json.NewDecoder(strings.NewReader(s.V))
-		dec.UseNumber()
-		if err := dec.Decode(&raw); err != nil {
-			return nil, object.Errorf(i.valueErr, "json: %s", err.Error())
-		}
-		return jsonToPy(raw), nil
+		return doLoads(s, kw)
 	}})
+
+	m.Dict.SetStr("load", &object.BuiltinFunc{Name: "load", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "load() requires fp argument")
+		}
+		fp := a[0]
+		readFn, err := i.getAttr(fp, "read")
+		if err != nil {
+			return nil, err
+		}
+		result, err := i.callObject(readFn, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		var s string
+		switch v := result.(type) {
+		case *object.Str:
+			s = v.V
+		case *object.Bytes:
+			s = string(v.V)
+		case *object.Bytearray:
+			s = string(v.V)
+		default:
+			s = object.Str_(result)
+		}
+		return doLoads(s, kw)
+	}})
+
+	// JSONEncoder class
+	jsonEncCls := &object.Class{Name: "JSONEncoder", Bases: nil, Dict: object.NewDict()}
+	jsonEncCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		opts := parseOpts(kw, jsonDumpOpts{itemSep: ", ", kvSep: ": ", ensureAscii: true, allowNan: true})
+		inst.Dict.SetStr("_opts_item_sep", &object.Str{V: opts.itemSep})
+		inst.Dict.SetStr("_opts_kv_sep", &object.Str{V: opts.kvSep})
+		inst.Dict.SetStr("_opts_indent", &object.Str{V: opts.indent})
+		inst.Dict.SetStr("_opts_pretty", object.BoolOf(opts.pretty))
+		inst.Dict.SetStr("_opts_sort_keys", object.BoolOf(opts.sortKeys))
+		inst.Dict.SetStr("_opts_ensure_ascii", object.BoolOf(opts.ensureAscii))
+		inst.Dict.SetStr("_opts_allow_nan", object.BoolOf(opts.allowNan))
+		inst.Dict.SetStr("_opts_skip_keys", object.BoolOf(opts.skipKeys))
+		if opts.defaultFn != nil {
+			inst.Dict.SetStr("_opts_default_fn", opts.defaultFn)
+		}
+		return object.None, nil
+	}})
+	jsonEncCls.Dict.SetStr("encode", &object.BuiltinFunc{Name: "encode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "encode() missing argument")
+		}
+		inst, _ := a[0].(*object.Instance)
+		opts := jsonEncOptsFromInst(inst)
+		var b strings.Builder
+		if err := i.jsonEncode(&b, a[1], &opts, 0, nil); err != nil {
+			return nil, err
+		}
+		return &object.Str{V: b.String()}, nil
+	}})
+	jsonEncCls.Dict.SetStr("iterencode", &object.BuiltinFunc{Name: "iterencode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "iterencode() missing argument")
+		}
+		inst, _ := a[0].(*object.Instance)
+		opts := jsonEncOptsFromInst(inst)
+		var b strings.Builder
+		if err := i.jsonEncode(&b, a[1], &opts, 0, nil); err != nil {
+			return nil, err
+		}
+		s := b.String()
+		idx := 0
+		return &object.Iter{Next: func() (object.Object, bool, error) {
+			if idx >= len(s) {
+				return nil, false, nil
+			}
+			chunk := s[idx:]
+			idx = len(s)
+			return &object.Str{V: chunk}, true, nil
+		}}, nil
+	}})
+	jsonEncCls.Dict.SetStr("default", &object.BuiltinFunc{Name: "default", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		var obj object.Object = object.None
+		if len(a) >= 2 {
+			obj = a[1]
+		}
+		return nil, object.Errorf(i.typeErr, "Object of type %s is not JSON serializable", object.TypeName(obj))
+	}})
+	m.Dict.SetStr("JSONEncoder", jsonEncCls)
+
+	// JSONDecoder class
+	jsonDecCls := &object.Class{Name: "JSONDecoder", Bases: nil, Dict: object.NewDict()}
+	jsonDecCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("object_hook"); ok && v != object.None {
+				inst.Dict.SetStr("object_hook", v)
+			}
+			if v, ok := kw.GetStr("parse_float"); ok && v != object.None {
+				inst.Dict.SetStr("parse_float", v)
+			}
+			if v, ok := kw.GetStr("parse_int"); ok && v != object.None {
+				inst.Dict.SetStr("parse_int", v)
+			}
+		}
+		return object.None, nil
+	}})
+	jsonDecCls.Dict.SetStr("decode", &object.BuiltinFunc{Name: "decode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "decode() missing argument")
+		}
+		s, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "decode() argument must be str")
+		}
+		inst, _ := a[0].(*object.Instance)
+		opts := jsonDecOptsFromInst(inst)
+		return doLoads(s.V, opts)
+	}})
+	jsonDecCls.Dict.SetStr("raw_decode", &object.BuiltinFunc{Name: "raw_decode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "raw_decode() missing argument")
+		}
+		s, ok := a[1].(*object.Str)
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "raw_decode() argument must be str")
+		}
+		startIdx := 0
+		if len(a) >= 3 {
+			if n, ok2 := toInt64(a[2]); ok2 {
+				startIdx = int(n)
+			}
+		}
+		if kw != nil {
+			if v, ok2 := kw.GetStr("idx"); ok2 {
+				if n, ok3 := toInt64(v); ok3 {
+					startIdx = int(n)
+				}
+			}
+		}
+		text := s.V[startIdx:]
+		inst, _ := a[0].(*object.Instance)
+		opts := jsonDecOptsFromInst(inst)
+		obj, err := doLoads(text, opts)
+		if err != nil {
+			return nil, err
+		}
+		// find end position (scan past the decoded value)
+		dec := json.NewDecoder(strings.NewReader(text))
+		dec.UseNumber()
+		var tok json.Token
+		depth := 0
+		endOff := 0
+		for {
+			tok, err = dec.Token()
+			if err != nil {
+				break
+			}
+			switch tok.(type) {
+			case json.Delim:
+				d := tok.(json.Delim)
+				if d == '[' || d == '{' {
+					depth++
+				} else {
+					depth--
+				}
+			}
+			endOff = int(dec.InputOffset())
+			if depth == 0 {
+				break
+			}
+		}
+		_ = tok
+		return &object.Tuple{V: []object.Object{obj, object.NewInt(int64(startIdx + endOff))}}, nil
+	}})
+	m.Dict.SetStr("JSONDecoder", jsonDecCls)
 
 	return m
 }
 
-type jsonDumpOpts struct {
-	indent   string // per-level indent (empty when indent=0 — still pretty-prints).
-	pretty   bool   // true if caller passed indent (even 0) — toggles newlines.
-	itemSep  string
-	kvSep    string
-	sortKeys bool
+func jsonEncOptsFromInst(inst *object.Instance) jsonDumpOpts {
+	opts := jsonDumpOpts{itemSep: ", ", kvSep: ": ", ensureAscii: true, allowNan: true}
+	if inst == nil {
+		return opts
+	}
+	if v, ok := inst.Dict.GetStr("_opts_item_sep"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			opts.itemSep = s.V
+		}
+	}
+	if v, ok := inst.Dict.GetStr("_opts_kv_sep"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			opts.kvSep = s.V
+		}
+	}
+	if v, ok := inst.Dict.GetStr("_opts_indent"); ok {
+		if s, ok2 := v.(*object.Str); ok2 {
+			opts.indent = s.V
+		}
+	}
+	if v, ok := inst.Dict.GetStr("_opts_pretty"); ok {
+		opts.pretty = object.Truthy(v)
+	}
+	if v, ok := inst.Dict.GetStr("_opts_sort_keys"); ok {
+		opts.sortKeys = object.Truthy(v)
+	}
+	if v, ok := inst.Dict.GetStr("_opts_ensure_ascii"); ok {
+		opts.ensureAscii = object.Truthy(v)
+	}
+	if v, ok := inst.Dict.GetStr("_opts_allow_nan"); ok {
+		opts.allowNan = object.Truthy(v)
+	}
+	if v, ok := inst.Dict.GetStr("_opts_skip_keys"); ok {
+		opts.skipKeys = object.Truthy(v)
+	}
+	if v, ok := inst.Dict.GetStr("_opts_default_fn"); ok {
+		opts.defaultFn = v
+	}
+	return opts
 }
 
-func jsonEncode(b *strings.Builder, v object.Object, opts *jsonDumpOpts, depth int) error {
+func jsonDecOptsFromInst(inst *object.Instance) *object.Dict {
+	if inst == nil {
+		return nil
+	}
+	kw := object.NewDict()
+	if v, ok := inst.Dict.GetStr("object_hook"); ok {
+		kw.SetStr("object_hook", v)
+	}
+	if v, ok := inst.Dict.GetStr("parse_float"); ok {
+		kw.SetStr("parse_float", v)
+	}
+	if v, ok := inst.Dict.GetStr("parse_int"); ok {
+		kw.SetStr("parse_int", v)
+	}
+	return kw
+}
+
+func (i *Interp) jsonDecodeErrorf(doc, msg string) error {
+	cls := i.jsonDecodeErr
+	if cls == nil {
+		cls = i.valueErr
+	}
+	d := object.NewDict()
+	d.SetStr("msg", &object.Str{V: msg})
+	d.SetStr("doc", &object.Str{V: doc})
+	d.SetStr("pos", object.NewInt(0))
+	d.SetStr("lineno", object.NewInt(1))
+	d.SetStr("colno", object.NewInt(1))
+	// Extract position from Go's error message "invalid character ... at offset N"
+	if idx := strings.Index(msg, "offset "); idx >= 0 {
+		rest := msg[idx+7:]
+		if n, err := strconv.ParseInt(rest, 10, 64); err == nil {
+			d.SetStr("pos", object.NewInt(n))
+			col := int64(1)
+			line := int64(1)
+			for k, c := range doc {
+				if int64(k) >= n {
+					break
+				}
+				if c == '\n' {
+					line++
+					col = 1
+				} else {
+					col++
+				}
+			}
+			d.SetStr("lineno", object.NewInt(line))
+			d.SetStr("colno", object.NewInt(col))
+		}
+	}
+	return &object.Exception{Class: cls, Dict: d, Msg: msg}
+}
+
+type jsonDumpOpts struct {
+	indent      string // per-level indent (empty when indent=0 — still pretty-prints).
+	pretty      bool   // true if caller passed indent (even 0) — toggles newlines.
+	itemSep     string
+	kvSep       string
+	sortKeys    bool
+	ensureAscii bool
+	allowNan    bool
+	skipKeys    bool
+	defaultFn   object.Object // callable for non-serializable objects
+}
+
+func (i *Interp) jsonEncode(b *strings.Builder, v object.Object, opts *jsonDumpOpts, depth int, seen map[uintptr]bool) error {
 	switch x := v.(type) {
 	case nil, *object.NoneType:
 		b.WriteString("null")
@@ -100,24 +459,37 @@ func jsonEncode(b *strings.Builder, v object.Object, opts *jsonDumpOpts, depth i
 	case *object.Int:
 		b.WriteString(x.V.String())
 	case *object.Float:
-		return jsonEncodeFloat(b, x.V)
+		if (math.IsNaN(x.V) || math.IsInf(x.V, 0)) && !opts.allowNan {
+			return object.Errorf(i.valueErr, "Out of range float values are not JSON compliant")
+		}
+		return jsonEncodeFloat(b, x.V, opts)
 	case *object.Str:
-		return jsonEncodeString(b, x.V)
+		return jsonEncodeString(b, x.V, opts.ensureAscii)
 	case *object.List:
-		return jsonEncodeArray(b, x.V, opts, depth)
+		return i.jsonEncodeArray(b, x.V, opts, depth, seen)
 	case *object.Tuple:
-		return jsonEncodeArray(b, x.V, opts, depth)
+		return i.jsonEncodeArray(b, x.V, opts, depth, seen)
+	case *object.Set:
+		items := x.Items()
+		return i.jsonEncodeArray(b, items, opts, depth, seen)
 	case *object.Dict:
-		return jsonEncodeDict(b, x, opts, depth)
+		return i.jsonEncodeDict(b, x, opts, depth, seen)
 	case *object.OrderedDict:
-		return jsonEncodeDict(b, x.D, opts, depth)
+		return i.jsonEncodeDict(b, x.D, opts, depth, seen)
 	default:
+		if opts.defaultFn != nil {
+			result, err := i.callObject(opts.defaultFn, []object.Object{v}, nil)
+			if err != nil {
+				return err
+			}
+			return i.jsonEncode(b, result, opts, depth, seen)
+		}
 		return fmt.Errorf("Object of type %s is not JSON serializable", object.TypeName(v))
 	}
 	return nil
 }
 
-func jsonEncodeFloat(b *strings.Builder, f float64) error {
+func jsonEncodeFloat(b *strings.Builder, f float64, _ *jsonDumpOpts) error {
 	if math.IsNaN(f) {
 		b.WriteString("NaN")
 		return nil
@@ -140,7 +512,7 @@ func jsonEncodeFloat(b *strings.Builder, f float64) error {
 	return nil
 }
 
-func jsonEncodeString(b *strings.Builder, s string) error {
+func jsonEncodeString(b *strings.Builder, s string, ensureAscii bool) error {
 	b.WriteByte('"')
 	for _, r := range s {
 		switch r {
@@ -163,9 +535,10 @@ func jsonEncodeString(b *strings.Builder, s string) error {
 				fmt.Fprintf(b, `\u%04x`, r)
 			} else if r < 0x80 {
 				b.WriteRune(r)
+			} else if !ensureAscii {
+				b.WriteRune(r)
 			} else {
-				// CPython with ensure_ascii=True (the default) encodes any
-				// non-ASCII rune as \uXXXX; surrogate-pair for non-BMP.
+				// ensure_ascii=True: encode any non-ASCII rune as \uXXXX.
 				if r > 0xFFFF {
 					r -= 0x10000
 					fmt.Fprintf(b, `\u%04x\u%04x`, 0xD800+(r>>10), 0xDC00+(r&0x3FF))
@@ -179,7 +552,7 @@ func jsonEncodeString(b *strings.Builder, s string) error {
 	return nil
 }
 
-func jsonEncodeArray(b *strings.Builder, items []object.Object, opts *jsonDumpOpts, depth int) error {
+func (i *Interp) jsonEncodeArray(b *strings.Builder, items []object.Object, opts *jsonDumpOpts, depth int, seen map[uintptr]bool) error {
 	if len(items) == 0 {
 		b.WriteString("[]")
 		return nil
@@ -190,7 +563,7 @@ func jsonEncodeArray(b *strings.Builder, items []object.Object, opts *jsonDumpOp
 			b.WriteString(opts.itemSep)
 		}
 		writeJSONNewline(b, opts, depth+1)
-		if err := jsonEncode(b, item, opts, depth+1); err != nil {
+		if err := i.jsonEncode(b, item, opts, depth+1, seen); err != nil {
 			return err
 		}
 	}
@@ -199,48 +572,48 @@ func jsonEncodeArray(b *strings.Builder, items []object.Object, opts *jsonDumpOp
 	return nil
 }
 
-func jsonEncodeDict(b *strings.Builder, d *object.Dict, opts *jsonDumpOpts, depth int) error {
+func (i *Interp) jsonEncodeDict(b *strings.Builder, d *object.Dict, opts *jsonDumpOpts, depth int, seen map[uintptr]bool) error {
 	keys, vals := d.Items()
-	if len(keys) == 0 {
+	// Filter keys if skipkeys
+	type kv struct {
+		key string
+		val object.Object
+	}
+	var pairs []kv
+	for idx, k := range keys {
+		keyStr, err := jsonKey(k)
+		if err != nil {
+			if opts.skipKeys {
+				continue
+			}
+			return err
+		}
+		pairs = append(pairs, kv{keyStr, vals[idx]})
+	}
+	if len(pairs) == 0 {
 		b.WriteString("{}")
 		return nil
 	}
-	order := make([]int, len(keys))
-	for k := range order {
-		order[k] = k
-	}
 	if opts.sortKeys {
-		sort.SliceStable(order, func(a, c int) bool {
-			as, _ := keys[order[a]].(*object.Str)
-			cs, _ := keys[order[c]].(*object.Str)
-			av := ""
-			cv := ""
-			if as != nil {
-				av = as.V
-			}
-			if cs != nil {
-				cv = cs.V
-			}
-			return av < cv
+		sort.SliceStable(pairs, func(a, c int) bool {
+			return pairs[a].key < pairs[c].key
 		})
 	}
 	b.WriteByte('{')
-	for k, idx := range order {
-		if k > 0 {
+	written := 0
+	for _, p := range pairs {
+		if written > 0 {
 			b.WriteString(opts.itemSep)
 		}
 		writeJSONNewline(b, opts, depth+1)
-		key, err := jsonKey(keys[idx])
-		if err != nil {
-			return err
-		}
-		if err := jsonEncodeString(b, key); err != nil {
+		if err := jsonEncodeString(b, p.key, opts.ensureAscii); err != nil {
 			return err
 		}
 		b.WriteString(opts.kvSep)
-		if err := jsonEncode(b, vals[idx], opts, depth+1); err != nil {
+		if err := i.jsonEncode(b, p.val, opts, depth+1, seen); err != nil {
 			return err
 		}
+		written++
 	}
 	writeJSONNewline(b, opts, depth)
 	b.WriteByte('}')
@@ -275,41 +648,84 @@ func jsonKey(k object.Object) (string, error) {
 }
 
 func jsonToPy(v any) object.Object {
+	o, _ := jsonToPyRaw(v, nil, nil, nil)
+	return o
+}
+
+func (i *Interp) jsonToPyOpts(v any, objectHook, parseFloat, parseIntFn object.Object) (object.Object, error) {
+	return jsonToPyRaw(v, &jsonCallbacks{interp: i, objectHook: objectHook, parseFloat: parseFloat, parseIntFn: parseIntFn}, objectHook, parseIntFn)
+}
+
+type jsonCallbacks struct {
+	interp     *Interp
+	objectHook object.Object
+	parseFloat object.Object
+	parseIntFn object.Object
+}
+
+func jsonToPyRaw(v any, cb *jsonCallbacks, objectHook, parseIntFn object.Object) (object.Object, error) {
 	switch x := v.(type) {
 	case nil:
-		return object.None
+		return object.None, nil
 	case bool:
-		return object.BoolOf(x)
+		return object.BoolOf(x), nil
 	case string:
-		return &object.Str{V: x}
+		return &object.Str{V: x}, nil
 	case json.Number:
-		if n, err := x.Int64(); err == nil {
-			return object.NewInt(n)
+		// Try integer first
+		if _, err := x.Int64(); err == nil {
+			if cb != nil && cb.parseIntFn != nil {
+				r, err := cb.interp.callObject(cb.parseIntFn, []object.Object{&object.Str{V: string(x)}}, nil)
+				return r, err
+			}
+			if n, err2 := x.Int64(); err2 == nil {
+				return object.NewInt(n), nil
+			}
+			if bi, ok := new(big.Int).SetString(string(x), 10); ok {
+				return object.IntFromBig(bi), nil
+			}
 		}
-		if bi, ok := new(big.Int).SetString(string(x), 10); ok {
-			return object.IntFromBig(bi)
+		// Float
+		if cb != nil && cb.parseFloat != nil {
+			r, err := cb.interp.callObject(cb.parseFloat, []object.Object{&object.Str{V: string(x)}}, nil)
+			return r, err
 		}
 		f, _ := x.Float64()
-		return &object.Float{V: f}
+		return &object.Float{V: f}, nil
 	case float64:
-		if x == math.Trunc(x) && math.Abs(x) < 1e16 {
-			return object.NewInt(int64(x))
+		if cb != nil && cb.parseFloat != nil {
+			r, err := cb.interp.callObject(cb.parseFloat, []object.Object{&object.Str{V: strconv.FormatFloat(x, 'f', -1, 64)}}, nil)
+			return r, err
 		}
-		return &object.Float{V: x}
+		if x == math.Trunc(x) && math.Abs(x) < 1e16 {
+			return object.NewInt(int64(x)), nil
+		}
+		return &object.Float{V: x}, nil
 	case []any:
 		out := make([]object.Object, len(x))
-		for k, v := range x {
-			out[k] = jsonToPy(v)
+		for k, item := range x {
+			r, err := jsonToPyRaw(item, cb, objectHook, parseIntFn)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = r
 		}
-		return &object.List{V: out}
+		return &object.List{V: out}, nil
 	case map[string]any:
 		d := object.NewDict()
-		for k, v := range x {
-			d.SetStr(k, jsonToPy(v))
+		for k, item := range x {
+			r, err := jsonToPyRaw(item, cb, objectHook, parseIntFn)
+			if err != nil {
+				return nil, err
+			}
+			d.SetStr(k, r)
 		}
-		return d
+		if cb != nil && cb.objectHook != nil {
+			return cb.interp.callObject(cb.objectHook, []object.Object{d}, nil)
+		}
+		return d, nil
 	}
-	return object.None
+	return object.None, nil
 }
 
 // --- re ---

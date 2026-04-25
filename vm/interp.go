@@ -56,7 +56,8 @@ type Interp struct {
 	unicodeEncodeErr,
 	warningClass,
 	baseExcGroup,
-	reErr *object.Class
+	reErr,
+	jsonDecodeErr *object.Class
 
 	MaxDepth  int
 	callDepth int
