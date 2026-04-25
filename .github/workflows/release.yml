@@ -18,24 +18,12 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            bin: goipy
-            archive: tar.gz
           - goos: linux
             goarch: arm64
-            bin: goipy
-            archive: tar.gz
           - goos: darwin
             goarch: amd64
-            bin: goipy
-            archive: tar.gz
           - goos: darwin
             goarch: arm64
-            bin: goipy
-            archive: tar.gz
-          - goos: windows
-            goarch: amd64
-            bin: goipy.exe
-            archive: zip
 
     steps:
       - uses: actions/checkout@v6
@@ -50,28 +38,23 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="-s -w" -o ${{ matrix.bin }} ./cmd/goipy
+        run: go build -ldflags="-s -w" -o goipy ./cmd/goipy
 
       - name: Stage archive contents
         run: |
           stage=goipy-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
           mkdir -p "$stage"
-          cp "${{ matrix.bin }}" "$stage/"
+          cp goipy "$stage/"
           cp LICENSE README.md "$stage/"
           echo "STAGE=$stage" >> "$GITHUB_ENV"
 
       - name: Create tarball
-        if: matrix.archive == 'tar.gz'
         run: tar -czf "${STAGE}.tar.gz" "$STAGE"
-
-      - name: Create zip
-        if: matrix.archive == 'zip'
-        run: zip -r "${STAGE}.zip" "$STAGE"
 
       - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: goipy-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive }}
+          path: goipy-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
           if-no-files-found: error
           retention-days: 7
 
