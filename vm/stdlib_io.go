@@ -2,6 +2,7 @@ package vm
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
@@ -463,53 +464,688 @@ func ioSeek(pos *int, size int, a []object.Object) (object.Object, error) {
 
 // --- base64 module ---
 
+type a85Error struct{ msg string }
+
+func (e *a85Error) Error() string { return e.msg }
+
+// a85encodeBytes encodes src using ASCII85 encoding.
+func a85encodeBytes(src []byte, foldspaces bool, wrapcol int, pad bool, adobe bool) []byte {
+	if pad && len(src)%4 != 0 {
+		padded := make([]byte, len(src)+4-len(src)%4)
+		copy(padded, src)
+		src = padded
+	}
+
+	var raw []byte
+
+	for len(src) > 0 {
+		var b [4]byte
+		n := copy(b[:], src)
+		src = src[n:]
+
+		if n == 4 {
+			val := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+			if val == 0 {
+				raw = append(raw, 'z')
+				continue
+			}
+			if foldspaces && val == 0x20202020 {
+				raw = append(raw, 'y')
+				continue
+			}
+			var enc [5]byte
+			for j := 4; j >= 0; j-- {
+				enc[j] = byte(val%85) + '!'
+				val /= 85
+			}
+			raw = append(raw, enc[:]...)
+		} else {
+			// Partial group: pad with zeros, encode 5 chars, keep n+1.
+			var full [4]byte
+			copy(full[:], b[:n])
+			val := uint32(full[0])<<24 | uint32(full[1])<<16 | uint32(full[2])<<8 | uint32(full[3])
+			var enc [5]byte
+			for j := 4; j >= 0; j-- {
+				enc[j] = byte(val%85) + '!'
+				val /= 85
+			}
+			raw = append(raw, enc[:n+1]...)
+		}
+	}
+
+	var out []byte
+	if adobe {
+		out = append(out, '<', '~')
+	}
+
+	if wrapcol > 0 {
+		col := 0
+		if adobe {
+			col = 2
+		}
+		for _, c := range raw {
+			if col == wrapcol {
+				out = append(out, '\n')
+				col = 0
+			}
+			out = append(out, c)
+			col++
+		}
+	} else {
+		out = append(out, raw...)
+	}
+
+	if adobe {
+		out = append(out, '~', '>')
+	}
+
+	return out
+}
+
+func a85decodeBytes(src []byte, foldspaces bool, adobe bool, ignorechars []byte) ([]byte, error) {
+	if adobe {
+		trimmed := bytes.TrimSpace(src)
+		if !bytes.HasPrefix(trimmed, []byte("<~")) || !bytes.HasSuffix(trimmed, []byte("~>")) {
+			return nil, &a85Error{"Adobe Ascii85 string must start with <~ and end with ~>"}
+		}
+		src = trimmed[2 : len(trimmed)-2]
+	}
+
+	ignoreSet := make(map[byte]bool, len(ignorechars))
+	for _, c := range ignorechars {
+		ignoreSet[c] = true
+	}
+
+	var out []byte
+	var group [5]byte
+	groupLen := 0
+
+	flush := func(n int) error {
+		// n is the number of chars in the group (2..5); output n-1 bytes.
+		// Pad with 'u' to 5 chars.
+		tmp := group
+		for j := n; j < 5; j++ {
+			tmp[j] = 'u'
+		}
+		val := uint32(tmp[0]-'!')*85*85*85*85 +
+			uint32(tmp[1]-'!')*85*85*85 +
+			uint32(tmp[2]-'!')*85*85 +
+			uint32(tmp[3]-'!')*85 +
+			uint32(tmp[4]-'!')
+		b := [4]byte{byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val)}
+		out = append(out, b[:n-1]...)
+		return nil
+	}
+
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+
+		if ignoreSet[c] {
+			continue
+		}
+
+		if c == 'z' {
+			if groupLen != 0 {
+				return nil, &a85Error{"z inside Ascii85 5-tuple"}
+			}
+			out = append(out, 0, 0, 0, 0)
+			continue
+		}
+
+		if foldspaces && c == 'y' {
+			if groupLen != 0 {
+				return nil, &a85Error{"y inside Ascii85 5-tuple"}
+			}
+			out = append(out, 0x20, 0x20, 0x20, 0x20)
+			continue
+		}
+
+		if c < '!' || c > 'u' {
+			return nil, &a85Error{"Non-Ascii85 digit found: " + string([]byte{c})}
+		}
+
+		group[groupLen] = c
+		groupLen++
+
+		if groupLen == 5 {
+			val := uint32(group[0]-'!')*85*85*85*85 +
+				uint32(group[1]-'!')*85*85*85 +
+				uint32(group[2]-'!')*85*85 +
+				uint32(group[3]-'!')*85 +
+				uint32(group[4]-'!')
+			out = append(out, byte(val>>24), byte(val>>16), byte(val>>8), byte(val))
+			groupLen = 0
+		}
+	}
+
+	if groupLen == 1 {
+		return nil, &a85Error{"Ascii85 encoded byte sequences must be multiple of 5 in length, padded with '!' chars"}
+	}
+
+	if groupLen > 0 {
+		if err := flush(groupLen); err != nil {
+			return nil, err
+		}
+	}
+
+	return out, nil
+}
+
+// b85alphabet is the Base85 alphabet used by git/mercurial (RFC 1924 variant).
+const b85alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~"
+
+func b85encodeBytes(src []byte, pad bool) []byte {
+	alpha := []byte(b85alphabet)
+	// Build group count.
+	nGroups := (len(src) + 3) / 4
+	if nGroups == 0 {
+		return []byte{}
+	}
+	out := make([]byte, 0, nGroups*5)
+	for len(src) > 0 {
+		var b [4]byte
+		n := copy(b[:], src)
+		src = src[n:]
+		val := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+		var chunk [5]byte
+		for j := 4; j >= 0; j-- {
+			chunk[j] = alpha[val%85]
+			val /= 85
+		}
+		if n < 4 && !pad {
+			// Emit only n+1 chars for partial group.
+			out = append(out, chunk[:n+1]...)
+		} else {
+			out = append(out, chunk[:]...)
+		}
+	}
+	return out
+}
+
+func b85decodeBytes(src []byte) ([]byte, error) {
+	// Build reverse lookup.
+	var rev [256]int
+	for i := range rev {
+		rev[i] = -1
+	}
+	for i, c := range []byte(b85alphabet) {
+		rev[c] = i
+	}
+
+	// Match CPython: pad with '~' (value 84, the max) to multiple of 5,
+	// decode all groups, then strip the padding bytes from the end.
+	padding := (5 - len(src)%5) % 5
+	padded := make([]byte, len(src)+padding)
+	copy(padded, src)
+	for j := len(src); j < len(padded); j++ {
+		padded[j] = '~'
+	}
+
+	out := make([]byte, 0, len(padded)/5*4)
+	for i := 0; i < len(padded); i += 5 {
+		chunk := padded[i : i+5]
+		var val uint32
+		for j := 0; j < 5; j++ {
+			idx := rev[chunk[j]]
+			if idx < 0 {
+				return nil, &a85Error{"base85: invalid character"}
+			}
+			val = val*85 + uint32(idx)
+		}
+		out = append(out, byte(val>>24), byte(val>>16), byte(val>>8), byte(val))
+	}
+
+	if padding > 0 {
+		out = out[:len(out)-padding]
+	}
+	return out, nil
+}
+
 func (i *Interp) buildBase64() *object.Module {
 	m := &object.Module{Name: "base64", Dict: object.NewDict()}
 
-	enc := func(name string, fn func([]byte) string) {
-		m.Dict.SetStr(name, &object.BuiltinFunc{Name: name, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) < 1 {
-				return nil, object.Errorf(i.typeErr, "%s requires input", name)
-			}
-			data, err := asBytes(a[0])
+	// b64encode(s, altchars=None)
+	m.Dict.SetStr("b64encode", &object.BuiltinFunc{Name: "b64encode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b64encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		result := []byte(base64.StdEncoding.EncodeToString(data))
+		// Check altchars kwarg or positional arg[1].
+		var altchars []byte
+		if len(a) >= 2 && a[1] != object.None {
+			altchars, err = asBytes(a[1])
 			if err != nil {
 				return nil, err
 			}
-			return &object.Bytes{V: []byte(fn(data))}, nil
-		}})
-	}
-	dec := func(name string, fn func(string) ([]byte, error)) {
-		m.Dict.SetStr(name, &object.BuiltinFunc{Name: name, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if len(a) < 1 {
-				return nil, object.Errorf(i.typeErr, "%s requires input", name)
+		} else if kw != nil {
+			if v, ok := kw.GetStr("altchars"); ok && v != object.None {
+				altchars, err = asBytes(v)
+				if err != nil {
+					return nil, err
+				}
 			}
-			var s string
-			switch v := a[0].(type) {
-			case *object.Str:
-				s = v.V
-			case *object.Bytes:
-				s = string(v.V)
-			case *object.Bytearray:
-				s = string(v.V)
-			default:
-				return nil, object.Errorf(i.typeErr, "%s argument must be str or bytes", name)
+		}
+		if len(altchars) >= 2 {
+			for idx, c := range result {
+				if c == '+' {
+					result[idx] = altchars[0]
+				} else if c == '/' {
+					result[idx] = altchars[1]
+				}
 			}
-			out, err := fn(s)
-			if err != nil {
-				return nil, object.Errorf(i.valueErr, "base64: %s", err.Error())
-			}
-			return &object.Bytes{V: out}, nil
-		}})
-	}
+		}
+		return &object.Bytes{V: result}, nil
+	}})
 
-	enc("b64encode", base64.StdEncoding.EncodeToString)
-	dec("b64decode", base64.StdEncoding.DecodeString)
-	enc("urlsafe_b64encode", base64.URLEncoding.EncodeToString)
-	dec("urlsafe_b64decode", base64.URLEncoding.DecodeString)
-	enc("b32encode", base32.StdEncoding.EncodeToString)
-	dec("b32decode", base32.StdEncoding.DecodeString)
-	enc("b16encode", func(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) })
-	dec("b16decode", func(s string) ([]byte, error) { return hex.DecodeString(strings.ToLower(s)) })
+	// b64decode(s, altchars=None, validate=False)
+	m.Dict.SetStr("b64decode", &object.BuiltinFunc{Name: "b64decode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b64decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var altchars []byte
+		validate := false
+
+		if len(a) >= 2 && a[1] != object.None {
+			altchars, err = asBytes(a[1])
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(a) >= 3 {
+			validate = object.Truthy(a[2])
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("altchars"); ok && v != object.None {
+				altchars, err = asBytes(v)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if v, ok := kw.GetStr("validate"); ok {
+				validate = object.Truthy(v)
+			}
+		}
+
+		// Apply reverse altchars mapping.
+		s := make([]byte, len(data))
+		copy(s, data)
+		if len(altchars) >= 2 {
+			for idx, c := range s {
+				if c == altchars[0] {
+					s[idx] = '+'
+				} else if c == altchars[1] {
+					s[idx] = '/'
+				}
+			}
+		}
+
+		if validate {
+			// In validate mode, non-base64 chars (except padding) raise an error.
+			for _, c := range s {
+				if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=') {
+					return nil, object.Errorf(i.valueErr, "Non-base64 digit found")
+				}
+			}
+		} else {
+			// Strip whitespace.
+			s = bytes.Map(func(r rune) rune {
+				if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+					return -1
+				}
+				return r
+			}, s)
+		}
+
+		out, err2 := base64.StdEncoding.DecodeString(string(s))
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base64: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// urlsafe_b64encode(s)
+	m.Dict.SetStr("urlsafe_b64encode", &object.BuiltinFunc{Name: "urlsafe_b64encode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "urlsafe_b64encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Bytes{V: []byte(base64.URLEncoding.EncodeToString(data))}, nil
+	}})
+
+	// urlsafe_b64decode(s) — adds missing padding before decoding
+	m.Dict.SetStr("urlsafe_b64decode", &object.BuiltinFunc{Name: "urlsafe_b64decode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "urlsafe_b64decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		s := make([]byte, len(data))
+		copy(s, data)
+		// Add missing padding.
+		switch len(s) % 4 {
+		case 2:
+			s = append(s, '=', '=')
+		case 3:
+			s = append(s, '=')
+		}
+		out, err2 := base64.URLEncoding.DecodeString(string(s))
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base64: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b32encode(s)
+	m.Dict.SetStr("b32encode", &object.BuiltinFunc{Name: "b32encode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b32encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Bytes{V: []byte(base32.StdEncoding.EncodeToString(data))}, nil
+	}})
+
+	// b32decode(s, casefold=False, map01=None)
+	m.Dict.SetStr("b32decode", &object.BuiltinFunc{Name: "b32decode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b32decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		casefold := false
+		var map01 []byte
+
+		if len(a) >= 2 {
+			casefold = object.Truthy(a[1])
+		}
+		if len(a) >= 3 && a[2] != object.None {
+			map01, err = asBytes(a[2])
+			if err != nil {
+				return nil, err
+			}
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("casefold"); ok {
+				casefold = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("map01"); ok && v != object.None {
+				map01, err = asBytes(v)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		s := make([]byte, len(data))
+		copy(s, data)
+
+		if len(map01) >= 1 {
+			for idx, c := range s {
+				if c == '0' {
+					s[idx] = 'O'
+				} else if c == '1' {
+					s[idx] = map01[0]
+				}
+			}
+		}
+
+		if casefold {
+			s = bytes.ToUpper(s)
+		}
+
+		out, err2 := base32.StdEncoding.DecodeString(string(s))
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base32: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b32hexencode(s) — extended-hex alphabet (0-9A-V)
+	m.Dict.SetStr("b32hexencode", &object.BuiltinFunc{Name: "b32hexencode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b32hexencode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Bytes{V: []byte(base32.HexEncoding.EncodeToString(data))}, nil
+	}})
+
+	// b32hexdecode(s, casefold=False)
+	m.Dict.SetStr("b32hexdecode", &object.BuiltinFunc{Name: "b32hexdecode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b32hexdecode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		casefold := false
+		if len(a) >= 2 {
+			casefold = object.Truthy(a[1])
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("casefold"); ok {
+				casefold = object.Truthy(v)
+			}
+		}
+		s := make([]byte, len(data))
+		copy(s, data)
+		if casefold {
+			s = bytes.ToUpper(s)
+		}
+		out, err2 := base32.HexEncoding.DecodeString(string(s))
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base32hex: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b16encode(s)
+	m.Dict.SetStr("b16encode", &object.BuiltinFunc{Name: "b16encode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b16encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		return &object.Bytes{V: []byte(strings.ToUpper(hex.EncodeToString(data)))}, nil
+	}})
+
+	// b16decode(s, casefold=False)
+	m.Dict.SetStr("b16decode", &object.BuiltinFunc{Name: "b16decode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b16decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		casefold := false
+		if len(a) >= 2 {
+			casefold = object.Truthy(a[1])
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("casefold"); ok {
+				casefold = object.Truthy(v)
+			}
+		}
+		s := string(data)
+		if casefold {
+			s = strings.ToUpper(s)
+		}
+		out, err2 := hex.DecodeString(s)
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base16: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// encodebytes(s) — b64encode with newline every 76 output chars + trailing newline
+	m.Dict.SetStr("encodebytes", &object.BuiltinFunc{Name: "encodebytes", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "encodebytes requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		encoded := base64.StdEncoding.EncodeToString(data)
+		var out []byte
+		for len(encoded) > 76 {
+			out = append(out, []byte(encoded[:76])...)
+			out = append(out, '\n')
+			encoded = encoded[76:]
+		}
+		out = append(out, []byte(encoded)...)
+		out = append(out, '\n')
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// decodebytes(s) — b64decode ignoring non-base64 chars (incl. newlines)
+	m.Dict.SetStr("decodebytes", &object.BuiltinFunc{Name: "decodebytes", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "decodebytes requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		// Keep only valid base64 characters.
+		s := bytes.Map(func(r rune) rune {
+			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '+' || r == '/' || r == '=' {
+				return r
+			}
+			return -1
+		}, data)
+		out, err2 := base64.StdEncoding.DecodeString(string(s))
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "base64: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// a85encode(b, *, foldspaces=False, wrapcol=0, pad=False, adobe=False)
+	m.Dict.SetStr("a85encode", &object.BuiltinFunc{Name: "a85encode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "a85encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		foldspaces := false
+		wrapcol := 0
+		pad := false
+		adobe := false
+		if kw != nil {
+			if v, ok := kw.GetStr("foldspaces"); ok {
+				foldspaces = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("wrapcol"); ok {
+				if n, ok2 := toInt64(v); ok2 {
+					wrapcol = int(n)
+				}
+			}
+			if v, ok := kw.GetStr("pad"); ok {
+				pad = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("adobe"); ok {
+				adobe = object.Truthy(v)
+			}
+		}
+		return &object.Bytes{V: a85encodeBytes(data, foldspaces, wrapcol, pad, adobe)}, nil
+	}})
+
+	// a85decode(b, *, foldspaces=False, adobe=False, ignorechars=b' \t\n\r\v')
+	m.Dict.SetStr("a85decode", &object.BuiltinFunc{Name: "a85decode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "a85decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		foldspaces := false
+		adobe := false
+		ignorechars := []byte(" \t\n\r\v")
+		if kw != nil {
+			if v, ok := kw.GetStr("foldspaces"); ok {
+				foldspaces = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("adobe"); ok {
+				adobe = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("ignorechars"); ok {
+				ignorechars, err = asBytes(v)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		out, err2 := a85decodeBytes(data, foldspaces, adobe, ignorechars)
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "a85decode: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// b85encode(b, pad=False)
+	m.Dict.SetStr("b85encode", &object.BuiltinFunc{Name: "b85encode", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b85encode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		pad := false
+		if len(a) >= 2 {
+			pad = object.Truthy(a[1])
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("pad"); ok {
+				pad = object.Truthy(v)
+			}
+		}
+		return &object.Bytes{V: b85encodeBytes(data, pad)}, nil
+	}})
+
+	// b85decode(b)
+	m.Dict.SetStr("b85decode", &object.BuiltinFunc{Name: "b85decode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "b85decode requires input")
+		}
+		data, err := asBytes(a[0])
+		if err != nil {
+			return nil, err
+		}
+		out, err2 := b85decodeBytes(data)
+		if err2 != nil {
+			return nil, object.Errorf(i.valueErr, "b85decode: %s", err2.Error())
+		}
+		return &object.Bytes{V: out}, nil
+	}})
 
 	// standard_b64encode / standard_b64decode are aliases.
 	if v, ok := m.Dict.GetStr("b64encode"); ok {
