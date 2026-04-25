@@ -393,12 +393,77 @@ func (i *Interp) buildDomSharedClasses() (attrCls, nodeListCls, namedNodeMapCls 
 		return &object.List{V: items}, nil
 	}})
 
-	for _, stub := range []string{"getNamedItemNS", "setNamedItemNS", "removeNamedItemNS"} {
-		s := stub
-		namedNodeMapCls.Dict.SetStr(s, &object.BuiltinFunc{Name: s, Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+	// getNamedItemNS(nsURI, localName) -> Attr or None — ignores nsURI
+	namedNodeMapCls.Dict.SetStr("getNamedItemNS", &object.BuiltinFunc{Name: "getNamedItemNS", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
 			return object.None, nil
-		}})
-	}
+		}
+		ownerSt := getAttrs(a[0].(*object.Instance))
+		if ownerSt == nil {
+			return object.None, nil
+		}
+		name := ""
+		if s, ok := a[2].(*object.Str); ok {
+			name = s.V
+		}
+		for _, da := range ownerSt.attrs {
+			if da.name == name {
+				return makeDomAttr(da.name, da.value), nil
+			}
+		}
+		return object.None, nil
+	}})
+
+	// setNamedItemNS(attr) -> old Attr or None
+	namedNodeMapCls.Dict.SetStr("setNamedItemNS", &object.BuiltinFunc{Name: "setNamedItemNS", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		ownerSt := getAttrs(a[0].(*object.Instance))
+		if ownerSt == nil {
+			return object.None, nil
+		}
+		attrInst, ok := a[1].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		name, value := domAttrFromInst(attrInst)
+		if name == "" {
+			return object.None, nil
+		}
+		for idx, da := range ownerSt.attrs {
+			if da.name == name {
+				old := makeDomAttr(da.name, da.value)
+				ownerSt.attrs[idx].value = value
+				return old, nil
+			}
+		}
+		ownerSt.attrs = append(ownerSt.attrs, domAttr{name, value})
+		return object.None, nil
+	}})
+
+	// removeNamedItemNS(nsURI, localName) -> removed Attr — ignores nsURI
+	namedNodeMapCls.Dict.SetStr("removeNamedItemNS", &object.BuiltinFunc{Name: "removeNamedItemNS", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.None, nil
+		}
+		ownerSt := getAttrs(a[0].(*object.Instance))
+		if ownerSt == nil {
+			return object.None, nil
+		}
+		name := ""
+		if s, ok := a[2].(*object.Str); ok {
+			name = s.V
+		}
+		for idx, da := range ownerSt.attrs {
+			if da.name == name {
+				old := makeDomAttr(da.name, da.value)
+				ownerSt.attrs = append(ownerSt.attrs[:idx], ownerSt.attrs[idx+1:]...)
+				return old, nil
+			}
+		}
+		return nil, object.Errorf(i.keyErr, "NOT_FOUND_ERR")
+	}})
 
 	return
 }
@@ -564,10 +629,11 @@ func (i *Interp) buildXmlDom() *object.Module {
 		return object.True, nil
 	}})
 	implCls.Dict.SetStr("createDocument", &object.BuiltinFunc{Name: "createDocument", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		// Returns a stub Document instance
-		docInst := &object.Instance{Class: implCls, Dict: object.NewDict()}
-		docInst.Dict.SetStr("nodeType", object.IntFromInt64(domDOCUMENT_NODE))
-		docInst.Dict.SetStr("nodeName", &object.Str{V: "#document"})
+		docCls2, _, _, _, _, _, _, _ := i.buildMinidomClasses()
+		docInst := &object.Instance{Class: docCls2, Dict: object.NewDict()}
+		docSt := &domNodeState{nodeType: domDOCUMENT_NODE, nodeName: "#document"}
+		domNodeMap.Store(docInst, docSt)
+		domSyncNodeDict(docInst, docSt)
 		return docInst, nil
 	}})
 	implCls.Dict.SetStr("createDocumentType", &object.BuiltinFunc{Name: "createDocumentType", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -688,10 +754,13 @@ func (i *Interp) buildMinidomClasses() (docCls, elemCls, textCls, commentCls, pi
 	// Text
 	textCls = &object.Class{Name: "Text", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
 	i.installDomNodeMethods(textCls)
+	i.installCharacterDataMethods(textCls)
+	i.installTextMethods(textCls)
 
 	// Comment
 	commentCls = &object.Class{Name: "Comment", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
 	i.installDomNodeMethods(commentCls)
+	i.installCharacterDataMethods(commentCls)
 
 	// ProcessingInstruction
 	piCls = &object.Class{Name: "ProcessingInstruction", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
@@ -704,15 +773,20 @@ func (i *Interp) buildMinidomClasses() (docCls, elemCls, textCls, commentCls, pi
 	// CDATASection
 	cdataCls = &object.Class{Name: "CDATASection", Dict: object.NewDict(), Bases: []*object.Class{textCls}}
 	i.installDomNodeMethods(cdataCls)
+	i.installCharacterDataMethods(cdataCls)
 
 	// DocumentType
 	docTypeCls = &object.Class{Name: "DocumentType", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
 	i.installDomNodeMethods(docTypeCls)
 
+	// DocumentFragment
+	docFragCls := &object.Class{Name: "DocumentFragment", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
+	i.installDomNodeMethods(docFragCls)
+
 	// Document
 	docCls = &object.Class{Name: "Document", Dict: object.NewDict(), Bases: []*object.Class{nodeCls}}
 	i.installDomNodeMethods(docCls)
-	i.installDomDocumentMethods(docCls, elemCls, textCls, commentCls, piCls, attrCls, cdataCls, docTypeCls)
+	i.installDomDocumentMethods(docCls, elemCls, textCls, commentCls, piCls, attrCls, cdataCls, docTypeCls, docFragCls)
 
 	return
 }
@@ -899,6 +973,125 @@ func (i *Interp) installDomNodeMethods(cls *object.Class) {
 		}
 		return object.BoolOf(a[0] == a[1]), nil
 	}})
+
+	// isEqualNode(other) -> bool
+	cls.Dict.SetStr("isEqualNode", &object.BuiltinFunc{Name: "isEqualNode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		a1, ok1 := a[0].(*object.Instance)
+		a2, ok2 := a[1].(*object.Instance)
+		if !ok1 || !ok2 {
+			return object.BoolOf(a[0] == a[1]), nil
+		}
+		return object.BoolOf(domNodesEqual(a1, a2)), nil
+	}})
+
+	// compareDocumentPosition stub
+	cls.Dict.SetStr("compareDocumentPosition", &object.BuiltinFunc{Name: "compareDocumentPosition", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.IntFromInt64(0), nil
+	}})
+
+	// cloneNode(deep) -> Node
+	cls.Dict.SetStr("cloneNode", &object.BuiltinFunc{Name: "cloneNode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		deep := false
+		if len(a) >= 2 {
+			deep = isTruthy(a[1])
+		}
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		cloned := domCloneNode(self, deep, st.ownerDoc)
+		if cloned == nil {
+			return object.None, nil
+		}
+		return cloned, nil
+	}})
+
+	// normalize() - merge adjacent text nodes
+	cls.Dict.SetStr("normalize", &object.BuiltinFunc{Name: "normalize", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		domNormalize(a[0].(*object.Instance))
+		return object.None, nil
+	}})
+
+	// Dynamic child/sibling properties
+	cls.Dict.SetStr("firstChild", &object.Property{Fget: &object.BuiltinFunc{Name: "firstChild", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		st := getDomNode(a[0].(*object.Instance))
+		if st == nil || len(st.children) == 0 {
+			return object.None, nil
+		}
+		return st.children[0], nil
+	}}})
+
+	cls.Dict.SetStr("lastChild", &object.Property{Fget: &object.BuiltinFunc{Name: "lastChild", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		st := getDomNode(a[0].(*object.Instance))
+		if st == nil || len(st.children) == 0 {
+			return object.None, nil
+		}
+		return st.children[len(st.children)-1], nil
+	}}})
+
+	cls.Dict.SetStr("previousSibling", &object.Property{Fget: &object.BuiltinFunc{Name: "previousSibling", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil || st.parent == nil {
+			return object.None, nil
+		}
+		parentSt := getDomNode(st.parent)
+		if parentSt == nil {
+			return object.None, nil
+		}
+		for idx, ch := range parentSt.children {
+			if ch == self {
+				if idx == 0 {
+					return object.None, nil
+				}
+				return parentSt.children[idx-1], nil
+			}
+		}
+		return object.None, nil
+	}}})
+
+	cls.Dict.SetStr("nextSibling", &object.Property{Fget: &object.BuiltinFunc{Name: "nextSibling", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil || st.parent == nil {
+			return object.None, nil
+		}
+		parentSt := getDomNode(st.parent)
+		if parentSt == nil {
+			return object.None, nil
+		}
+		for idx, ch := range parentSt.children {
+			if ch == self {
+				if idx == len(parentSt.children)-1 {
+					return object.None, nil
+				}
+				return parentSt.children[idx+1], nil
+			}
+		}
+		return object.None, nil
+	}}})
 }
 
 func (i *Interp) installDomElementMethods(cls *object.Class) {
@@ -1194,6 +1387,28 @@ func (i *Interp) installDomElementMethods(cls *object.Class) {
 		return object.None, nil
 	}})
 
+	// hasAttributeNS(nsURI, localName) -> bool — ignores nsURI
+	cls.Dict.SetStr("hasAttributeNS", &object.BuiltinFunc{Name: "hasAttributeNS", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.False, nil
+		}
+		self := a[0].(*object.Instance)
+		name := ""
+		if s, ok := a[2].(*object.Str); ok {
+			name = s.V
+		}
+		st := getDomNode(self)
+		if st == nil {
+			return object.False, nil
+		}
+		for _, attr := range st.attrs {
+			if attr.name == name {
+				return object.True, nil
+			}
+		}
+		return object.False, nil
+	}})
+
 	// getAttributeNodeNS / setAttributeNodeNS — simple aliases
 	cls.Dict.SetStr("getAttributeNodeNS", &object.BuiltinFunc{Name: "getAttributeNodeNS", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 3 {
@@ -1220,7 +1435,7 @@ func (i *Interp) installDomElementMethods(cls *object.Class) {
 	}})
 }
 
-func (i *Interp) installDomDocumentMethods(docCls, elemCls, textCls, commentCls, piCls, attrCls, cdataCls, docTypeCls *object.Class) {
+func (i *Interp) installDomDocumentMethods(docCls, elemCls, textCls, commentCls, piCls, attrCls, cdataCls, docTypeCls, docFragCls *object.Class) {
 	// createElement(tagName) -> Element
 	docCls.Dict.SetStr("createElement", &object.BuiltinFunc{Name: "createElement", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) < 2 {
@@ -1542,7 +1757,7 @@ func (i *Interp) installDomDocumentMethods(docCls, elemCls, textCls, commentCls,
 	// createDocumentFragment() -> DocumentFragment
 	docCls.Dict.SetStr("createDocumentFragment", &object.BuiltinFunc{Name: "createDocumentFragment", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		doc := a[0].(*object.Instance)
-		inst := &object.Instance{Class: docTypeCls, Dict: object.NewDict()}
+		inst := &object.Instance{Class: docFragCls, Dict: object.NewDict()}
 		st := &domNodeState{
 			nodeType: domDOCUMENT_FRAGMENT_NODE,
 			nodeName: "#document-fragment",
@@ -1551,6 +1766,27 @@ func (i *Interp) installDomDocumentMethods(docCls, elemCls, textCls, commentCls,
 		domNodeMap.Store(inst, st)
 		domSyncNodeDict(inst, st)
 		return inst, nil
+	}})
+
+	// importNode(node, deep) -> Node
+	docCls.Dict.SetStr("importNode", &object.BuiltinFunc{Name: "importNode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.typeErr, "importNode() requires 2 arguments")
+		}
+		doc := a[0].(*object.Instance)
+		src, ok := a[1].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		deep := false
+		if len(a) >= 3 {
+			deep = isTruthy(a[2])
+		}
+		cloned := domCloneNode(src, deep, doc)
+		if cloned == nil {
+			return object.None, nil
+		}
+		return cloned, nil
 	}})
 }
 
@@ -1574,10 +1810,6 @@ func domSyncNodeDict(inst *object.Instance, st *domNodeState) {
 	}
 	inst.Dict.SetStr("parentNode", object.None)
 	inst.Dict.SetStr("childNodes", domMakeNodeList(inst))
-	inst.Dict.SetStr("firstChild", object.None)
-	inst.Dict.SetStr("lastChild", object.None)
-	inst.Dict.SetStr("previousSibling", object.None)
-	inst.Dict.SetStr("nextSibling", object.None)
 	if st.ownerDoc != nil {
 		inst.Dict.SetStr("ownerDocument", st.ownerDoc)
 	} else {
@@ -1791,6 +2023,7 @@ func minidomParseBytes(data []byte, docCls, elemCls, textCls, commentCls, piCls,
 			}
 			domNodeMap.Store(inst, st)
 			domSyncNodeDict(inst, st)
+			st.parent = parent.inst
 			inst.Dict.SetStr("parentNode", parent.inst)
 			parent.st.children = append(parent.st.children, inst)
 			if len(stack) == 1 {
@@ -1816,6 +2049,7 @@ func minidomParseBytes(data []byte, docCls, elemCls, textCls, commentCls, piCls,
 				}
 				domNodeMap.Store(inst, st)
 				domSyncNodeDict(inst, st)
+				st.parent = parent.inst
 				inst.Dict.SetStr("parentNode", parent.inst)
 				parent.st.children = append(parent.st.children, inst)
 			}
@@ -1831,6 +2065,7 @@ func minidomParseBytes(data []byte, docCls, elemCls, textCls, commentCls, piCls,
 				}
 				domNodeMap.Store(inst, st)
 				domSyncNodeDict(inst, st)
+				st.parent = parent.inst
 				parent.st.children = append(parent.st.children, inst)
 			}
 		case xml.ProcInst:
@@ -1846,12 +2081,388 @@ func minidomParseBytes(data []byte, docCls, elemCls, textCls, commentCls, piCls,
 				}
 				domNodeMap.Store(inst, st)
 				domSyncNodeDict(inst, st)
+				st.parent = parent.inst
 				parent.st.children = append(parent.st.children, inst)
 			}
 		}
 	}
 	_ = docRoot
 	return docInst, nil
+}
+
+// domCloneNode creates a shallow or deep clone of a DOM node.
+func domCloneNode(inst *object.Instance, deep bool, ownerDoc *object.Instance) *object.Instance {
+	if inst == nil {
+		return nil
+	}
+	st := getDomNode(inst)
+	if st == nil {
+		return nil
+	}
+	newAttrs := make([]domAttr, len(st.attrs))
+	copy(newAttrs, st.attrs)
+	newInst := &object.Instance{Class: inst.Class, Dict: object.NewDict()}
+	newSt := &domNodeState{
+		nodeType:  st.nodeType,
+		nodeName:  st.nodeName,
+		nodeValue: st.nodeValue,
+		data:      st.data,
+		target:    st.target,
+		attrs:     newAttrs,
+		ownerDoc:  ownerDoc,
+	}
+	domNodeMap.Store(newInst, newSt)
+	domSyncNodeDict(newInst, newSt)
+	if deep {
+		for _, ch := range st.children {
+			clonedCh := domCloneNode(ch, true, ownerDoc)
+			if clonedCh != nil {
+				newSt.children = append(newSt.children, clonedCh)
+				clonedCh.Dict.SetStr("parentNode", newInst)
+				if chSt := getDomNode(clonedCh); chSt != nil {
+					chSt.parent = newInst
+				}
+			}
+		}
+	}
+	return newInst
+}
+
+// domNodesEqual returns true if two nodes are structurally equal.
+func domNodesEqual(a, b *object.Instance) bool {
+	if a == b {
+		return true
+	}
+	stA := getDomNode(a)
+	stB := getDomNode(b)
+	if stA == nil || stB == nil {
+		return stA == stB
+	}
+	if stA.nodeType != stB.nodeType || stA.nodeName != stB.nodeName ||
+		stA.nodeValue != stB.nodeValue || stA.data != stB.data ||
+		stA.target != stB.target {
+		return false
+	}
+	if len(stA.attrs) != len(stB.attrs) {
+		return false
+	}
+	for _, da := range stA.attrs {
+		found := false
+		for _, db := range stB.attrs {
+			if da.name == db.name && da.value == db.value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if len(stA.children) != len(stB.children) {
+		return false
+	}
+	for idx := range stA.children {
+		if !domNodesEqual(stA.children[idx], stB.children[idx]) {
+			return false
+		}
+	}
+	return true
+}
+
+// domNormalize merges adjacent Text nodes in children recursively.
+func domNormalize(inst *object.Instance) {
+	st := getDomNode(inst)
+	if st == nil {
+		return
+	}
+	idx := 0
+	for idx < len(st.children) {
+		ch := st.children[idx]
+		chSt := getDomNode(ch)
+		if chSt != nil && chSt.nodeType == domTEXT_NODE {
+			merged := chSt.data
+			j := idx + 1
+			for j < len(st.children) {
+				nSt := getDomNode(st.children[j])
+				if nSt == nil || nSt.nodeType != domTEXT_NODE {
+					break
+				}
+				merged += nSt.data
+				j++
+			}
+			if j > idx+1 {
+				chSt.data = merged
+				chSt.nodeValue = merged
+				ch.Dict.SetStr("data", &object.Str{V: merged})
+				ch.Dict.SetStr("nodeValue", &object.Str{V: merged})
+				st.children = append(st.children[:idx+1], st.children[j:]...)
+			} else {
+				idx++
+			}
+		} else {
+			if chSt != nil {
+				domNormalize(ch)
+			}
+			idx++
+		}
+	}
+}
+
+// installCharacterDataMethods adds the CharacterData interface to a node class.
+func (i *Interp) installCharacterDataMethods(cls *object.Class) {
+	// __setattr__ syncs data/nodeValue writes to domNodeState
+	cls.Dict.SetStr("__setattr__", &object.BuiltinFunc{Name: "__setattr__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.None, nil
+		}
+		self, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		attrName := ""
+		if s, ok2 := a[1].(*object.Str); ok2 {
+			attrName = s.V
+		}
+		val := a[2]
+		self.Dict.SetStr(attrName, val)
+		if attrName == "data" || attrName == "nodeValue" {
+			if st := getDomNode(self); st != nil {
+				if s, ok2 := val.(*object.Str); ok2 {
+					st.data = s.V
+					st.nodeValue = s.V
+				}
+			}
+		}
+		return object.None, nil
+	}})
+
+	// length -> int (rune count)
+	cls.Dict.SetStr("length", &object.Property{Fget: &object.BuiltinFunc{Name: "length", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.IntFromInt64(0), nil
+		}
+		st := getDomNode(a[0].(*object.Instance))
+		if st == nil {
+			return object.IntFromInt64(0), nil
+		}
+		return object.IntFromInt64(int64(len([]rune(st.data)))), nil
+	}}})
+
+	// substringData(offset, count) -> str
+	cls.Dict.SetStr("substringData", &object.BuiltinFunc{Name: "substringData", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return &object.Str{V: ""}, nil
+		}
+		st := getDomNode(a[0].(*object.Instance))
+		if st == nil {
+			return &object.Str{V: ""}, nil
+		}
+		offset, ok1 := toInt64(a[1])
+		count, ok2 := toInt64(a[2])
+		if !ok1 || !ok2 {
+			return &object.Str{V: ""}, nil
+		}
+		runes := []rune(st.data)
+		off := int(offset)
+		cnt := int(count)
+		if off < 0 || off > len(runes) {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		end := off + cnt
+		if end > len(runes) {
+			end = len(runes)
+		}
+		return &object.Str{V: string(runes[off:end])}, nil
+	}})
+
+	// appendData(arg)
+	cls.Dict.SetStr("appendData", &object.BuiltinFunc{Name: "appendData", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		if s, ok := a[1].(*object.Str); ok {
+			st.data += s.V
+			st.nodeValue = st.data
+			self.Dict.SetStr("data", &object.Str{V: st.data})
+			self.Dict.SetStr("nodeValue", &object.Str{V: st.nodeValue})
+		}
+		return object.None, nil
+	}})
+
+	// insertData(offset, arg)
+	cls.Dict.SetStr("insertData", &object.BuiltinFunc{Name: "insertData", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		offset, ok := toInt64(a[1])
+		if !ok {
+			return object.None, nil
+		}
+		arg := ""
+		if s, ok2 := a[2].(*object.Str); ok2 {
+			arg = s.V
+		}
+		runes := []rune(st.data)
+		off := int(offset)
+		if off < 0 || off > len(runes) {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		newR := make([]rune, 0, len(runes)+len([]rune(arg)))
+		newR = append(newR, runes[:off]...)
+		newR = append(newR, []rune(arg)...)
+		newR = append(newR, runes[off:]...)
+		st.data = string(newR)
+		st.nodeValue = st.data
+		self.Dict.SetStr("data", &object.Str{V: st.data})
+		self.Dict.SetStr("nodeValue", &object.Str{V: st.nodeValue})
+		return object.None, nil
+	}})
+
+	// deleteData(offset, count)
+	cls.Dict.SetStr("deleteData", &object.BuiltinFunc{Name: "deleteData", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 3 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		offset, ok1 := toInt64(a[1])
+		count, ok2 := toInt64(a[2])
+		if !ok1 || !ok2 {
+			return object.None, nil
+		}
+		runes := []rune(st.data)
+		off := int(offset)
+		cnt := int(count)
+		if off < 0 || off > len(runes) {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		end := off + cnt
+		if end > len(runes) {
+			end = len(runes)
+		}
+		newR := make([]rune, 0, len(runes))
+		newR = append(newR, runes[:off]...)
+		newR = append(newR, runes[end:]...)
+		st.data = string(newR)
+		st.nodeValue = st.data
+		self.Dict.SetStr("data", &object.Str{V: st.data})
+		self.Dict.SetStr("nodeValue", &object.Str{V: st.nodeValue})
+		return object.None, nil
+	}})
+
+	// replaceData(offset, count, arg)
+	cls.Dict.SetStr("replaceData", &object.BuiltinFunc{Name: "replaceData", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 4 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getDomNode(self)
+		if st == nil {
+			return object.None, nil
+		}
+		offset, ok1 := toInt64(a[1])
+		count, ok2 := toInt64(a[2])
+		if !ok1 || !ok2 {
+			return object.None, nil
+		}
+		arg := ""
+		if s, ok3 := a[3].(*object.Str); ok3 {
+			arg = s.V
+		}
+		runes := []rune(st.data)
+		off := int(offset)
+		cnt := int(count)
+		if off < 0 || off > len(runes) {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		end := off + cnt
+		if end > len(runes) {
+			end = len(runes)
+		}
+		newR := make([]rune, 0, len(runes))
+		newR = append(newR, runes[:off]...)
+		newR = append(newR, []rune(arg)...)
+		newR = append(newR, runes[end:]...)
+		st.data = string(newR)
+		st.nodeValue = st.data
+		self.Dict.SetStr("data", &object.Str{V: st.data})
+		self.Dict.SetStr("nodeValue", &object.Str{V: st.nodeValue})
+		return object.None, nil
+	}})
+}
+
+// installTextMethods adds Text-specific methods.
+func (i *Interp) installTextMethods(cls *object.Class) {
+	// splitText(offset) -> Text (new node with tail)
+	cls.Dict.SetStr("splitText", &object.BuiltinFunc{Name: "splitText", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		self := a[0].(*object.Instance)
+		offset, ok := toInt64(a[1])
+		if !ok {
+			return nil, object.Errorf(i.typeErr, "offset must be int")
+		}
+		st := getDomNode(self)
+		if st == nil {
+			return nil, object.Errorf(i.typeErr, "splitText on non-text node")
+		}
+		runes := []rune(st.data)
+		off := int(offset)
+		if off < 0 || off > len(runes) {
+			return nil, object.Errorf(i.indexErr, "INDEX_SIZE_ERR")
+		}
+		tail := string(runes[off:])
+		head := string(runes[:off])
+		// Create new Text node with tail
+		newInst := &object.Instance{Class: self.Class, Dict: object.NewDict()}
+		newSt := &domNodeState{
+			nodeType:  domTEXT_NODE,
+			nodeName:  "#text",
+			nodeValue: tail,
+			data:      tail,
+			ownerDoc:  st.ownerDoc,
+		}
+		domNodeMap.Store(newInst, newSt)
+		domSyncNodeDict(newInst, newSt)
+		// Shrink this node to the head
+		st.data = head
+		st.nodeValue = head
+		self.Dict.SetStr("data", &object.Str{V: head})
+		self.Dict.SetStr("nodeValue", &object.Str{V: head})
+		// Insert new node after self in parent's children
+		if st.parent != nil {
+			parentSt := getDomNode(st.parent)
+			if parentSt != nil {
+				for idx, ch := range parentSt.children {
+					if ch == self {
+						newSt.parent = st.parent
+						newInst.Dict.SetStr("parentNode", st.parent)
+						newChildren := make([]*object.Instance, 0, len(parentSt.children)+1)
+						newChildren = append(newChildren, parentSt.children[:idx+1]...)
+						newChildren = append(newChildren, newInst)
+						newChildren = append(newChildren, parentSt.children[idx+1:]...)
+						parentSt.children = newChildren
+						break
+					}
+				}
+			}
+		}
+		return newInst, nil
+	}})
 }
 
 // ── xml.dom.pulldom ───────────────────────────────────────────────────────────
