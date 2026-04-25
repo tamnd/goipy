@@ -1,4 +1,4 @@
-//go:build unix
+//go:build windows
 
 package vm
 
@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/tamnd/goipy/object"
-	"golang.org/x/sys/unix"
 )
-
 
 func (i *Interp) buildSelectors() *object.Module {
 	m := &object.Module{Name: "selectors", Dict: object.NewDict()}
@@ -32,8 +30,6 @@ func (i *Interp) buildSelectors() *object.Module {
 		return inst
 	}
 
-	// buildBase constructs a selector instance with common register/unregister/
-	// modify/select/close/get_key/get_map/__enter__/__exit__ methods.
 	buildBase := func(className string, st *selectorState, hooks selectorHooks) *object.Instance {
 		cls := &object.Class{Name: className, Dict: object.NewDict()}
 		inst := &object.Instance{Class: cls, Dict: object.NewDict()}
@@ -251,23 +247,25 @@ func (i *Interp) buildSelectors() *object.Module {
 		return inst
 	}
 
-	// pollSelectFn builds the select() implementation for Poll/Select selectors.
-	pollSelectFn := func(st *selectorState, timeoutMs int) ([]object.Object, error) {
+	// wsaSelectFn implements the select logic using WSAPoll for Windows sockets.
+	wsaSelectFn := func(st *selectorState, timeoutMs int) ([]object.Object, error) {
 		st.mu.RLock()
-		pfds := make([]unix.PollFd, 0, len(st.keys))
+		pfds := make([]wsaPollFd, 0, len(st.keys))
+		fdKeys := make(map[uintptr]*object.Instance, len(st.keys))
 		for fd, key := range st.keys {
 			var mask int16
 			if ev, ok2 := key.Dict.GetStr("events"); ok2 {
 				if n, ok3 := toInt64(ev); ok3 {
 					if n&selectorEventRead != 0 {
-						mask |= unix.POLLIN
+						mask |= wsaPOLLIN
 					}
 					if n&selectorEventWrite != 0 {
-						mask |= unix.POLLOUT
+						mask |= wsaPOLLOUT
 					}
 				}
 			}
-			pfds = append(pfds, unix.PollFd{Fd: fd, Events: mask})
+			pfds = append(pfds, wsaPollFd{fd: uintptr(fd), events: mask})
+			fdKeys[uintptr(fd)] = key
 		}
 		st.mu.RUnlock()
 
@@ -278,27 +276,25 @@ func (i *Interp) buildSelectors() *object.Module {
 			return nil, nil
 		}
 
-		_, err := unix.Poll(pfds, timeoutMs)
-		if err != nil && err != unix.EINTR {
-			return nil, object.Errorf(errCls, "select: %v", err)
+		n := wsaPoll(pfds, int32(timeoutMs))
+		if n < 0 {
+			return nil, object.Errorf(errCls, "select: WSAPoll failed")
 		}
 
-		st.mu.RLock()
-		defer st.mu.RUnlock()
 		var out []object.Object
 		for _, pfd := range pfds {
-			if pfd.Revents == 0 {
+			if pfd.revents == 0 {
 				continue
 			}
-			key, exists := st.keys[pfd.Fd]
+			key, exists := fdKeys[pfd.fd]
 			if !exists {
 				continue
 			}
 			var evts int64
-			if pfd.Revents&(unix.POLLIN|unix.POLLHUP|selectPollrdhup) != 0 {
+			if pfd.revents&wsaPOLLIN != 0 {
 				evts |= selectorEventRead
 			}
-			if pfd.Revents&unix.POLLOUT != 0 {
+			if pfd.revents&wsaPOLLOUT != 0 {
 				evts |= selectorEventWrite
 			}
 			if evts != 0 {
@@ -310,22 +306,14 @@ func (i *Interp) buildSelectors() *object.Module {
 
 	makeSelectSelector := func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		st := newSelectorState()
-		return buildBase("SelectSelector", st, selectorHooks{selectFn: pollSelectFn}), nil
-	}
-	makePollSelector := func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		st := newSelectorState()
-		return buildBase("PollSelector", st, selectorHooks{selectFn: pollSelectFn}), nil
+		return buildBase("SelectSelector", st, selectorHooks{selectFn: wsaSelectFn}), nil
 	}
 
 	m.Dict.SetStr("SelectSelector", &object.BuiltinFunc{Name: "SelectSelector", Call: makeSelectSelector})
-	m.Dict.SetStr("PollSelector", &object.BuiltinFunc{Name: "PollSelector", Call: makePollSelector})
-
-	ctx := selectorCtx{
-		errCls:          errCls,
-		makeSelectorKey: makeSelectorKey,
-		buildBase:       buildBase,
-	}
-	i.extendSelectorsModule(m, ctx)
+	m.Dict.SetStr("DefaultSelector", &object.BuiltinFunc{Name: "DefaultSelector", Call: makeSelectSelector})
 
 	return m
 }
+
+// extendSelectorsModule is a no-op on Windows (no epoll/kqueue).
+func (i *Interp) extendSelectorsModule(_ *object.Module, _ selectorCtx) {}

@@ -648,8 +648,7 @@ func (i *Interp) buildSocket() *object.Module {
 	setInt("IPPROTO_UDP", int(syscall.IPPROTO_UDP))
 	setInt("IPPROTO_IP", int(syscall.IPPROTO_IP))
 	setInt("IPPROTO_IPV6", int(syscall.IPPROTO_IPV6))
-	setInt("IPPROTO_ICMP", int(syscall.IPPROTO_ICMP))
-	setInt("IPPROTO_RAW", int(syscall.IPPROTO_RAW))
+	registerSocketPlatformConstants(m, setInt)
 
 	// Socket-level options
 	setInt("SOL_SOCKET", int(syscall.SOL_SOCKET))
@@ -658,8 +657,6 @@ func (i *Interp) buildSocket() *object.Module {
 	setInt("SO_BROADCAST", int(syscall.SO_BROADCAST))
 	setInt("SO_SNDBUF", int(syscall.SO_SNDBUF))
 	setInt("SO_RCVBUF", int(syscall.SO_RCVBUF))
-	setInt("SO_ERROR", int(syscall.SO_ERROR))
-	setInt("SO_TYPE", int(syscall.SO_TYPE))
 	setInt("SO_LINGER", int(syscall.SO_LINGER))
 
 	// TCP options
@@ -668,10 +665,6 @@ func (i *Interp) buildSocket() *object.Module {
 
 	// IP options
 	setInt("IP_TTL", int(syscall.IP_TTL))
-	setInt("IP_HDRINCL", int(syscall.IP_HDRINCL))
-	setInt("IP_MULTICAST_TTL", int(syscall.IP_MULTICAST_TTL))
-	setInt("IP_MULTICAST_LOOP", int(syscall.IP_MULTICAST_LOOP))
-	setInt("IP_ADD_MEMBERSHIP", int(syscall.IP_ADD_MEMBERSHIP))
 
 	// Shutdown flags
 	m.Dict.SetStr("SHUT_RD", object.NewInt(0))
@@ -692,12 +685,6 @@ func (i *Interp) buildSocket() *object.Module {
 	setInt("NI_NUMERICHOST", 0x00000002)
 	setInt("NI_NAMEREQD", 0x00000004)
 	setInt("NI_NUMERICSERV", 0x00000008)
-
-	// Message flags
-	setInt("MSG_OOB", int(syscall.MSG_OOB))
-	setInt("MSG_DONTWAIT", int(syscall.MSG_DONTWAIT))
-	setInt("MSG_WAITALL", int(syscall.MSG_WAITALL))
-	setInt("MSG_PEEK", int(syscall.MSG_PEEK))
 
 	// ── default timeout ───────────────────────────────────────────────────
 
@@ -785,31 +772,7 @@ func (i *Interp) buildSocket() *object.Module {
 					socktype = int(n)
 				}
 			}
-			// Use real OS socket pair so the kernel buffer allows non-blocking sends.
-			fds, err := syscall.Socketpair(family, socktype, 0)
-			if err != nil {
-				return nil, object.Errorf(socketErrCls, "socketpair: %v", err)
-			}
-			f1 := os.NewFile(uintptr(fds[0]), "socketpair[0]")
-			c1, err := net.FileConn(f1)
-			f1.Close() //nolint
-			if err != nil {
-				return nil, object.Errorf(socketErrCls, "socketpair: %v", err)
-			}
-			f2 := os.NewFile(uintptr(fds[1]), "socketpair[1]")
-			c2, err := net.FileConn(f2)
-			f2.Close() //nolint
-			if err != nil {
-				c1.Close() //nolint
-				return nil, object.Errorf(socketErrCls, "socketpair: %v", err)
-			}
-			st1 := newSockState(family, socktype, 0)
-			st1.conn = c1
-			st2 := newSockState(family, socktype, 0)
-			st2.conn = c2
-			inst1 := i.makeSocketInst(sockCls, st1, socketErrCls)
-			inst2 := i.makeSocketInst(sockCls, st2, socketErrCls)
-			return &object.Tuple{V: []object.Object{inst1, inst2}}, nil
+			return socketpairImpl(i, sockCls, socketErrCls, family, socktype)
 		}})
 
 	// ── create_connection ─────────────────────────────────────────────────

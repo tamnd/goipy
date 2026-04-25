@@ -24,6 +24,8 @@ jobs:
             goarch: amd64
           - goos: darwin
             goarch: arm64
+          - goos: windows
+            goarch: amd64
 
     steps:
       - uses: actions/checkout@v6
@@ -38,23 +40,39 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags="-s -w" -o goipy ./cmd/goipy
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -ldflags="-s -w" -o goipy.exe ./cmd/goipy
+          else
+            go build -ldflags="-s -w" -o goipy ./cmd/goipy
+          fi
 
       - name: Stage archive contents
         run: |
           stage=goipy-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
           mkdir -p "$stage"
-          cp goipy "$stage/"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            cp goipy.exe "$stage/"
+          else
+            cp goipy "$stage/"
+          fi
           cp LICENSE README.md "$stage/"
           echo "STAGE=$stage" >> "$GITHUB_ENV"
 
-      - name: Create tarball
-        run: tar -czf "${STAGE}.tar.gz" "$STAGE"
+      - name: Create archive
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -r "${STAGE}.zip" "$STAGE"
+            echo "ARCHIVE=${STAGE}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${STAGE}.tar.gz" "$STAGE"
+            echo "ARCHIVE=${STAGE}.tar.gz" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
           name: archive-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: goipy-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+          path: ${{ env.ARCHIVE }}
           if-no-files-found: error
           retention-days: 7
 

@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/tamnd/goipy/object"
 )
@@ -293,13 +292,10 @@ func (i *Interp) buildShutil() *object.Module {
 		if !ok {
 			return nil, object.Errorf(i.typeErr, "disk_usage() path must be str")
 		}
-		var stat syscall.Statfs_t
-		if err := syscall.Statfs(path.V, &stat); err != nil {
+		total, used, free, err := shutilDiskUsage(path.V)
+		if err != nil {
 			return nil, object.Errorf(i.osErr, "%v", err)
 		}
-		total := int64(stat.Blocks) * int64(stat.Bsize)
-		free := int64(stat.Bavail) * int64(stat.Bsize)
-		used := total - int64(stat.Bfree)*int64(stat.Bsize)
 		cls := &object.Class{Name: "usage", Bases: nil, Dict: object.NewDict()}
 		inst := &object.Instance{Class: cls, Dict: object.NewDict()}
 		inst.Dict.SetStr("total", object.NewInt(total))
