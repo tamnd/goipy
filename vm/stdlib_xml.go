@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,26 @@ func getEtElem(inst *object.Instance) *etElem {
 var etNamespaces struct {
 	mu   sync.Mutex
 	list []struct{ prefix, uri string }
+}
+
+// ── TreeBuilder state ────────────────────────────────────────────────────────
+
+type tbState struct {
+	stack   []*object.Instance
+	root    *object.Instance
+	last    *object.Instance
+	isTail  bool
+	elemCls *object.Class
+}
+
+var etTreeBuilderMap struct{ m sync.Map }
+
+func getTBState(inst *object.Instance) *tbState {
+	v, ok := etTreeBuilderMap.m.Load(inst)
+	if !ok {
+		return nil
+	}
+	return v.(*tbState)
 }
 
 // ── xml module ───────────────────────────────────────────────────────────────
@@ -375,21 +396,13 @@ func (i *Interp) buildXmlElementTree() *object.Module {
 		return object.None, nil
 	}})
 
-	// QName stub
-	qnameCls := &object.Class{Name: "QName", Dict: object.NewDict()}
-	qnameCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		if len(a) < 2 {
-			return object.None, nil
-		}
-		self := a[0].(*object.Instance)
-		if s, ok := a[1].(*object.Str); ok {
-			self.Dict.SetStr("text", s)
-		}
-		return object.None, nil
-	}})
+	qnameCls := i.buildEtQNameClass()
 	m.Dict.SetStr("QName", qnameCls)
 
-	// iterparse stub (returns list of (event, element))
+	treebuildCls := i.buildEtTreeBuilderClass(elemCls)
+	m.Dict.SetStr("TreeBuilder", treebuildCls)
+
+	// iterparse(source, events=None, parser=None)
 	m.Dict.SetStr("iterparse", &object.BuiltinFunc{Name: "iterparse", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "iterparse() requires at least 1 argument")
@@ -412,18 +425,82 @@ func (i *Interp) buildXmlElementTree() *object.Module {
 			res, _ := ii.callObject(fn, nil, nil)
 			data, _ = asBytes(res)
 		}
+		// Determine which events to collect (default: end only)
+		wantEvents := map[string]bool{"end": true}
+		collectEvents := func(obj object.Object) {
+			wantEvents = map[string]bool{}
+			switch ev := obj.(type) {
+			case *object.List:
+				for _, e := range ev.V {
+					if s, ok := e.(*object.Str); ok {
+						wantEvents[s.V] = true
+					}
+				}
+			case *object.Tuple:
+				for _, e := range ev.V {
+					if s, ok := e.(*object.Str); ok {
+						wantEvents[s.V] = true
+					}
+				}
+			}
+		}
+		if len(a) >= 2 && a[1] != object.None {
+			collectEvents(a[1])
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("events"); ok && v != object.None {
+				collectEvents(v)
+			}
+		}
 		root, perr := etParseXML(elemCls, parseErrCls, data)
 		if perr != nil {
 			return nil, perr
 		}
-		events := []object.Object{}
-		etCollectIterparse(root.(*object.Instance), &events)
-		return &object.List{V: events}, nil
+		evts := []object.Object{}
+		etCollectIterparse(root.(*object.Instance), &evts, wantEvents)
+		return &object.List{V: evts}, nil
 	}})
 
-	// canonicalize stub
+	// canonicalize(xml_data=None, *, out=None, with_comments=False, ...)
 	m.Dict.SetStr("canonicalize", &object.BuiltinFunc{Name: "canonicalize", Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
-		return object.None, nil
+		xmlData := object.Object(object.None)
+		if len(a) >= 1 {
+			xmlData = a[0]
+		}
+		if kw != nil {
+			if v, ok := kw.GetStr("xml_data"); ok {
+				xmlData = v
+			}
+		}
+		withComments := false
+		if kw != nil {
+			if v, ok := kw.GetStr("with_comments"); ok {
+				withComments = object.Truthy(v)
+			}
+		}
+		if xmlData == object.None {
+			return object.None, nil
+		}
+		data, err := asBytes(xmlData)
+		if err != nil {
+			return nil, object.Errorf(i.typeErr, "canonicalize() requires string or bytes xml_data")
+		}
+		root, perr := etParseXML(elemCls, parseErrCls, data)
+		if perr != nil {
+			return nil, perr
+		}
+		var buf strings.Builder
+		etCanonicalizeElem(&buf, root.(*object.Instance), withComments)
+		result := buf.String()
+		if kw != nil {
+			if outObj, ok := kw.GetStr("out"); ok && outObj != object.None {
+				ii := interp.(*Interp)
+				fn, _ := ii.getAttr(outObj, "write")
+				ii.callObject(fn, []object.Object{&object.Str{V: result}}, nil)
+				return object.None, nil
+			}
+		}
+		return &object.Str{V: result}, nil
 	}})
 
 	// expose Element class
@@ -1386,6 +1463,29 @@ func etSerialize(buf *strings.Builder, inst *object.Instance, method string, sho
 		return
 	}
 
+	// Handle comment nodes: tag sentinel "<!---->"
+	if st.tag == "<!---->" {
+		buf.WriteString("<!--")
+		buf.WriteString(st.text)
+		buf.WriteString("-->")
+		if st.tail != "" {
+			buf.WriteString(xmlEscapeText(st.tail))
+		}
+		return
+	}
+
+	// Handle processing instruction nodes: tag sentinel "<??>", text=target, tail=data
+	if st.tag == "<??>"{
+		buf.WriteString("<?")
+		buf.WriteString(st.text)
+		if st.tail != "" {
+			buf.WriteByte(' ')
+			buf.WriteString(st.tail)
+		}
+		buf.WriteString("?>")
+		return
+	}
+
 	// Open tag
 	buf.WriteByte('<')
 	buf.WriteString(st.tag)
@@ -1516,18 +1616,20 @@ func etCollectIDs(inst *object.Instance, d *object.Dict) {
 }
 
 // etCollectIterparse builds (event, element) tuples for iterparse.
-func etCollectIterparse(inst *object.Instance, events *[]object.Object) {
+func etCollectIterparse(inst *object.Instance, events *[]object.Object, want map[string]bool) {
 	st := getEtElem(inst)
 	if st == nil {
 		return
 	}
-	startEvt := &object.Tuple{V: []object.Object{&object.Str{V: "start"}, inst}}
-	*events = append(*events, startEvt)
-	for _, child := range st.children {
-		etCollectIterparse(child, events)
+	if want["start"] {
+		*events = append(*events, &object.Tuple{V: []object.Object{&object.Str{V: "start"}, inst}})
 	}
-	endEvt := &object.Tuple{V: []object.Object{&object.Str{V: "end"}, inst}}
-	*events = append(*events, endEvt)
+	for _, child := range st.children {
+		etCollectIterparse(child, events, want)
+	}
+	if want["end"] {
+		*events = append(*events, &object.Tuple{V: []object.Object{&object.Str{V: "end"}, inst}})
+	}
 }
 
 // ── XPath subset: find / findall ─────────────────────────────────────────────
@@ -1667,4 +1769,396 @@ func etMatchPredicate(st *etElem, inst *object.Instance, predicate string, idx2 
 		}
 	}
 	return false
+}
+
+// ── QName ─────────────────────────────────────────────────────────────────────
+
+func (i *Interp) buildEtQNameClass() *object.Class {
+	cls := &object.Class{Name: "QName", Dict: object.NewDict()}
+
+	cls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		arg1 := ""
+		if s, ok := a[1].(*object.Str); ok {
+			arg1 = s.V
+		}
+		text := arg1
+		// QName("uri", "local") form
+		if len(a) >= 3 && a[2] != object.None {
+			tag := ""
+			if s, ok := a[2].(*object.Str); ok {
+				tag = s.V
+			}
+			if tag != "" {
+				text = "{" + arg1 + "}" + tag
+			}
+		}
+		self.Dict.SetStr("text", &object.Str{V: text})
+		ns := object.Object(object.None)
+		local := text
+		if strings.HasPrefix(text, "{") {
+			if closeIdx := strings.Index(text, "}"); closeIdx >= 0 {
+				ns = &object.Str{V: text[1:closeIdx]}
+				local = text[closeIdx+1:]
+			}
+		}
+		self.Dict.SetStr("namespace", ns)
+		self.Dict.SetStr("localname", &object.Str{V: local})
+		return object.None, nil
+	}})
+
+	cls.Dict.SetStr("__str__", &object.BuiltinFunc{Name: "__str__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.Str{V: ""}, nil
+		}
+		self := a[0].(*object.Instance)
+		if v, ok := self.Dict.GetStr("text"); ok {
+			return v, nil
+		}
+		return &object.Str{V: ""}, nil
+	}})
+
+	cls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.Str{V: "QName('')"}, nil
+		}
+		self := a[0].(*object.Instance)
+		text := ""
+		if v, ok := self.Dict.GetStr("text"); ok {
+			if s, ok := v.(*object.Str); ok {
+				text = s.V
+			}
+		}
+		return &object.Str{V: fmt.Sprintf("<QName '%s'>", text)}, nil
+	}})
+
+	cls.Dict.SetStr("__eq__", &object.BuiltinFunc{Name: "__eq__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		self := a[0].(*object.Instance)
+		selfText := ""
+		if v, ok := self.Dict.GetStr("text"); ok {
+			if s, ok := v.(*object.Str); ok {
+				selfText = s.V
+			}
+		}
+		otherText := ""
+		switch other := a[1].(type) {
+		case *object.Instance:
+			if v, ok := other.Dict.GetStr("text"); ok {
+				if s, ok := v.(*object.Str); ok {
+					otherText = s.V
+				}
+			}
+		case *object.Str:
+			otherText = other.V
+		}
+		if selfText == otherText {
+			return object.True, nil
+		}
+		return object.False, nil
+	}})
+
+	cls.Dict.SetStr("__lt__", &object.BuiltinFunc{Name: "__lt__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.False, nil
+		}
+		self := a[0].(*object.Instance)
+		selfText := ""
+		if v, ok := self.Dict.GetStr("text"); ok {
+			if s, ok := v.(*object.Str); ok {
+				selfText = s.V
+			}
+		}
+		otherText := ""
+		switch other := a[1].(type) {
+		case *object.Instance:
+			if v, ok := other.Dict.GetStr("text"); ok {
+				if s, ok := v.(*object.Str); ok {
+					otherText = s.V
+				}
+			}
+		case *object.Str:
+			otherText = other.V
+		}
+		if selfText < otherText {
+			return object.True, nil
+		}
+		return object.False, nil
+	}})
+
+	cls.Dict.SetStr("__hash__", &object.BuiltinFunc{Name: "__hash__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.IntFromInt64(0), nil
+		}
+		self := a[0].(*object.Instance)
+		text := ""
+		if v, ok := self.Dict.GetStr("text"); ok {
+			if s, ok := v.(*object.Str); ok {
+				text = s.V
+			}
+		}
+		h := int64(0)
+		for _, c := range text {
+			h = h*31 + int64(c)
+		}
+		return object.IntFromInt64(h), nil
+	}})
+
+	return cls
+}
+
+// ── TreeBuilder ───────────────────────────────────────────────────────────────
+
+func (i *Interp) buildEtTreeBuilderClass(elemCls *object.Class) *object.Class {
+	cls := &object.Class{Name: "TreeBuilder", Dict: object.NewDict()}
+
+	cls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := &tbState{elemCls: elemCls}
+		etTreeBuilderMap.m.Store(self, st)
+		return object.None, nil
+	}})
+
+	// start(tag, attrs) -> Element
+	cls.Dict.SetStr("start", &object.BuiltinFunc{Name: "start", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil {
+			return object.None, nil
+		}
+		tag := ""
+		if s, ok := a[1].(*object.Str); ok {
+			tag = s.V
+		}
+		var attrs []etAttr
+		if len(a) >= 3 {
+			if d, ok := a[2].(*object.Dict); ok {
+				ks, vs := d.Items()
+				for idx2, k := range ks {
+					if ks2, ok2 := k.(*object.Str); ok2 {
+						val := ""
+						if vs2, ok3 := vs[idx2].(*object.Str); ok3 {
+							val = vs2.V
+						}
+						attrs = append(attrs, etAttr{ks2.V, val})
+					}
+				}
+			}
+		}
+		inst := &object.Instance{Class: st.elemCls, Dict: object.NewDict()}
+		elem := &etElem{tag: tag, attrib: attrs}
+		etElemMap.Store(inst, elem)
+		etSyncToDict(inst, elem)
+		if len(st.stack) > 0 {
+			parent := st.stack[len(st.stack)-1]
+			if parentSt := getEtElem(parent); parentSt != nil {
+				parentSt.children = append(parentSt.children, inst)
+			}
+		} else {
+			st.root = inst
+		}
+		st.stack = append(st.stack, inst)
+		st.last = inst
+		st.isTail = false
+		return inst, nil
+	}})
+
+	// end(tag) -> Element
+	cls.Dict.SetStr("end", &object.BuiltinFunc{Name: "end", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil || len(st.stack) == 0 {
+			return object.None, nil
+		}
+		last := st.stack[len(st.stack)-1]
+		st.stack = st.stack[:len(st.stack)-1]
+		st.last = last
+		st.isTail = true
+		return last, nil
+	}})
+
+	// data(data)
+	cls.Dict.SetStr("data", &object.BuiltinFunc{Name: "data", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil || st.last == nil {
+			return object.None, nil
+		}
+		text := ""
+		if s, ok := a[1].(*object.Str); ok {
+			text = s.V
+		}
+		lastSt := getEtElem(st.last)
+		if lastSt == nil {
+			return object.None, nil
+		}
+		if st.isTail {
+			lastSt.tail += text
+		} else {
+			lastSt.text += text
+		}
+		etSyncToDict(st.last, lastSt)
+		return object.None, nil
+	}})
+
+	// close() -> root Element
+	cls.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil || st.root == nil {
+			return object.None, nil
+		}
+		return st.root, nil
+	}})
+
+	// comment(text) -> Element
+	cls.Dict.SetStr("comment", &object.BuiltinFunc{Name: "comment", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil {
+			return object.None, nil
+		}
+		text := ""
+		if s, ok := a[1].(*object.Str); ok {
+			text = s.V
+		}
+		inst := &object.Instance{Class: st.elemCls, Dict: object.NewDict()}
+		elem := &etElem{tag: "<!---->", text: text}
+		etElemMap.Store(inst, elem)
+		etSyncToDict(inst, elem)
+		if len(st.stack) > 0 {
+			parent := st.stack[len(st.stack)-1]
+			if parentSt := getEtElem(parent); parentSt != nil {
+				parentSt.children = append(parentSt.children, inst)
+			}
+		}
+		st.last = inst
+		st.isTail = true
+		return inst, nil
+	}})
+
+	// pi(target, text=None) -> Element
+	cls.Dict.SetStr("pi", &object.BuiltinFunc{Name: "pi", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 2 {
+			return object.None, nil
+		}
+		self := a[0].(*object.Instance)
+		st := getTBState(self)
+		if st == nil {
+			return object.None, nil
+		}
+		target := ""
+		if s, ok := a[1].(*object.Str); ok {
+			target = s.V
+		}
+		piData := ""
+		if len(a) >= 3 {
+			if s, ok := a[2].(*object.Str); ok {
+				piData = s.V
+			}
+		}
+		inst := &object.Instance{Class: st.elemCls, Dict: object.NewDict()}
+		elem := &etElem{tag: "<??>", text: target, tail: piData}
+		etElemMap.Store(inst, elem)
+		etSyncToDict(inst, elem)
+		if len(st.stack) > 0 {
+			parent := st.stack[len(st.stack)-1]
+			if parentSt := getEtElem(parent); parentSt != nil {
+				parentSt.children = append(parentSt.children, inst)
+			}
+		}
+		st.last = inst
+		st.isTail = true
+		return inst, nil
+	}})
+
+	cls.Dict.SetStr("start_ns", &object.BuiltinFunc{Name: "start_ns", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+	cls.Dict.SetStr("end_ns", &object.BuiltinFunc{Name: "end_ns", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.None, nil
+	}})
+
+	return cls
+}
+
+// ── canonicalize helper ───────────────────────────────────────────────────────
+
+func etCanonicalizeElem(buf *strings.Builder, inst *object.Instance, withComments bool) {
+	st := getEtElem(inst)
+	if st == nil {
+		return
+	}
+	if st.tag == "<!---->" {
+		if withComments {
+			buf.WriteString("<!--")
+			buf.WriteString(st.text)
+			buf.WriteString("-->")
+		}
+		if st.tail != "" {
+			buf.WriteString(st.tail)
+		}
+		return
+	}
+	if st.tag == "<??>"{
+		buf.WriteString("<?")
+		buf.WriteString(st.text)
+		if st.tail != "" {
+			buf.WriteByte(' ')
+			buf.WriteString(st.tail)
+		}
+		buf.WriteString("?>")
+		return
+	}
+	// Sort attributes for C14N
+	sortedAttrib := make([]etAttr, len(st.attrib))
+	copy(sortedAttrib, st.attrib)
+	sort.Slice(sortedAttrib, func(x, y int) bool {
+		return sortedAttrib[x].name < sortedAttrib[y].name
+	})
+	buf.WriteByte('<')
+	buf.WriteString(st.tag)
+	for _, attr := range sortedAttrib {
+		buf.WriteByte(' ')
+		buf.WriteString(attr.name)
+		buf.WriteString(`="`)
+		buf.WriteString(xmlEscapeAttr(attr.value))
+		buf.WriteByte('"')
+	}
+	buf.WriteByte('>')
+	if st.text != "" {
+		buf.WriteString(xmlEscapeText(st.text))
+	}
+	for _, child := range st.children {
+		etCanonicalizeElem(buf, child, withComments)
+	}
+	buf.WriteString("</")
+	buf.WriteString(st.tag)
+	buf.WriteByte('>')
+	if st.tail != "" {
+		buf.WriteString(st.tail)
+	}
 }
