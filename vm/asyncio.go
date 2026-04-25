@@ -147,6 +147,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildConcurrentInterpreters(), true
 	case "subprocess":
 		return i.buildSubprocess(), true
+	case "sched":
+		return i.buildSched(), true
 	case "string.templatelib":
 		return i.buildTemplatelib(), true
 	case "cmd":
