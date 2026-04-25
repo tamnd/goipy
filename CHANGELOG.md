@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.220 - 2026-04-25
+
+This release completes the `xml.dom.minidom` serialization layer and wires up several properties that were missing or returning wrong values.
+
+`writexml` is now the real serialization core, matching CPython's rules exactly: an element with zero children emits a self-closing tag, an element with exactly one `Text` child emits it inline (no indentation on the text), and everything else gets the indent/addindent/newl treatment with each child on its own line. `toxml` and `toprettyxml` both call through to `writexml` and support the `encoding` and `standalone` keyword arguments. Passing `encoding` returns `bytes` with the right `encoding="..."` declaration; `standalone=True/False` inserts `standalone="yes"/"no"`. `Document.writexml` also accepts those extra keywords.
+
+`Attr` objects now carry the full set of properties CPython minidom exposes: `specified` is always `False`, `ownerElement` points back to the element that owns the attribute, `localName` strips any namespace prefix, `prefix` and `namespaceURI` are `None` for unqualified attrs.
+
+`Document.doctype` is a live property that scans the document children for a `DocumentType` node and returns it, or `None` if there is none. `Document.implementation` returns the `DOMImplementation` singleton. The `Document` class now works as a context manager so `with minidom.parseString(...) as doc:` works.
+
+`Node.localName` is now set for all node types, not just elements. Non-element, non-attribute nodes get `None`.
+
+12 new test fixtures cover all these features (fixture 220).
+
 ## v0.0.219 - 2026-04-25
 
 This release fills in the parts of `xml.dom` and `xml.dom.minidom` that were stubs before.

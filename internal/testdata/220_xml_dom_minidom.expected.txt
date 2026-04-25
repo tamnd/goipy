@@ -1,0 +1,13 @@
+writexml_basic ok
+writexml_indent ok
+writexml_single_text_inline ok
+toxml_encoding ok
+toxml_standalone ok
+toprettyxml_newl_standalone ok
+context_manager ok
+attr_properties ok
+document_doctype_none ok
+document_implementation ok
+node_localname ok
+prefixed_element_localname ok
+ALL OK
