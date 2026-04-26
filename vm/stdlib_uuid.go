@@ -200,14 +200,15 @@ func (i *Interp) buildUuid() *object.Module {
 		inst.Dict.SetStr("is_safe", isSafe)
 	}
 
-	// parseUUIDHex parses a UUID hex string (with or without hyphens).
+	// parseUUIDHex parses a UUID hex string (with or without hyphens, braces, urn prefix).
 	reUUIDHex := regexp.MustCompile(`^[0-9a-f]{32}$`)
 	parseUUIDHex := func(s string) (*big.Int, error) {
 		s = strings.TrimSpace(s)
+		s = strings.ToLower(s)
+		s = strings.TrimPrefix(s, "urn:uuid:")
 		s = strings.ReplaceAll(s, "-", "")
 		s = strings.ReplaceAll(s, "{", "")
 		s = strings.ReplaceAll(s, "}", "")
-		s = strings.ToLower(s)
 		if !reUUIDHex.MatchString(s) {
 			return nil, fmt.Errorf("badly formed hexadecimal UUID string")
 		}
