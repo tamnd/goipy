@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.0.244 - 2026-04-26
+
+`http.cookiejar` module — cookie storage and policy classes.
+
+**LoadError(OSError):** raised on cookie file load failures.
+
+**CookieJar:** cookie storage container with `__len__`, `__iter__`, `set_cookie(cookie)`, `clear()`, `clear_session_cookies()` (removes `discard=True` cookies), `clear_expired_cookies()`, `set_policy(policy)`; stub methods `set_cookie_if_ok`, `make_cookies`, `extract_cookies`, `add_cookie_header`.
+
+**FileCookieJar(CookieJar):** adds `filename` attribute; stub `load`, `save`, `revert`.
+
+**MozillaCookieJar(FileCookieJar)**, **LWPCookieJar(FileCookieJar):** subclasses for Netscape and libwww-perl cookie file formats.
+
+**Cookie:** full constructor with kwargs (`version`, `name`, `value`, `port`, `port_specified`, `domain`, `domain_specified`, `domain_initial_dot`, `path`, `path_specified`, `secure`, `expires`, `discard`, `comment`, `comment_url`, `rest`, `rfc2109`); `has_nonstandard_attr(name)` checks `rest` dict; `__str__` → `<Cookie name=value for domain/path>`.
+
+**CookiePolicy:** base class with stubs `return_ok`, `domain_return_ok`, `path_return_ok`, `set_ok`.
+
+**DefaultCookiePolicy(CookiePolicy):** class constants `DomainStrictNoDots=1`, `DomainStrictNonDomain=2`, `DomainRFC2965Match=4`, `DomainLiberal=0`, `DomainStrict=3`; instance defaults `netscape=True`, `rfc2965=False`, `strict_domain=False`, `strict_rfc2965_unverifiable=True`, `strict_ns_unverifiable=False`, `strict_ns_domain=0`, `hide_cookie2=False`.
+
+16 test cases verified against CPython 3.14 (fixture 244).
+
 ## v0.0.243 - 2026-04-26
 
 `http.cookies` module — cookie manipulation classes, Morsel, BaseCookie, SimpleCookie, CookieError.
