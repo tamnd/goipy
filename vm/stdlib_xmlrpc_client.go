@@ -275,61 +275,6 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 
 	// ── dumps / loads ─────────────────────────────────────────────────────────
 
-	var marshalXmlrpc func(obj object.Object) string
-	marshalXmlrpc = func(obj object.Object) string {
-		switch v := obj.(type) {
-		case *object.Bool:
-			if v == object.True {
-				return "<value><boolean>1</boolean></value>"
-			}
-			return "<value><boolean>0</boolean></value>"
-		case *object.Int:
-			return "<value><int>" + v.V.String() + "</int></value>"
-		case *object.Float:
-			return fmt.Sprintf("<value><double>%g</double></value>", v.V)
-		case *object.Str:
-			s := v.V
-			s = strings.ReplaceAll(s, "&", "&amp;")
-			s = strings.ReplaceAll(s, "<", "&lt;")
-			s = strings.ReplaceAll(s, ">", "&gt;")
-			return "<value><string>" + s + "</string></value>"
-		case *object.NoneType:
-			return "<value><nil/></value>"
-		case *object.Bytes:
-			return "<value><base64>" + base64.StdEncoding.EncodeToString(v.V) + "</base64></value>"
-		case *object.List:
-			var sb strings.Builder
-			sb.WriteString("<value><array><data>")
-			for _, item := range v.V {
-				sb.WriteString(marshalXmlrpc(item))
-			}
-			sb.WriteString("</data></array></value>")
-			return sb.String()
-		case *object.Tuple:
-			var sb strings.Builder
-			sb.WriteString("<value><array><data>")
-			for _, item := range v.V {
-				sb.WriteString(marshalXmlrpc(item))
-			}
-			sb.WriteString("</data></array></value>")
-			return sb.String()
-		case *object.Dict:
-			var sb strings.Builder
-			sb.WriteString("<value><struct>")
-			ks, vs := v.Items()
-			for j, k := range ks {
-				sb.WriteString("<member><name>")
-				sb.WriteString(object.Str_(k))
-				sb.WriteString("</name>")
-				sb.WriteString(marshalXmlrpc(vs[j]))
-				sb.WriteString("</member>")
-			}
-			sb.WriteString("</struct></value>")
-			return sb.String()
-		}
-		return "<value><string>" + object.Str_(obj) + "</string></value>"
-	}
-
 	m.Dict.SetStr("dumps", &object.BuiltinFunc{Name: "dumps", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "dumps requires params")
@@ -375,7 +320,7 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 		}
 		for _, p := range params {
 			sb.WriteString("<param>\n")
-			sb.WriteString(marshalXmlrpc(p))
+			sb.WriteString(marshalXmlrpcVal(p))
 			sb.WriteString("\n</param>\n")
 		}
 		sb.WriteString("</params>\n")
@@ -554,7 +499,7 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 			sb.WriteString("<params>\n")
 			for _, item := range items {
 				sb.WriteString("<param>\n")
-				sb.WriteString(marshalXmlrpc(item))
+				sb.WriteString(marshalXmlrpcVal(item))
 				sb.WriteString("\n</param>\n")
 			}
 			sb.WriteString("</params>\n")
@@ -737,6 +682,61 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 	m.Dict.SetStr("FastUnmarshaller", object.None)
 
 	return m
+}
+
+// marshalXmlrpcVal serialises a Python object into an XML-RPC <value> element.
+func marshalXmlrpcVal(obj object.Object) string {
+	switch v := obj.(type) {
+	case *object.Bool:
+		if v == object.True {
+			return "<value><boolean>1</boolean></value>"
+		}
+		return "<value><boolean>0</boolean></value>"
+	case *object.Int:
+		return "<value><int>" + v.V.String() + "</int></value>"
+	case *object.Float:
+		return fmt.Sprintf("<value><double>%g</double></value>", v.V)
+	case *object.Str:
+		s := v.V
+		s = strings.ReplaceAll(s, "&", "&amp;")
+		s = strings.ReplaceAll(s, "<", "&lt;")
+		s = strings.ReplaceAll(s, ">", "&gt;")
+		return "<value><string>" + s + "</string></value>"
+	case *object.NoneType:
+		return "<value><nil/></value>"
+	case *object.Bytes:
+		return "<value><base64>" + base64.StdEncoding.EncodeToString(v.V) + "</base64></value>"
+	case *object.List:
+		var sb strings.Builder
+		sb.WriteString("<value><array><data>")
+		for _, item := range v.V {
+			sb.WriteString(marshalXmlrpcVal(item))
+		}
+		sb.WriteString("</data></array></value>")
+		return sb.String()
+	case *object.Tuple:
+		var sb strings.Builder
+		sb.WriteString("<value><array><data>")
+		for _, item := range v.V {
+			sb.WriteString(marshalXmlrpcVal(item))
+		}
+		sb.WriteString("</data></array></value>")
+		return sb.String()
+	case *object.Dict:
+		var sb strings.Builder
+		sb.WriteString("<value><struct>")
+		ks, vs := v.Items()
+		for j, k := range ks {
+			sb.WriteString("<member><name>")
+			sb.WriteString(object.Str_(k))
+			sb.WriteString("</name>")
+			sb.WriteString(marshalXmlrpcVal(vs[j]))
+			sb.WriteString("</member>")
+		}
+		sb.WriteString("</struct></value>")
+		return sb.String()
+	}
+	return "<value><string>" + object.Str_(obj) + "</string></value>"
 }
 
 // parseXmlrpc parses a minimal XML-RPC methodCall/methodResponse document.
