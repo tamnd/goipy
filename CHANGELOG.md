@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.0.235 - 2026-04-26
+
+`http.client` deep coverage — exception hierarchy, HTTPMessage, parse_headers, HTTPConnection, HTTPSConnection, responses dict, and status-code integer re-exports.
+
+**Exception hierarchy (14 classes):**
+`HTTPException(Exception)` → `NotConnected`, `InvalidURL`, `UnknownProtocol` (`.version`), `UnknownTransferEncoding`, `UnimplementedFileMode`, `IncompleteRead` (`.partial`, `.expected`, custom `repr()`), `ImproperConnectionState` → `CannotSendRequest`, `CannotSendHeader`, `ResponseNotReady`; `BadStatusLine` (`.line`); `LineTooLong` (computed message from line_type arg); `RemoteDisconnected(ConnectionResetError, BadStatusLine)` — catchable as `OSError`, `ConnectionResetError`, `BadStatusLine`, and `HTTPException`.
+
+**HTTPMessage:** case-insensitive ordered multi-value header container; `get()`, `get_all()`, `get_content_type()`, `keys()`, `values()`, `items()`, `__contains__`, `__len__`, `__getitem__`, `__setitem__`.
+
+**parse_headers(fp):** reads lines from a BytesIO/file-like object until blank line; returns `HTTPMessage`.
+
+**HTTPConnection(host, port, timeout):** `.host`, `.port`, `.timeout`, `.debuglevel`; `set_debuglevel()`, `set_tunnel()`, `connect()`, `close()`, `send()`, `request()`, `putheader()`, `putrequest()`, `endheaders()` (stubs — no real TCP); `getresponse()` raises `ResponseNotReady`.
+
+**HTTPSConnection(HTTPConnection):** `default_port = 443`; inherits all connection methods.
+
+**responses:** dict mapping integer status codes to phrase strings for all IANA codes.
+
+**Status code re-exports:** all `http.HTTPStatus` names exported as plain integers (`OK = 200`, `NOT_FOUND = 404`, …) including CPython 3.14 aliases (`RANGE_NOT_SATISFIABLE`, `UNPROCESSABLE_CONTENT`, `CONTENT_TOO_LARGE`, `URI_TOO_LONG`).
+
+33 new test fixtures (fixture 235).
+
 ## v0.0.234 - 2026-04-26
 
 `http` module deep coverage — `HTTPStatus` and `HTTPMethod` enums.
