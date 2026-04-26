@@ -141,6 +141,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildHttpCookies(), true
 	case "http.cookiejar":
 		return i.buildHttpCookiejar(), true
+	case "ipaddress":
+		return i.buildIpaddress(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":

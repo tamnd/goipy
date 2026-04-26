@@ -1,0 +1,158 @@
+IPv4Address('192.168.1.1')
+192.168.1.1
+b'\xc0\xa8\x01\x01'
+4
+32
+192.168.1.1
+test_ipv4_address_from_string ok
+192.168.1.1
+127.0.0.1
+test_ipv4_address_from_int ok
+True
+False
+True
+True
+True
+True
+True
+True
+test_ipv4_address_properties ok
+10.0.0.2
+10.0.1.0
+10.0.0.255
+True
+True
+True
+167772161
+test_ipv4_address_arith ok
+IPv4Network('192.168.1.0/24')
+192.168.1.0/24
+192.168.1.0
+192.168.1.255
+255.255.255.0
+0.0.0.255
+24
+256
+4
+32
+192.168.1.0/24
+192.168.1.0/255.255.255.0
+192.168.1.0/0.0.0.255
+192.168.1.0/24
+test_ipv4_network_basic ok
+True
+True
+False
+False
+test_ipv4_network_contains ok
+254
+192.168.1.1
+192.168.1.254
+2
+10.0.0.1
+10.0.0.2
+test_ipv4_network_hosts ok
+4
+10.0.0.0
+10.0.0.3
+test_ipv4_network_iter ok
+2
+192.168.1.0/25
+192.168.1.128/25
+4
+192.168.1.0/26
+4
+test_ipv4_network_subnets ok
+192.168.0.0/23
+192.168.0.0/22
+test_ipv4_network_supernet ok
+True
+False
+True
+False
+test_ipv4_network_subnet_of ok
+True
+False
+True
+test_ipv4_network_overlaps ok
+ValueError raised
+192.168.1.0/24
+test_ipv4_network_strict ok
+IPv4Interface('192.168.1.5/24')
+192.168.1.5/24
+192.168.1.5
+192.168.1.0/24
+255.255.255.0
+192.168.1.5/24
+192.168.1.5/255.255.255.0
+192.168.1.5/0.0.0.255
+test_ipv4_interface ok
+IPv6Address('2001:db8::1')
+2001:db8::1
+6
+128
+2001:db8::1
+2001:0db8:0000:0000:0000:0000:0000:0001
+test_ipv6_address ok
+True
+True
+True
+True
+True
+True
+False
+test_ipv6_address_properties ok
+192.168.1.1
+192.168.1.1
+None
+test_ipv6_address_ipv4_mapped ok
+IPv6Network('2001:db8::/32')
+2001:db8::/32
+32
+6
+2001:db8::
+2001:db8:ffff:ffff:ffff:ffff:ffff:ffff
+2001:db8::/32
+2001:db8::/32
+2
+2001:db8::/33
+2001:db8::/31
+test_ipv6_network ok
+IPv6Interface('2001:db8::1/32')
+2001:db8::1/32
+2001:db8::1
+2001:db8::/32
+2001:db8::1/32
+test_ipv6_interface ok
+IPv4Address
+192.168.1.1
+IPv6Address
+::1
+IPv4Network
+10.0.0.0/8
+IPv6Network
+2001:db8::/32
+IPv4Interface
+192.168.1.5/24
+IPv6Interface
+2001:db8::1/32
+test_factory_functions ok
+AddressValueError raised
+NetmaskValueError raised
+AddressValueError raised for ipv6
+test_errors ok
+32
+128
+test_constants ok
+b'\xc0\xa8\x01\x01'
+4
+b'\x00\x00\x00\x00'
+test_v4_int_to_packed ok
+tuple
+2
+4
+6
+test_get_mixed_type_key ok
+1
+192.168.1.0/24
+test_summarize_address_range ok
