@@ -634,7 +634,7 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		}
 	}
 	if r, ok := o.(*object.URLParseResult); ok {
-		if m, ok := urlParseResultAttr(r, name); ok {
+		if m, ok := i.urlParseResultAttr(r, name); ok {
 			return m, nil
 		}
 	}

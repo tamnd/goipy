@@ -158,6 +158,8 @@ type CSVDialect struct {
 
 // URLParseResult is the tuple-plus-attrs result of urllib.parse.urlparse.
 // Attribute access is supported via getAttr, indexed access via getitem.
+// IsSplit marks results from urlsplit (5 components, no Params).
 type URLParseResult struct {
 	Scheme, Netloc, Path, Params, Query, Fragment string
+	IsSplit bool
 }

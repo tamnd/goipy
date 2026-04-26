@@ -179,6 +179,11 @@ func Repr(o Object) string {
 	case *SectionProxyObj:
 		return fmt.Sprintf("<Section: %s>", v.Section)
 	case *URLParseResult:
+		if v.IsSplit {
+			return fmt.Sprintf("SplitResult(scheme=%s, netloc=%s, path=%s, query=%s, fragment=%s)",
+				Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),
+				Repr(&Str{V: v.Query}), Repr(&Str{V: v.Fragment}))
+		}
 		return fmt.Sprintf("ParseResult(scheme=%s, netloc=%s, path=%s, params=%s, query=%s, fragment=%s)",
 			Repr(&Str{V: v.Scheme}), Repr(&Str{V: v.Netloc}), Repr(&Str{V: v.Path}),
 			Repr(&Str{V: v.Params}), Repr(&Str{V: v.Query}), Repr(&Str{V: v.Fragment}))
