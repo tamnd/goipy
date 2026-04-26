@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.0.247 - 2026-04-26
+
+`xmlrpc.server` — deeper API coverage building on fixture 245.
+
+**New module-level functions:** `list_public_methods(instance)` — returns sorted public method names (excludes `_`-prefixed); `resolve_dotted_attribute(obj, attr, allow_dotted_names=True)` — walks dotted attribute chains with optional blocking.
+
+**Dispatcher additions (`SimpleXMLRPCDispatcher`):** `_dispatch(method, params)` — resolves and calls registered functions or instance methods, raises `Fault(1, ...)` for unknown methods; `_marshaled_dispatch(data: bytes) -> bytes` — full XML-RPC request/response round-trip; `register_introspection_functions` now actually registers `system.listMethods`, `system.methodHelp`, `system.methodSignature` in the funcs dict; `register_multicall_functions` now registers `system.multicall`; `system_listMethods` now includes public methods from the registered instance; `register_instance` accepts `allow_dotted_names=False` kwarg.
+
+**`XMLRPCDocGenerator`:** default attrs (`server_name`, `server_title`, `server_documentation`) and `set_server_name`, `set_server_title`, `set_server_documentation` mutators.
+
+**`ServerHTMLDoc`:** stub class added.
+
+**Class hierarchy fix:** `DocXMLRPCRequestHandler` now has `[SimpleXMLRPCRequestHandler]` as its only base (matches CPython; previously incorrectly included `XMLRPCDocGenerator`).
+
+**Internal:** `marshalXmlrpc` promoted to package-level `marshalXmlrpcVal` so `buildXmlrpcServer` can reuse it.
+
+14 test cases verified against CPython 3.14 (fixture 247).
+
 ## v0.0.246 - 2026-04-26
 
 `xmlrpc.client` — deeper API coverage building on fixture 245.

@@ -1,0 +1,71 @@
+['add', 'compute']
+True
+False
+list_public_methods ok
+_Inner
+inner hello
+AttributeError raised
+resolve_dotted_attribute ok
+7
+hello
+error raised
+dispatch_direct ok
+world
+15
+dispatch_instance ok
+True
+True
+True
+marshaled_dispatch_success ok
+True
+True
+marshaled_dispatch_fault ok
+True
+True
+True
+True
+register_introspection ok
+True
+register_multicall ok
+True
+True
+False
+instance_methods_in_listMethods ok
+XML-RPC Server Documentation
+XML-RPC Server Documentation
+True
+My API
+My Title
+Custom docs.
+xmlrpc_doc_generator ok
+True
+True
+server_html_doc ok
+['SimpleXMLRPCRequestHandler']
+True
+True
+doc_request_handler_bases ok
+SimpleXMLRPCServer True
+SimpleXMLRPCDispatcher True
+SimpleXMLRPCRequestHandler True
+CGIXMLRPCRequestHandler True
+MultiPathXMLRPCServer True
+DocXMLRPCServer True
+DocXMLRPCRequestHandler True
+DocCGIXMLRPCRequestHandler True
+XMLRPCDocGenerator True
+ServerHTMLDoc True
+list_public_methods True
+resolve_dotted_attribute True
+Fault True
+dumps True
+loads True
+server_exports ok
+True
+True
+True
+True
+True
+True
+True
+server_hierarchy ok
