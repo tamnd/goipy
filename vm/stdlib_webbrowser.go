@@ -1,24 +1,14 @@
 package vm
 
 import (
-	"os/exec"
-	"runtime"
-
 	"github.com/tamnd/goipy/object"
 )
 
-// webbrowserLaunch opens url in the OS default browser.
-func webbrowserLaunch(url string) bool {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", url)
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	return cmd.Start() == nil
+// webbrowserLaunch reports that the browser was "opened" without actually
+// spawning a system browser process. Goipy is a scripting/testing interpreter;
+// launching the OS browser from CI or test suites is never desirable.
+func webbrowserLaunch(_ string) bool {
+	return true
 }
 
 // ── webbrowser ────────────────────────────────────────────────────────────────

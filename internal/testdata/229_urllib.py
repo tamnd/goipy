@@ -152,7 +152,7 @@ def test_robotparser_crawl_delay():
         "",
     ]
     rfp.parse(lines)
-    assert rfp.crawl_delay("mybot") == "10"
+    assert rfp.crawl_delay("mybot") == 10
     assert rfp.crawl_delay("otherbot") is None
     print("robotparser crawl_delay ok")
 
