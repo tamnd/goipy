@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.0.245 - 2026-04-26
+
+`xmlrpc` package — namespace, `xmlrpc.client`, and `xmlrpc.server` submodules.
+
+**xmlrpc.client:**
+
+_Exceptions:_ `Error(Exception)`, `Fault(Error)` with `faultCode`/`faultString` attrs, `ProtocolError(Error)` with `url`/`errcode`/`errmsg`/`headers` attrs, `ResponseError(Error)`.
+
+_Types:_ `DateTime(value)` with `.value` attr; `Binary(data=b'')` with `.data` attr, `decode(bytes)`, `encode(out)`; `boolean(value)` returning Python bool.
+
+_Functions:_ `dumps(params, methodname=None, ...)` → XML-RPC `methodCall` string; `loads(data)` → `(params_tuple, methodname)` tuple. Supports int, str, bool, float, bytes, list/tuple (as array), dict (as struct).
+
+_Proxy/Transport:_ `ServerProxy(uri)`, `MultiCall(server)`, `Transport`, `SafeTransport(Transport)`.
+
+_Constants:_ `MAXINT=2147483647`, `MININT=-2147483648`, and all standard fault codes (`PARSE_ERROR`, `SERVER_ERROR`, `APPLICATION_ERROR`, etc.).
+
+**xmlrpc.server:**
+
+_`SimpleXMLRPCDispatcher`:_ `register_function`, `register_instance`, `register_introspection_functions`, `register_multicall_functions`, `system_listMethods`, `system_methodHelp`, `system_methodSignature`, `system_multicall`.
+
+_`SimpleXMLRPCServer(TCPServer, SimpleXMLRPCDispatcher)`:_ `allow_reuse_address=True`; inherits base classes from `socketserver`.
+
+_`SimpleXMLRPCRequestHandler(BaseHTTPRequestHandler)`:_ `rpc_paths=('/', '/RPC2')`, `encode_threshold=1400`.
+
+_`CGIXMLRPCRequestHandler(SimpleXMLRPCDispatcher)`:_ `handle_xmlrpc`, `handle_get`, `handle_request`.
+
+_`MultiPathXMLRPCServer(SimpleXMLRPCServer)`, `DocXMLRPCServer`, `DocXMLRPCRequestHandler`, `DocCGIXMLRPCRequestHandler`._
+
+19 test cases verified against CPython 3.14 (fixture 245).
+
 ## v0.0.244 - 2026-04-26
 
 `http.cookiejar` module — cookie storage and policy classes.
