@@ -125,6 +125,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildNumbers(), true
 	case "cmath":
 		return i.buildCmath(), true
+	case "http":
+		return i.buildHttp(), true
 	case "html":
 		return i.buildHtml(), true
 	case "html.parser":
