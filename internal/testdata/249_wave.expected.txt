@@ -1,0 +1,46 @@
+1
+2
+44100
+100
+test_write_and_read_basic ok
+2
+2
+22050
+100
+NONE
+not compressed
+test_params ok
+b'\x00\x01\x02\x03\x04'
+5
+0
+b'\x00\x01\x02\x03\x04\x05\x06\x07\x08\t'
+test_readframes ok
+0
+10
+0
+test_tell_setpos ok
+NONE
+not compressed
+test_comptype ok
+1
+2
+44100
+10
+test_setparams ok
+0
+10
+test_write_tell ok
+5
+2
+test_context_manager ok
+wave.Error raised
+test_error_invalid ok
+10
+test_setnframes ok
+5
+b'\x01\x02\x03\x04\x05'
+test_writeframesraw ok
+2
+10
+4
+test_multichannel ok

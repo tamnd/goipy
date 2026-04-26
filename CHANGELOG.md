@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.249 - 2026-04-26
+
+`wave` — full implementation of the standard library WAV audio module. Go has no built-in WAV codec, so the RIFF chunk parser and builder are implemented from scratch using `encoding/binary` and `bytes`.
+
+**`wave.open(file, mode)`:** accepts `*io.BytesIO`, `*os.File`, or a filename string; `mode` is `'r'`/`'rb'` or `'w'`/`'wb'`; auto-detects mode when omitted.
+
+**`Wave_read`:** `getnchannels()`, `getsampwidth()`, `getframerate()`, `getnframes()`, `getcomptype()` (always `'NONE'`), `getcompname()` (always `'not compressed'`), `getparams()` (returns `_wave_params` namedtuple-like object), `readframes(n)`, `tell()`, `rewind()`, `setpos(pos)`, `close()`, context-manager (`__enter__`/`__exit__`).
+
+**`Wave_write`:** `setnchannels()`, `setsampwidth()`, `setframerate()`, `setnframes()`, `setcomptype()`, `setparams(tuple)`, `writeframes(data)`, `writeframesraw(data)`, `tell()`, `close()`, context-manager. Buffers all frames in memory; writes the complete RIFF/WAV file to the underlying file object on `close()`.
+
+**`wave.Error(Exception)`:** raised on malformed RIFF/WAV input or API misuse.
+
+12 test cases verified against CPython 3.14 (fixture 249).
+
 ## v0.0.248 - 2026-04-26
 
 `ipaddress` — full implementation of the standard library IP address module.
