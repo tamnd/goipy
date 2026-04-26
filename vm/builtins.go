@@ -343,9 +343,20 @@ func (i *Interp) initBuiltins() {
 	}}
 	strAttrs := object.NewDict()
 	strAttrs.SetStr("maketrans", strMaketrans)
-	b.SetStr("str", &object.BuiltinFunc{Name: "str", Attrs: strAttrs, Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("str", &object.BuiltinFunc{Name: "str", Attrs: strAttrs, Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.Str{V: ""}, nil
+		}
+		// For exception subclasses with a custom __str__, call it via the interpreter.
+		if exc, ok := a[0].(*object.Exception); ok && exc.Class != nil {
+			if strFn, found := classLookup(exc.Class, "__str__"); found {
+				interp := ii.(*Interp)
+				if result, err := interp.callObject(strFn, []object.Object{exc}, nil); err == nil {
+					if s, ok := result.(*object.Str); ok {
+						return s, nil
+					}
+				}
+			}
 		}
 		return &object.Str{V: object.Str_(a[0])}, nil
 	}})
@@ -626,9 +637,20 @@ func (i *Interp) initBuiltins() {
 		fmt.Fprint(in.Stdout, strings.Join(parts, sep)+end)
 		return object.None, nil
 	}})
-	b.SetStr("repr", &object.BuiltinFunc{Name: "repr", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	b.SetStr("repr", &object.BuiltinFunc{Name: "repr", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) == 0 {
 			return &object.Str{V: ""}, nil
+		}
+		// For exception subclasses with a custom __repr__, call it via the interpreter.
+		if exc, ok := a[0].(*object.Exception); ok && exc.Class != nil {
+			if reprFn, found := classLookup(exc.Class, "__repr__"); found {
+				interp := ii.(*Interp)
+				if result, err := interp.callObject(reprFn, []object.Object{exc}, nil); err == nil {
+					if s, ok := result.(*object.Str); ok {
+						return s, nil
+					}
+				}
+			}
 		}
 		return &object.Str{V: object.Repr(a[0])}, nil
 	}})

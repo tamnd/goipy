@@ -50,7 +50,7 @@ func (i *Interp) buildUrllibError() *object.Module {
 		name := object.Str_(a[1])
 		args := exc.Args
 		switch name {
-		case "url":
+		case "url", "filename":
 			if args != nil && len(args.V) > 0 {
 				return args.V[0], nil
 			}
@@ -86,6 +86,88 @@ func (i *Interp) buildUrllibError() *object.Module {
 			}
 		}
 		return &object.Str{V: fmt.Sprintf("HTTP Error %s: %s", code, msg)}, nil
+	}})
+	httpErrCls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		code := ""
+		var msgObj object.Object = &object.Str{}
+		if exc.Args != nil {
+			if len(exc.Args.V) > 1 {
+				code = object.Str_(exc.Args.V[1])
+			}
+			if len(exc.Args.V) > 2 {
+				msgObj = exc.Args.V[2]
+			}
+		}
+		return &object.Str{V: fmt.Sprintf("<HTTPError %s: %s>", code, object.Repr(msgObj))}, nil
+	}})
+	httpErrFP := func(exc *object.Exception) object.Object {
+		if exc.Args != nil && len(exc.Args.V) > 4 {
+			return exc.Args.V[4]
+		}
+		return object.None
+	}
+	httpErrCls.Dict.SetStr("read", &object.BuiltinFunc{Name: "read", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		fp := httpErrFP(exc)
+		if fp == object.None {
+			return &object.Bytes{V: []byte{}}, nil
+		}
+		interp := ii.(*Interp)
+		readFn, err := interp.getAttr(fp, "read")
+		if err != nil {
+			return nil, err
+		}
+		return interp.callObject(readFn, a[1:], nil)
+	}})
+	httpErrCls.Dict.SetStr("getcode", &object.BuiltinFunc{Name: "getcode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		if exc.Args != nil && len(exc.Args.V) > 1 {
+			return exc.Args.V[1], nil
+		}
+		return object.None, nil
+	}})
+	httpErrCls.Dict.SetStr("geturl", &object.BuiltinFunc{Name: "geturl", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		if exc.Args != nil && len(exc.Args.V) > 0 {
+			return exc.Args.V[0], nil
+		}
+		return object.None, nil
+	}})
+	httpErrCls.Dict.SetStr("info", &object.BuiltinFunc{Name: "info", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		if exc.Args != nil && len(exc.Args.V) > 3 {
+			return exc.Args.V[3], nil
+		}
+		return object.None, nil
+	}})
+	httpErrCls.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		fp := httpErrFP(exc)
+		if fp == object.None {
+			return object.None, nil
+		}
+		interp := ii.(*Interp)
+		closeFn, err := interp.getAttr(fp, "close")
+		if err != nil {
+			return object.None, nil
+		}
+		interp.callObject(closeFn, nil, nil) //nolint
+		return object.None, nil
+	}})
+	httpErrCls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return a[0], nil
+	}})
+	httpErrCls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		exc := a[0].(*object.Exception)
+		fp := httpErrFP(exc)
+		if fp != object.None {
+			interp := ii.(*Interp)
+			if closeFn, err := interp.getAttr(fp, "close"); err == nil {
+				interp.callObject(closeFn, nil, nil) //nolint
+			}
+		}
+		return object.None, nil
 	}})
 
 	// ContentTooShortError(msg, content) — msg=Args[0], content=Args[1]
