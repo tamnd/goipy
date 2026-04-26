@@ -7,9 +7,12 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tamnd/goipy/object"
 )
@@ -1952,9 +1955,16 @@ func capitalizeHeader(s string) string {
 
 type robotParserState struct {
 	mu       sync.Mutex
-	agents   map[string][]robotRule // lowercase agent -> rules
+	agents   map[string]*robotAgentEntry
 	sitemaps []string
 	mtime    float64
+}
+
+type robotAgentEntry struct {
+	rules       []robotRule
+	crawlDelay  *int64 // nil if not set
+	reqRateReqs *int64 // nil if not set
+	reqRateSecs *int64 // nil if not set
 }
 
 type robotRule struct {
@@ -1967,6 +1977,33 @@ var robotParserMap sync.Map // *object.Instance -> *robotParserState
 func (i *Interp) buildUrllibRobotParser() *object.Module {
 	m := &object.Module{Name: "urllib.robotparser", Dict: object.NewDict()}
 	m.Dict.SetStr("__package__", &object.Str{V: "urllib"})
+
+	// RequestRate namedtuple-like class
+	requestRateCls := &object.Class{Name: "RequestRate", Dict: object.NewDict()}
+	requestRateCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		inst := a[0].(*object.Instance)
+		if len(a) > 1 {
+			inst.Dict.SetStr("requests", a[1])
+		}
+		if len(a) > 2 {
+			inst.Dict.SetStr("seconds", a[2])
+		}
+		return object.None, nil
+	}})
+	requestRateCls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		inst := a[0].(*object.Instance)
+		req, _ := inst.Dict.GetStr("requests")
+		sec, _ := inst.Dict.GetStr("seconds")
+		return &object.Str{V: fmt.Sprintf("RequestRate(requests=%s, seconds=%s)", object.Str_(req), object.Str_(sec))}, nil
+	}})
+	m.Dict.SetStr("RequestRate", requestRateCls)
+
+	newRequestRate := func(reqs, secs int64) *object.Instance {
+		inst := &object.Instance{Class: requestRateCls, Dict: object.NewDict()}
+		inst.Dict.SetStr("requests", object.NewInt(reqs))
+		inst.Dict.SetStr("seconds", object.NewInt(secs))
+		return inst
+	}
 
 	rfpCls := &object.Class{Name: "RobotFileParser", Dict: object.NewDict()}
 
@@ -1982,7 +2019,7 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 			}
 		}
 		inst.Dict.SetStr("_url", &object.Str{V: urlStr})
-		state := &robotParserState{agents: make(map[string][]robotRule)}
+		state := &robotParserState{agents: make(map[string]*robotAgentEntry)}
 		robotParserMap.Store(inst, state)
 		return object.None, nil
 	}})
@@ -2022,7 +2059,6 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 		for _, ln := range lines {
 			lineObjs.V = append(lineObjs.V, &object.Str{V: ln})
 		}
-		// call parse
 		if parseFn, ok := rfpCls.Dict.GetStr("parse"); ok {
 			ii.(*Interp).callObject(parseFn, []object.Object{inst, lineObjs}, nil) //nolint
 		}
@@ -2041,10 +2077,11 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 		state := stateVal.(*robotParserState)
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		state.agents = make(map[string][]robotRule)
+		// parse() calls modified() equivalent — mirrors CPython behaviour
+		state.mtime = float64(time.Now().UnixNano()) / 1e9
+		state.agents = make(map[string]*robotAgentEntry)
 		state.sitemaps = nil
 
-		// Iterate lines
 		it, err := ii.(*Interp).getIter(a[1])
 		if err != nil {
 			return object.None, nil
@@ -2061,7 +2098,6 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 			} else {
 				line = object.Str_(v)
 			}
-			// strip comment
 			if idx := strings.Index(line, "#"); idx >= 0 {
 				line = line[:idx]
 			}
@@ -2080,20 +2116,40 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 			case "user-agent":
 				currentAgents = append(currentAgents, strings.ToLower(value))
 			case "disallow":
+				allowance := false
+				if value == "" {
+					allowance = true // empty Disallow: means allow all (mirrors CPython)
+				}
 				for _, ag := range currentAgents {
-					state.agents[ag] = append(state.agents[ag], robotRule{allow: false, path: value})
+					e := robotGetOrCreateEntry(state, ag)
+					e.rules = append(e.rules, robotRule{allow: allowance, path: value})
 				}
 			case "allow":
 				for _, ag := range currentAgents {
-					state.agents[ag] = append(state.agents[ag], robotRule{allow: true, path: value})
+					e := robotGetOrCreateEntry(state, ag)
+					e.rules = append(e.rules, robotRule{allow: true, path: value})
 				}
 			case "crawl-delay":
-				for _, ag := range currentAgents {
-					inst.Dict.SetStr("_crawl_delay_"+ag, &object.Str{V: value})
+				if n, err2 := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err2 == nil {
+					n := n
+					for _, ag := range currentAgents {
+						e := robotGetOrCreateEntry(state, ag)
+						e.crawlDelay = &n
+					}
 				}
 			case "request-rate":
-				for _, ag := range currentAgents {
-					inst.Dict.SetStr("_request_rate_"+ag, &object.Str{V: value})
+				parts := strings.SplitN(strings.TrimSpace(value), "/", 2)
+				if len(parts) == 2 {
+					reqs, e1 := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+					secs, e2 := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+					if e1 == nil && e2 == nil {
+						for _, ag := range currentAgents {
+							e := robotGetOrCreateEntry(state, ag)
+							r, s2 := reqs, secs
+							e.reqRateReqs = &r
+							e.reqRateSecs = &s2
+						}
+					}
 				}
 			case "sitemap":
 				state.sitemaps = append(state.sitemaps, value)
@@ -2111,9 +2167,20 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 		if s, ok := a[1].(*object.Str); ok {
 			agent = strings.ToLower(s.V)
 		}
-		path := ""
+		rawURL := ""
 		if s, ok := a[2].(*object.Str); ok {
-			path = s.V
+			rawURL = s.V
+		}
+		// Extract path from full URL
+		fetchPath := rawURL
+		if u, err := url.Parse(rawURL); err == nil && u.Host != "" {
+			fetchPath = u.Path
+			if u.RawQuery != "" {
+				fetchPath += "?" + u.RawQuery
+			}
+			if u.Fragment != "" {
+				fetchPath += "#" + u.Fragment
+			}
 		}
 		stateVal, ok := robotParserMap.Load(inst)
 		if !ok {
@@ -2122,9 +2189,7 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 		state := stateVal.(*robotParserState)
 		state.mu.Lock()
 		defer state.mu.Unlock()
-
-		allowed := robotCanFetch(state, agent, path)
-		if allowed {
+		if object.BoolOf(robotCanFetch(state, agent, fetchPath)) == object.True {
 			return object.True, nil
 		}
 		return object.False, nil
@@ -2135,12 +2200,17 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 			return object.None, nil
 		}
 		inst := a[0].(*object.Instance)
-		agent := ""
-		if s, ok := a[1].(*object.Str); ok {
-			agent = strings.ToLower(s.V)
+		agent := strings.ToLower(object.Str_(a[1]))
+		stateVal, ok := robotParserMap.Load(inst)
+		if !ok {
+			return object.None, nil
 		}
-		if v, ok := inst.Dict.GetStr("_crawl_delay_" + agent); ok {
-			return v, nil
+		state := stateVal.(*robotParserState)
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		entry := robotEntryFor(state, agent)
+		if entry != nil && entry.crawlDelay != nil {
+			return object.NewInt(*entry.crawlDelay), nil
 		}
 		return object.None, nil
 	}})
@@ -2150,12 +2220,17 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 			return object.None, nil
 		}
 		inst := a[0].(*object.Instance)
-		agent := ""
-		if s, ok := a[1].(*object.Str); ok {
-			agent = strings.ToLower(s.V)
+		agent := strings.ToLower(object.Str_(a[1]))
+		stateVal, ok := robotParserMap.Load(inst)
+		if !ok {
+			return object.None, nil
 		}
-		if v, ok := inst.Dict.GetStr("_request_rate_" + agent); ok {
-			return v, nil
+		state := stateVal.(*robotParserState)
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		entry := robotEntryFor(state, agent)
+		if entry != nil && entry.reqRateReqs != nil && entry.reqRateSecs != nil {
+			return newRequestRate(*entry.reqRateReqs, *entry.reqRateSecs), nil
 		}
 		return object.None, nil
 	}})
@@ -2196,6 +2271,18 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 	}})
 
 	rfpCls.Dict.SetStr("modified", &object.BuiltinFunc{Name: "modified", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst := a[0].(*object.Instance)
+		stateVal, ok := robotParserMap.Load(inst)
+		if !ok {
+			return object.None, nil
+		}
+		state := stateVal.(*robotParserState)
+		state.mu.Lock()
+		state.mtime = float64(time.Now().UnixNano()) / 1e9
+		state.mu.Unlock()
 		return object.None, nil
 	}})
 
@@ -2203,45 +2290,43 @@ func (i *Interp) buildUrllibRobotParser() *object.Module {
 	return m
 }
 
-// robotCanFetch applies longest-match-wins with Allow > Disallow precedence.
-func robotCanFetch(state *robotParserState, agent, path string) bool {
-	rules := robotRulesFor(state, agent)
-	if rules == nil {
-		return true
+func robotGetOrCreateEntry(state *robotParserState, agent string) *robotAgentEntry {
+	if e, ok := state.agents[agent]; ok {
+		return e
 	}
-	bestLen := -1
-	bestAllow := true
-	for _, rule := range rules {
-		if rule.path == "" {
-			if bestLen < 0 {
-				bestLen = 0
-				bestAllow = rule.allow
-			}
-			continue
-		}
-		if strings.HasPrefix(path, rule.path) {
-			l := len(rule.path)
-			if l > bestLen || (l == bestLen && rule.allow) {
-				bestLen = l
-				bestAllow = rule.allow
-			}
-		}
-	}
-	return bestAllow
+	e := &robotAgentEntry{}
+	state.agents[agent] = e
+	return e
 }
 
-func robotRulesFor(state *robotParserState, agent string) []robotRule {
-	if r, ok := state.agents[agent]; ok {
-		return r
+// robotCanFetch uses first-match-wins semantics (matches CPython 3.14 behaviour).
+func robotCanFetch(state *robotParserState, agent, path string) bool {
+	entry := robotEntryFor(state, agent)
+	if entry == nil {
+		return true
 	}
-	// try agent prefix (e.g. "googlebot/2.1" matches "googlebot")
-	for k, v := range state.agents {
-		if strings.HasPrefix(agent, k) {
-			return v
+	for _, rule := range entry.rules {
+		// empty path matches every URL (startswith("") is always true)
+		if rule.path == "" || rule.path == "*" || strings.HasPrefix(path, rule.path) {
+			return rule.allow
 		}
 	}
-	if r, ok := state.agents["*"]; ok {
-		return r
+	return true // no rule matched → allow
+}
+
+// robotEntryFor returns the entry for agent, falling back to wildcard "*".
+func robotEntryFor(state *robotParserState, agent string) *robotAgentEntry {
+	if e, ok := state.agents[agent]; ok {
+		return e
+	}
+	// substring match (e.g. "googlebot/2.1" contains "googlebot")
+	for k, e := range state.agents {
+		if k != "*" && strings.Contains(agent, k) {
+			return e
+		}
+	}
+	if e, ok := state.agents["*"]; ok {
+		return e
 	}
 	return nil
 }
