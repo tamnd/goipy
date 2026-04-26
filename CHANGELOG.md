@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.243 - 2026-04-26
+
+`http.cookies` module — cookie manipulation classes, Morsel, BaseCookie, SimpleCookie, CookieError.
+
+**CookieError(Exception):** raised on invalid Morsel attribute keys.
+
+**Morsel:** dict-like cookie attribute container with class-level `_reserved` (10 entries: comment, domain, expires, httponly, max-age, partitioned, path, samesite, secure, version) and `_flags` set (httponly, partitioned, secure); instance properties `key`, `value`, `coded_value`; methods `set(key, val, coded_val)`, `isReservedKey(key)`, `OutputString()`, `output(header='Set-Cookie:')`, `js_output()`; `__setitem__`/`__getitem__` validate against `_reserved`; boolean flags emit bare attribute names (e.g. `HttpOnly`); string attributes emit `Attr=value`.
+
+**BaseCookie:** dict-like cookie jar; `__setitem__` auto-wraps string values in Morsel; `load(rawdata)` accepts cookie string or dict; `output(sep='\r\n')` joins all Morsel output strings; `value_decode`/`value_encode` pass through unchanged.
+
+**SimpleCookie(BaseCookie):** `value_decode` unquotes double-quoted values; `value_encode` preserves originals.
+
+18 test cases verified against CPython 3.14 (fixture 243).
+
 ## v0.0.242 - 2026-04-26
 
 `http.server` module — full class hierarchy, all attributes, complete HTTP status responses dictionary.

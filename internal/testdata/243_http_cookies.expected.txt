@@ -1,0 +1,58 @@
+bad cookie
+cookie_error ok
+True
+True
+True
+True
+morsel_reserved ok
+True
+True
+True
+morsel_flags ok
+True
+True
+True
+morsel_initial ok
+foo
+bar
+bar
+morsel_set ok
+/test
+morsel_setitem_valid ok
+True
+morsel_setitem_invalid ok
+True
+False
+morsel_isreservedkey ok
+True
+True
+True
+morsel_output_string ok
+True
+True
+morsel_output ok
+True
+morsel_repr ok
+Morsel
+Alice
+basecookie_setitem ok
+True
+True
+True
+basecookie_output ok
+Alice
+30
+basecookie_load ok
+hello world
+simplecookie_load ok
+True
+True
+simplecookie_set ok
+True
+True
+hierarchy ok
+BaseCookie True
+CookieError True
+Morsel True
+SimpleCookie True
+module_exports ok
