@@ -1,0 +1,69 @@
+True
+bad jar
+load_error ok
+CookieJar
+0
+cookie_jar_empty ok
+1
+cookie_jar_set_cookie ok
+['a', 'b']
+cookie_jar_iter ok
+0
+cookie_jar_clear ok
+1
+['perm']
+cookie_jar_clear_session ok
+myname
+myvalue
+example.com
+/test
+True
+0
+1000000
+False
+True
+cookie_attrs ok
+True
+False
+cookie_has_nonstandard_attr ok
+True
+True
+True
+cookie_str ok
+1
+2
+4
+0
+3
+default_policy_class_attrs ok
+DefaultCookiePolicy
+True
+False
+False
+True
+False
+0
+False
+default_policy_init ok
+return_ok True
+domain_return_ok True
+path_return_ok True
+set_ok True
+cookie_policy_methods ok
+True
+True
+True
+hierarchy_jars ok
+True
+hierarchy_policy ok
+CookieJar
+jar_set_policy ok
+CookieJar True
+FileCookieJar True
+MozillaCookieJar True
+LWPCookieJar True
+Cookie True
+CookiePolicy True
+DefaultCookiePolicy True
+LoadError True
+module_exports ok
