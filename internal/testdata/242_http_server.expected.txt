@@ -1,0 +1,83 @@
+BaseHTTP/0.6
+HTTP/1.0
+HTTP/0.9
+text/html;charset=utf-8
+False
+-1
+0
+None
+base_attrs ok
+True
+sys_version ok
+7
+Mon
+Fri
+Sun
+weekdayname ok
+13
+None
+Jan
+Dec
+monthname ok
+('OK', 'Request fulfilled, document follows')
+responses_200 ok
+('Not Found', 'Nothing matches the given URI')
+responses_404 ok
+('Internal Server Error', 'Server got itself in trouble')
+responses_500 ok
+True
+responses_len ok
+SimpleHTTP/0.6
+simple_attrs ok
+application/gzip
+application/x-bzip2
+True
+extensions_map ok
+True
+True
+cgi_directories ok
+True
+allow_reuse ok
+True
+http_server_hierarchy ok
+True
+True
+threading_http_hierarchy ok
+True
+base_handler_hierarchy ok
+True
+simple_hierarchy ok
+True
+cgi_hierarchy ok
+send_response True
+send_header True
+end_headers True
+flush_headers True
+send_error True
+log_request True
+log_error True
+log_message True
+version_string True
+address_string True
+date_time_string True
+log_date_time_string True
+handle_one_request True
+parse_request True
+base_methods ok
+HTTPServer
+('127.0.0.1', 0)
+BaseHTTPRequestHandler
+True
+instantiation ok
+text/html;charset=utf-8
+str
+True
+default_constants ok
+HTTPServer True
+ThreadingHTTPServer True
+BaseHTTPRequestHandler True
+SimpleHTTPRequestHandler True
+CGIHTTPRequestHandler True
+DEFAULT_ERROR_CONTENT_TYPE True
+DEFAULT_ERROR_MESSAGE True
+module_exports ok
