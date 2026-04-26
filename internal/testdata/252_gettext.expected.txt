@@ -1,0 +1,44 @@
+hello
+world
+apple
+apples
+apples
+apple
+apple
+apples
+True
+{}
+test_null_translations ok
+hola
+mundo
+buenos dias
+unknown
+UTF-8
+test_gnu_translations ok
+manzana
+manzanas
+manzanas
+elemento
+elementos
+xs
+test_gnu_ngettext ok
+manzana
+hierro
+apple
+test_gnu_pgettext ok
+hola
+unknown
+test_fallback ok
+hello
+world
+test_install ok
+hello
+item
+items
+hello
+items
+test_module_level ok
+messages
+myapp
+messages
+test_textdomain ok
