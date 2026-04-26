@@ -1,0 +1,14 @@
+constants ok
+exception_hierarchy ok
+smtp_response_exception_attrs ok
+smtp_sender_refused_attrs ok
+smtp_recipients_refused_attrs ok
+exception_catch_as_oserror ok
+exception_distinct ok
+smtp_construction ok
+smtp_set_debuglevel ok
+smtp_has_extn ok
+smtp_close ok
+smtp_context_manager ok
+class_hierarchy ok
+module_exports ok

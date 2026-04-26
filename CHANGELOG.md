@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.239 - 2026-04-26
+
+`smtplib` module — constants, full exception hierarchy rooted at OSError, `SMTP` class with stub API, `SMTP_SSL` and `LMTP` subclasses.
+
+**Constants:** `SMTP_PORT = 25`, `SMTP_SSL_PORT = 465`, `LMTP_PORT = 2003`.
+
+**Exception hierarchy:** `SMTPException(OSError)` → `SMTPServerDisconnected`, `SMTPNotSupportedError`, `SMTPRecipientsRefused` (`.recipients`), `SMTPResponseException` (`.smtp_code`, `.smtp_error`) → `SMTPSenderRefused` (+ `.sender`), `SMTPDataError`, `SMTPConnectError`, `SMTPHeloError`, `SMTPAuthenticationError`. All catchable as `OSError`.
+
+**SMTP class:** `__init__(host='', port=0, ...)` — connects only if host is non-empty; instance defaults `esmtp_features={}`, `does_esmtp=False`, `helo_resp/ehlo_resp=None`, `debuglevel=0`; pure methods `set_debuglevel()`, `has_extn()`, `close()`; stub network methods `connect`, `helo`, `ehlo`, `ehlo_or_helo_if_needed`, `starttls`, `login`, `auth`, `sendmail`, `send_message`, `quit`, `noop`, `rset`, `verify`, `expn`, `help`, `docmd`; context manager.
+
+**SMTP_SSL(SMTP)** and **LMTP(SMTP)** subclasses.
+
+14 test cases verified against CPython 3.14 (fixture 239).
+
 ## v0.0.238 - 2026-04-26
 
 `imaplib` module — constants, nested exception hierarchy, utility functions, `IMAP4` class with full stub API, `IMAP4_SSL` and `IMAP4_stream` subclasses.
