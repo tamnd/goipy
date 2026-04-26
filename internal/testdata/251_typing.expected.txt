@@ -1,0 +1,54 @@
+False
+True
+test_constants ok
+hello
+42
+test_cast ok
+T
+()
+True
+S
+2
+True
+True
+test_typevar ok
+True
+True
+True
+True
+True
+True
+test_generics ok
+True
+True
+True
+True
+True
+test_optional_union ok
+2
+1
+test_generic_class ok
+1 2
+1 2
+('x', 'y')
+test_namedtuple_functional ok
+255 0 128
+255
+('r', 'g', 'b')
+test_namedtuple_class ok
+Blade Runner
+1982
+True
+False
+test_typeddict ok
+42
+int
+test_newtype ok
+42
+5
+final
+True
+test_decorators ok
+True
+drawing circle
+test_protocol ok
