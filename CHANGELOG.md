@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.0.231 - 2026-04-26
+
+`urllib.parse` deep coverage — complete `ParseResult`/`SplitResult` attribute set, bytes variants, and improved query-string functions.
+
+`ParseResult` and `SplitResult`: added `username` and `password` attributes (decoded from the `user:pass@host` portion of `netloc`); `geturl()` method reconstructs the full URL from components; `encode(encoding='ascii')` returns a `ParseResultBytes`/`SplitResultBytes` instance with all fields as `bytes`; `SplitResult.__repr__` now renders as `SplitResult(scheme=…, netloc=…, path=…, query=…, fragment=…)` (5 fields, no `params`), while `ParseResult.__repr__` retains its 6-field format; `SplitResult[i]` indexing returns 5 elements.
+
+`ParseResultBytes` / `SplitResultBytes` / `DefragResultBytes`: full bytes-valued result classes returned when the input to `urlparse`/`urlsplit`/`urldefrag` is `bytes`; `decode(encoding='ascii')` converts back to the str result class; `geturl()` returns `bytes`.
+
+`DefragResult`: added `__getitem__` (index 0 → url, 1 → fragment), `__len__` (always 2), `__iter__` (yields url then fragment), and `encode()` → `DefragResultBytes`.
+
+`urlparse` / `urlsplit`: new `scheme=''` kwarg used as the default scheme when the URL has none; new `allow_fragments=True` kwarg (False folds the fragment into path/query).
+
+`urljoin`: `allow_fragments=True` kwarg strips the fragment from the result when False.
+
+`urlencode`: `quote_via` kwarg accepts any callable (e.g. `urllib.parse.quote`) used for percent-encoding values — the default remains `quote_plus`; `safe=''` kwarg forwarded to `quote_via`.
+
+`parse_qs` / `parse_qsl`: `keep_blank_values=False` kwarg retains params with empty values when True; `separator='&'` kwarg sets the field delimiter (single char); `max_num_fields=None` kwarg raises `ValueError` when exceeded.
+
+Exported classes: `ParseResult`, `SplitResult`, `ParseResultBytes`, `SplitResultBytes`, `DefragResult`, `DefragResultBytes` are all accessible as `urllib.parse.*`.
+
+24 test fixtures (fixture 231).
+
 ## v0.0.230 - 2026-04-26
 
 `urllib.request` deep coverage — complete handler hierarchy, real `OpenerDirector`, `urlretrieve`, and response methods.

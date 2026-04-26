@@ -528,6 +528,9 @@ func TypeName(o Object) string {
 	case *SectionProxyObj:
 		return "configparser.SectionProxy"
 	case *URLParseResult:
+		if v.IsSplit {
+			return "SplitResult"
+		}
 		return "ParseResult"
 	case *UUID:
 		return "UUID"
