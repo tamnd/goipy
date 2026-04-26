@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.237 - 2026-04-26
+
+`poplib` module — constants, `error_proto` exception, `POP3` class with full stub API, `POP3_SSL` subclass.
+
+**Constants:** `POP3_PORT = 110`, `POP3_SSL_PORT = 995`.
+
+**Exception:** `error_proto(Exception)` — raised on POP3 protocol errors.
+
+**POP3 class:** `__init__(host, port=110, timeout=None)` stores attrs without connecting; `set_debuglevel()`, `getwelcome()`; stub network methods: `user()`, `pass_()`, `stat()`, `list()`, `retr()`, `top()`, `dele()`, `noop()`, `rset()`, `quit()`, `uidl()`, `apop()`, `rpop()`, `capa()`, `utf8()`, `stls()`, `close()`; context manager.
+
+**POP3_SSL(POP3):** `default_port = 995`; inherits all POP3 methods.
+
+6 test cases verified against CPython 3.14 (fixture 237).
+
 ## v0.0.236 - 2026-04-26
 
 `ftplib` module deep coverage — constants, exception hierarchy, parse functions, FTP class, FTP_TLS subclass.

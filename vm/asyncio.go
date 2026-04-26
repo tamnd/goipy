@@ -127,6 +127,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCmath(), true
 	case "ftplib":
 		return i.buildFtplib(), true
+	case "poplib":
+		return i.buildPoplib(), true
 	case "http":
 		return i.buildHttp(), true
 	case "http.client":
