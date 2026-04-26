@@ -1,0 +1,45 @@
+hello &amp; &lt;world&gt;
+no special chars
+a &amp; b &lt; c &gt; d
+escape ok
+DateTime
+Binary
+2
+wrappers ok
+bytes
+b'hello world from goipy'
+True
+gzip ok
+True
+True
+True
+True
+marshaller ok
+True
+True
+marshaller_bool ok
+ExpatParser
+Unmarshaller
+99
+add
+getparser ok
+ResponseError raised
+unmarshaller_fresh ok
+1
+42
+multicall_iter ok
+5
+err msg
+multicall_fault ok
+True
+True
+True
+fast_variants ok
+True
+True
+False
+True
+datetime_cmp ok
+True
+False
+binary_eq ok
