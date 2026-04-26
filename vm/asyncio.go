@@ -78,7 +78,7 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 	case "secrets":
 		return i.buildSecrets(), true
 	case "uuid":
-		return i.buildUUID(), true
+		return i.buildUuid(), true
 	case "configparser":
 		return i.buildConfigParser(), true
 	case "tomllib":

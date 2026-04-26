@@ -1,0 +1,73 @@
+reserved for NCS compatibility
+specified in RFC 4122
+reserved for Microsoft compatibility
+reserved for future definition
+0
+-1
+None
+SafeUUID.safe
+SafeUUID.unsafe
+SafeUUID.unknown
+True
+True
+6ba7b8109dad11d180b400c04fd430c8
+143098242404177361603877621312831893704
+specified in RFC 4122
+1
+urn:uuid:6ba7b810-9dad-11d1-80b4-00c04fd430c8
+1806153744
+40365
+4561
+128
+180
+825973027016
+180
+6ba7b8109dad11d180b400c04fd430c8
+6ba7b8109dad11d180b400c04fd430c8
+6ba7b8109dad11d180b400c04fd430c8
+6ba7b8109dad11d180b400c04fd430c8
+6ba7b8109dad11d180b400c04fd430c8
+True
+False
+True
+True
+False
+True
+True
+True
+False
+6ba7b810-9dad-11d1-80b4-00c04fd430c8
+UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
+4
+specified in RFC 4122
+True
+6fa459ea-ee8a-3ca4-894e-db77e160355e
+3
+specified in RFC 4122
+886313e1-3b8a-5372-9b90-0c9aee199e5d
+5
+specified in RFC 4122
+1
+specified in RFC 4122
+True
+6ba7b810-9dad-11d1-80b4-00c04fd430c8
+6ba7b811-9dad-11d1-80b4-00c04fd430c8
+6ba7b812-9dad-11d1-80b4-00c04fd430c8
+6ba7b814-9dad-11d1-80b4-00c04fd430c8
+int
+True
+UUID True
+SafeUUID True
+NAMESPACE_DNS True
+NAMESPACE_URL True
+NAMESPACE_OID True
+NAMESPACE_X500 True
+RESERVED_NCS True
+RFC_4122 True
+RESERVED_MICROSOFT True
+RESERVED_FUTURE True
+uuid1 True
+uuid3 True
+uuid4 True
+uuid5 True
+getnode True
