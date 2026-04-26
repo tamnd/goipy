@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.241 - 2026-04-26
+
+`socketserver` module — full class hierarchy, attributes, and stub server API.
+
+**Server classes:** `BaseServer` with all shared methods (`verify_request`, `handle_error`, `server_close`, `handle_request`, `serve_forever`, `shutdown`, `finish_request`, `process_request`, `server_activate`, `handle_timeout`, `service_actions`, `close_request`, `shutdown_request`, `__enter__`/`__exit__`); `TCPServer(BaseServer)` (`address_family=2`, `socket_type=1`, `allow_reuse_address=False`, `allow_reuse_port=False`, `request_queue_size=5`, `server_bind`); `UDPServer(BaseServer)` (`socket_type=2`); `UnixStreamServer(TCPServer)` / `UnixDatagramServer(UDPServer)` (`address_family=1`).
+
+**Mixin classes:** `ThreadingMixIn` (`daemon_threads=False`, `block_on_close=True`); `ForkingMixIn` (`max_children=40`, `block_on_close=True`).
+
+**Pre-combined classes:** `ThreadingTCPServer`, `ThreadingUDPServer`, `ThreadingUnixStreamServer`, `ThreadingUnixDatagramServer`, `ForkingTCPServer`, `ForkingUDPServer`, `ForkingUnixStreamServer`, `ForkingUnixDatagramServer`.
+
+**Request handlers:** `BaseRequestHandler` (`setup`/`handle`/`finish`); `StreamRequestHandler(BaseRequestHandler)` (`rbufsize=-1`, `wbufsize=0`, `timeout=None`, `disable_nagle_algorithm=False`); `DatagramRequestHandler(BaseRequestHandler)`.
+
+**Instantiation:** `TCPServer(addr, handler, bind_and_activate=False)` sets `server_address` and `RequestHandlerClass` without opening a real socket.
+
+17 test cases verified against CPython 3.14 (fixture 241).
+
 ## v0.0.240 - 2026-04-26
 
 `uuid` module — full RFC 4122 implementation: UUID class, SafeUUID enum, variant/namespace constants, and all four generation functions.

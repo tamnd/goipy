@@ -1,0 +1,84 @@
+False
+False
+5
+1
+2
+tcp_attrs ok
+2
+2
+udp_attrs ok
+1
+1
+unix_attrs ok
+False
+True
+threading_attrs ok
+40
+True
+forking_attrs ok
+-1
+0
+None
+False
+stream_attrs ok
+True
+True
+server_hierarchy ok
+True
+True
+unix_hierarchy ok
+True
+True
+True
+threading_hierarchy ok
+True
+True
+True
+forking_hierarchy ok
+True
+True
+handler_hierarchy ok
+verify_request True
+handle_error True
+server_close True
+handle_request True
+serve_forever True
+shutdown True
+finish_request True
+process_request True
+server_bind False
+server_activate True
+handle_timeout True
+service_actions True
+baseserver_methods ok
+TCPServer
+('127.0.0.1', 0)
+BaseRequestHandler
+False
+instantiation ok
+True
+verify_request ok
+setup True
+handle True
+finish True
+handler_methods ok
+ThreadingTCPServer True
+ThreadingUDPServer True
+ThreadingUnixStreamServer True
+ThreadingUnixDatagramServer True
+ForkingTCPServer True
+ForkingUDPServer True
+ForkingUnixStreamServer True
+ForkingUnixDatagramServer True
+combined_classes ok
+BaseServer True
+TCPServer True
+UDPServer True
+UnixStreamServer True
+UnixDatagramServer True
+ThreadingMixIn True
+ForkingMixIn True
+BaseRequestHandler True
+StreamRequestHandler True
+DatagramRequestHandler True
+module_exports ok
