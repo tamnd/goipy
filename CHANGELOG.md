@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.236 - 2026-04-26
+
+`ftplib` module deep coverage — constants, exception hierarchy, parse functions, FTP class, FTP_TLS subclass.
+
+**Constants:** `FTP_PORT = 21`, `MAXLINE = 8192`, `MSG_OOB = 1`, `CRLF = "\r\n"`, `B_CRLF = b"\r\n"`.
+
+**Exception hierarchy:** `Error(Exception)` → `error_reply`, `error_temp`, `error_perm`, `error_proto`. `all_errors = (Error, OSError, EOFError)`.
+
+**Parse functions:** `parse150(resp)` extracts file size from 150 response (None if absent, raises `error_reply` if non-150); `parse227(resp)` extracts `(host, port)` from PASV response (raises `error_proto` on bad format); `parse229(resp, peer)` extracts host/port from EPSV response; `parse257(resp)` extracts directory name from MKD/PWD response (returns `""` for non-compliant, raises `error_reply` if not 257). `print_line(line)` prints to stdout.
+
+**FTP class:** class-level defaults (`host`, `port`, `sock`, `file`, `welcome`, `passiveserver`, `trust_server_pasv_ipv4_address`, `debugging`, `maxline`); pure methods `set_debuglevel()`/`debug()`, `set_pasv()`, `sanitize()` (masks PASS password), `getwelcome()`; context manager (`__enter__`/`__exit__`); network stubs (no real TCP): `connect()`, `login()`, `close()`, `quit()`, `sendcmd()`, `voidcmd()`, `pwd()`, `cwd()`, `mkd()`, `rmd()`, `delete()`, `rename()`, `size()`, `abort()`, `nlst()`, `dir()`, `retrbinary()`, `retrlines()`, `storbinary()`, `storlines()`, `acct()`.
+
+**FTP_TLS(FTP):** stub subclass with `auth()`, `ccc()`, `prot_c()`, `prot_p()`.
+
+30 new test fixtures (fixture 236).
+
 ## v0.0.235 - 2026-04-26
 
 `http.client` deep coverage — exception hierarchy, HTTPMessage, parse_headers, HTTPConnection, HTTPSConnection, responses dict, and status-code integer re-exports.
