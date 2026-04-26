@@ -1,0 +1,85 @@
+True
+True
+True
+True
+error_hierarchy ok
+42
+something went wrong
+fault_attrs ok
+True
+True
+True
+fault_repr ok
+http://example.com/rpc
+404
+Not Found
+dict
+protocol_error_attrs ok
+DateTime
+20240101T12:00:00
+datetime ok
+Binary
+b'hello'
+binary ok
+b'hello'
+binary_decode ok
+True
+False
+True
+False
+boolean ok
+2147483647
+-2147483648
+-32500
+constants ok
+True
+True
+True
+True
+True
+dumps_str ok
+my_func
+42
+hi
+loads ok
+bools
+True
+False
+loads_bool ok
+ServerProxy
+server_proxy ok
+MultiCall
+multicall ok
+SimpleXMLRPCDispatcher
+True
+signatures not supported
+dispatcher ok
+True
+True
+True
+True
+server_hierarchy ok
+True
+True
+1400
+request_handler_attrs ok
+Error True
+Fault True
+ProtocolError True
+ResponseError True
+DateTime True
+Binary True
+ServerProxy True
+MultiCall True
+Transport True
+dumps True
+loads True
+MAXINT True
+MININT True
+client_exports ok
+SimpleXMLRPCServer True
+SimpleXMLRPCDispatcher True
+SimpleXMLRPCRequestHandler True
+CGIXMLRPCRequestHandler True
+MultiPathXMLRPCServer True
+server_exports ok
