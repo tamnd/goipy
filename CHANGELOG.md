@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.0.251 - 2026-04-26
+
+`typing` — runtime-sufficient subset of the standard library typing module.
+
+**Type variables:** `TypeVar(name, *constraints, bound=None)` with `__name__`, `__constraints__`, `__bound__`, `__covariant__`, `__contravariant__`. Also `ParamSpec`, `TypeVarTuple`, `AnyStr`.
+
+**Generic aliases:** `_GenericAlias` with `__origin__` and `__args__`; subscriptable forms for `List`, `Dict`, `Tuple`, `Set`, `FrozenSet`, `Sequence`, `Mapping`, `Iterable`, `Iterator`, `Callable`, `Type`, `ClassVar`, `Final`, `Literal`, `Annotated`, and all common `collections.abc` aliases.
+
+**Special forms:** `Union[X, Y]`, `Optional[X]` (= `Union[X, NoneType]`), `Generic[T]` (passes through as base class), `Protocol` (usable as base class). `get_origin(tp)` and `get_args(tp)` work on all parameterised aliases.
+
+**NamedTuple:** functional form `NamedTuple('Point', [('x', int), ('y', int)])` and class form `class Color(NamedTuple): r: int; g: int; b: int` via `__init_subclass__` (reads `__annotate_func__(1)` from the Python 3.14 deferred-annotation mechanism).
+
+**TypedDict:** class form `class Movie(TypedDict): name: str; year: int` via `__init_subclass__`; instances are plain `dict` objects created by a custom `__new__`. `is_typeddict(tp)` correctly identifies TypedDict classes.
+
+**Protocol + isinstance:** `@runtime_checkable` sets `ABCCheck` on the Protocol class to perform structural duck-typing checks for all non-dunder methods defined in the protocol body.
+
+**Decorators:** `cast`, `overload`, `final` (sets `__final__` attribute), `override`, `no_type_check`, `runtime_checkable`. Also `NewType`, `get_type_hints`, `assert_type`, `assert_never`, `reveal_type`, `get_overloads`, `clear_overloads`, `dataclass_transform`, `is_protocol`, `get_protocol_members`, `evaluate_forward_ref`.
+
+**Constants/singletons:** `TYPE_CHECKING = False`, `Any`, `NoReturn`, `Never`, `Self`, `LiteralString`, `NoDefault`.
+
+12 test functions verified against CPython 3.14 (fixture 251).
+
 ## v0.0.250 - 2026-04-26
 
 `colorsys` — full implementation of the standard library color-space conversion module.
