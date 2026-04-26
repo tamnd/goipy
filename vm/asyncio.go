@@ -135,6 +135,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSmtplib(), true
 	case "socketserver":
 		return i.buildSocketserver(), true
+	case "http.server":
+		return i.buildHttpServer(), true
 	case "http":
 		return i.buildHttp(), true
 	case "http.client":

@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.242 - 2026-04-26
+
+`http.server` module — full class hierarchy, all attributes, complete HTTP status responses dictionary.
+
+**Server classes:** `HTTPServer(socketserver.TCPServer)` with `allow_reuse_address=True`; `ThreadingHTTPServer(ThreadingMixIn, HTTPServer)`. Instantiation with `bind_and_activate=False` supported.
+
+**BaseHTTPRequestHandler(socketserver.StreamRequestHandler):** class attrs `server_version='BaseHTTP/0.6'`, `protocol_version='HTTP/1.0'`, `default_request_version='HTTP/0.9'`, `error_content_type`, `sys_version`, `MessageClass`, `weekdayname` (7 entries), `monthname` (13 entries, None-padded); full `responses` dict (62 entries, integer-keyed) covering all HTTP status codes 100–511; stub methods `send_response`, `send_header`, `end_headers`, `flush_headers`, `send_error`, `log_request`, `log_error`, `log_message`, `version_string`, `address_string`, `date_time_string`, `log_date_time_string`, `handle_one_request`, `parse_request`.
+
+**SimpleHTTPRequestHandler(BaseHTTPRequestHandler):** `server_version='SimpleHTTP/0.6'`, `extensions_map` (.gz, .Z, .bz2, .xz), `do_GET`/`do_HEAD`.
+
+**CGIHTTPRequestHandler(BaseHTTPRequestHandler):** `cgi_directories=['/cgi-bin', '/htbin']`, `do_GET`/`do_HEAD`/`do_POST`.
+
+**Module constants:** `DEFAULT_ERROR_CONTENT_TYPE`, `DEFAULT_ERROR_MESSAGE` (HTML template).
+
+21 test cases verified against CPython 3.14 (fixture 242).
+
 ## v0.0.241 - 2026-04-26
 
 `socketserver` module — full class hierarchy, attributes, and stub server API.
