@@ -149,6 +149,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildColorsys(), true
 	case "typing":
 		return i.buildTyping(), true
+	case "gettext":
+		return i.buildGettext(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.252 - 2026-04-26
+
+`gettext` — full implementation of the standard library internationalization module.
+
+**`NullTranslations`:** passthrough translation object with `gettext`, `ngettext`, `pgettext`, `npgettext`, `add_fallback` (chain support), `charset`, `info`, `install` (sets `_()` in builtins).
+
+**`GNUTranslations`:** reads GNU .mo binary format (both LE/BE magic); parses the string table, populates `_catalog`, extracts charset from the Content-Type metadata header, and parses the Plural-Forms header. Lookups use the parsed plural expression for `ngettext`; context keys (`\x04` EOT separator) are supported for `pgettext`; plural keys (`\x00` separator) are supported for `ngettext`. Falls through to the fallback chain when no translation is found.
+
+**Plural-form evaluator:** recursive-descent parser for C-like expressions (`!=`, `==`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`, `+`, `-`, `*`, `/`, `%`, ternary `? :`, parentheses, variable `n`). Covers all common gettext plural-form expressions.
+
+**Module-level functions:** `gettext`, `ngettext`, `pgettext`, `npgettext` (passthrough when no domain loaded); `dgettext`, `dngettext`, `dpgettext`, `dnpgettext`; `textdomain` (get/set current domain); `bindtextdomain` (map domain to locale directory); `bind_textdomain_codeset`; `find` (returns None/[] — no filesystem); `translation` (fallback=True returns NullTranslations); `install`; `c2py` (compile plural expression to callable); `Catalog` (alias for GNUTranslations).
+
+8 test functions verified against CPython 3.14 (fixture 252).
+
 ## v0.0.251 - 2026-04-26
 
 `typing` — runtime-sufficient subset of the standard library typing module.
