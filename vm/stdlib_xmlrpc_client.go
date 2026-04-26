@@ -1,8 +1,11 @@
 package vm
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -135,6 +138,32 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 		}
 		return &object.Str{V: fmt.Sprintf("<DateTime '%s' at 0x0>", val)}, nil
 	}})
+
+	dtGetValue := func(a []object.Object, idx int) string {
+		if len(a) > idx {
+			if inst, ok := a[idx].(*object.Instance); ok {
+				if v, ok2 := inst.Dict.GetStr("value"); ok2 {
+					return object.Str_(v)
+				}
+			}
+		}
+		return ""
+	}
+	dateTimeCls.Dict.SetStr("__eq__", &object.BuiltinFunc{Name: "__eq__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.BoolOf(dtGetValue(a, 0) == dtGetValue(a, 1)), nil
+	}})
+	dateTimeCls.Dict.SetStr("__lt__", &object.BuiltinFunc{Name: "__lt__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.BoolOf(dtGetValue(a, 0) < dtGetValue(a, 1)), nil
+	}})
+	dateTimeCls.Dict.SetStr("__le__", &object.BuiltinFunc{Name: "__le__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.BoolOf(dtGetValue(a, 0) <= dtGetValue(a, 1)), nil
+	}})
+	dateTimeCls.Dict.SetStr("__gt__", &object.BuiltinFunc{Name: "__gt__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.BoolOf(dtGetValue(a, 0) > dtGetValue(a, 1)), nil
+	}})
+	dateTimeCls.Dict.SetStr("__ge__", &object.BuiltinFunc{Name: "__ge__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		return object.BoolOf(dtGetValue(a, 0) >= dtGetValue(a, 1)), nil
+	}})
 	m.Dict.SetStr("DateTime", dateTimeCls)
 
 	// ── Binary ────────────────────────────────────────────────────────────────
@@ -198,6 +227,27 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 				}
 			}
 			return object.None, nil
+		}})
+
+		inst.Dict.SetStr("__eq__", &object.BuiltinFunc{Name: "__eq__", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			// callInstanceDunder passes only extra args (not self), so args[0] = other
+			if len(args) < 1 {
+				return object.False, nil
+			}
+			var selfData, otherData []byte
+			if d, ok2 := inst.Dict.GetStr("data"); ok2 {
+				if b, ok3 := d.(*object.Bytes); ok3 {
+					selfData = b.V
+				}
+			}
+			if otherInst, ok2 := args[0].(*object.Instance); ok2 {
+				if d, ok3 := otherInst.Dict.GetStr("data"); ok3 {
+					if b, ok4 := d.(*object.Bytes); ok4 {
+						otherData = b.V
+					}
+				}
+			}
+			return object.BoolOf(bytes.Equal(selfData, otherData)), nil
 		}})
 
 		return object.None, nil
@@ -396,6 +446,295 @@ func (i *Interp) buildXmlrpcClient() *object.Module {
 		return object.None, nil
 	}})
 	m.Dict.SetStr("MultiCall", multiCallCls)
+
+	// ── escape ────────────────────────────────────────────────────────────────
+
+	m.Dict.SetStr("escape", &object.BuiltinFunc{Name: "escape", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return &object.Str{V: ""}, nil
+		}
+		s := object.Str_(a[0])
+		s = strings.ReplaceAll(s, "&", "&amp;")
+		s = strings.ReplaceAll(s, "<", "&lt;")
+		s = strings.ReplaceAll(s, ">", "&gt;")
+		return &object.Str{V: s}, nil
+	}})
+
+	// ── WRAPPERS ──────────────────────────────────────────────────────────────
+
+	m.Dict.SetStr("WRAPPERS", &object.Tuple{V: []object.Object{dateTimeCls, binaryCls}})
+
+	// ── gzip_encode / gzip_decode ─────────────────────────────────────────────
+
+	m.Dict.SetStr("gzip_encode", &object.BuiltinFunc{Name: "gzip_encode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "gzip_encode requires data")
+		}
+		var raw []byte
+		switch v := a[0].(type) {
+		case *object.Bytes:
+			raw = v.V
+		case *object.Str:
+			raw = []byte(v.V)
+		default:
+			return nil, object.Errorf(i.typeErr, "gzip_encode requires bytes")
+		}
+		var buf bytes.Buffer
+		w := gzip.NewWriter(&buf)
+		if _, err := w.Write(raw); err != nil {
+			return nil, object.Errorf(i.valueErr, "gzip_encode: %v", err)
+		}
+		if err := w.Close(); err != nil {
+			return nil, object.Errorf(i.valueErr, "gzip_encode: %v", err)
+		}
+		return &object.Bytes{V: buf.Bytes()}, nil
+	}})
+
+	m.Dict.SetStr("gzip_decode", &object.BuiltinFunc{Name: "gzip_decode", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return nil, object.Errorf(i.typeErr, "gzip_decode requires data")
+		}
+		var raw []byte
+		switch v := a[0].(type) {
+		case *object.Bytes:
+			raw = v.V
+		case *object.Str:
+			raw = []byte(v.V)
+		default:
+			return nil, object.Errorf(i.typeErr, "gzip_decode requires bytes")
+		}
+		r, err := gzip.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, object.Errorf(i.valueErr, "gzip_decode: %v", err)
+		}
+		defer r.Close()
+		out, err := io.ReadAll(r)
+		if err != nil {
+			return nil, object.Errorf(i.valueErr, "gzip_decode: %v", err)
+		}
+		return &object.Bytes{V: out}, nil
+	}})
+
+	// ── Marshaller ────────────────────────────────────────────────────────────
+
+	marshallerCls := &object.Class{Name: "Marshaller", Dict: object.NewDict()}
+	marshallerCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		inst.Dict.SetStr("allow_none", object.False)
+		inst.Dict.SetStr("encoding", object.None)
+		if kw != nil {
+			if v, ok2 := kw.GetStr("allow_none"); ok2 {
+				inst.Dict.SetStr("allow_none", v)
+			}
+			if v, ok2 := kw.GetStr("encoding"); ok2 {
+				inst.Dict.SetStr("encoding", v)
+			}
+		}
+
+		inst.Dict.SetStr("dumps", &object.BuiltinFunc{Name: "dumps", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 1 {
+				return nil, object.Errorf(i.typeErr, "dumps requires values")
+			}
+			var items []object.Object
+			switch v := args[0].(type) {
+			case *object.Tuple:
+				items = v.V
+			case *object.List:
+				items = v.V
+			default:
+				items = []object.Object{args[0]}
+			}
+			var sb strings.Builder
+			sb.WriteString("<params>\n")
+			for _, item := range items {
+				sb.WriteString("<param>\n")
+				sb.WriteString(marshalXmlrpc(item))
+				sb.WriteString("\n</param>\n")
+			}
+			sb.WriteString("</params>\n")
+			return &object.Str{V: sb.String()}, nil
+		}})
+
+		return object.None, nil
+	}})
+	m.Dict.SetStr("Marshaller", marshallerCls)
+
+	// ── Unmarshaller / ExpatParser / getparser ────────────────────────────────
+
+	unmarshallerCls := &object.Class{Name: "Unmarshaller", Dict: object.NewDict()}
+	unmarshallerCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		// state: accumulated xml buffer, parsed results
+		inst.Dict.SetStr("_xml", &object.Str{V: ""})
+		inst.Dict.SetStr("_method", object.None)
+		inst.Dict.SetStr("_params", object.None) // None = not yet parsed
+
+		inst.Dict.SetStr("getmethodname", &object.BuiltinFunc{Name: "getmethodname", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if v, ok2 := inst.Dict.GetStr("_method"); ok2 {
+				return v, nil
+			}
+			return object.None, nil
+		}})
+
+		inst.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			params, ok2 := inst.Dict.GetStr("_params")
+			if !ok2 || params == object.None {
+				return nil, object.Errorf(responseErrCls, "response error")
+			}
+			return params, nil
+		}})
+
+		return object.None, nil
+	}})
+	m.Dict.SetStr("Unmarshaller", unmarshallerCls)
+
+	expatParserCls := &object.Class{Name: "ExpatParser", Dict: object.NewDict()}
+	expatParserCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		inst.Dict.SetStr("_buf", &object.Str{V: ""})
+		inst.Dict.SetStr("_target", object.None)
+		return object.None, nil
+	}})
+	m.Dict.SetStr("ExpatParser", expatParserCls)
+
+	m.Dict.SetStr("getparser", &object.BuiltinFunc{Name: "getparser", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		// Create a linked Unmarshaller + ExpatParser pair
+		uInst := &object.Instance{Class: unmarshallerCls, Dict: object.NewDict()}
+		uInst.Dict.SetStr("_xml", &object.Str{V: ""})
+		uInst.Dict.SetStr("_method", object.None)
+		uInst.Dict.SetStr("_params", object.None)
+		uInst.Dict.SetStr("getmethodname", &object.BuiltinFunc{Name: "getmethodname", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if v, ok2 := uInst.Dict.GetStr("_method"); ok2 {
+				return v, nil
+			}
+			return object.None, nil
+		}})
+		uInst.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			params, ok2 := uInst.Dict.GetStr("_params")
+			if !ok2 || params == object.None {
+				return nil, object.Errorf(responseErrCls, "response error")
+			}
+			return params, nil
+		}})
+
+		pInst := &object.Instance{Class: expatParserCls, Dict: object.NewDict()}
+		pInst.Dict.SetStr("_buf", &object.Str{V: ""})
+		pInst.Dict.SetStr("_target", uInst)
+
+		pInst.Dict.SetStr("feed", &object.BuiltinFunc{Name: "feed", Call: func(_ any, args []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(args) < 1 {
+				return object.None, nil
+			}
+			chunk := object.Str_(args[0])
+			if cur, ok2 := pInst.Dict.GetStr("_buf"); ok2 {
+				pInst.Dict.SetStr("_buf", &object.Str{V: object.Str_(cur) + chunk})
+			}
+			return object.None, nil
+		}})
+
+		pInst.Dict.SetStr("close", &object.BuiltinFunc{Name: "close", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			var xmlData string
+			if cur, ok2 := pInst.Dict.GetStr("_buf"); ok2 {
+				xmlData = object.Str_(cur)
+			}
+			method, params, err := parseXmlrpc(xmlData)
+			if err != nil {
+				return nil, object.Errorf(responseErrCls, "%v", err)
+			}
+			if method != "" {
+				uInst.Dict.SetStr("_method", &object.Str{V: method})
+			}
+			// Store (params_tuple,) — same shape as loads() but just the first element
+			paramsTuple := &object.Tuple{V: params}
+			// close() on Unmarshaller returns params as tuple (matching CPython)
+			uInst.Dict.SetStr("_params", paramsTuple)
+			return object.None, nil
+		}})
+
+		return &object.Tuple{V: []object.Object{pInst, uInst}}, nil
+	}})
+
+	// ── MultiCallIterator ─────────────────────────────────────────────────────
+
+	multiCallIterCls := &object.Class{Name: "MultiCallIterator", Dict: object.NewDict()}
+	multiCallIterCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) < 1 {
+			return object.None, nil
+		}
+		inst, ok := a[0].(*object.Instance)
+		if !ok {
+			return object.None, nil
+		}
+		var results []object.Object
+		if len(a) >= 2 {
+			switch v := a[1].(type) {
+			case *object.List:
+				results = v.V
+			case *object.Tuple:
+				results = v.V
+			}
+		}
+		idx := 0
+		inst.Dict.SetStr("__iter__", &object.BuiltinFunc{Name: "__iter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return inst, nil
+		}})
+		inst.Dict.SetStr("__next__", &object.BuiltinFunc{Name: "__next__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			if idx >= len(results) {
+				return nil, object.Errorf(i.stopIter, "")
+			}
+			item := results[idx]
+			idx++
+			// If dict with faultCode → raise Fault
+			if d, ok2 := item.(*object.Dict); ok2 {
+				if fc, ok3 := d.GetStr("faultCode"); ok3 {
+					var fs object.Object = &object.Str{V: ""}
+					if v, ok4 := d.GetStr("faultString"); ok4 {
+						fs = v
+					}
+					faultExc := &object.Exception{
+						Class: faultCls,
+						Args:  &object.Tuple{V: []object.Object{fc, fs}},
+						Msg:   fmt.Sprintf("%v: %v", object.Str_(fc), object.Str_(fs)),
+					}
+					return nil, faultExc
+				}
+			}
+			// If list → unwrap first element
+			if lst, ok2 := item.(*object.List); ok2 {
+				if len(lst.V) > 0 {
+					return lst.V[0], nil
+				}
+				return object.None, nil
+			}
+			return item, nil
+		}})
+		return object.None, nil
+	}})
+	m.Dict.SetStr("MultiCallIterator", multiCallIterCls)
+
+	// ── Fast* aliases (None in pure-Python mode) ──────────────────────────────
+
+	m.Dict.SetStr("FastParser", object.None)
+	m.Dict.SetStr("FastMarshaller", object.None)
+	m.Dict.SetStr("FastUnmarshaller", object.None)
 
 	return m
 }

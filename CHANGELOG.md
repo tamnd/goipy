@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.246 - 2026-04-26
+
+`xmlrpc.client` — deeper API coverage building on fixture 245.
+
+**New functions:** `escape(s)` — HTML entity encoding (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`); `gzip_encode(data)` / `gzip_decode(data)` — gzip round-trip on bytes; `getparser()` → `(ExpatParser, Unmarshaller)` — XML-RPC parser/unmarshaller pair.
+
+**New types:** `Marshaller` with `dumps(values)` → `<params>...</params>` XML fragment; `Unmarshaller` with `getmethodname()` and `close()` (raises `ResponseError` on a fresh instance); `ExpatParser` with `feed(data)` / `close()` — feeds accumulated XML into the linked Unmarshaller; `MultiCallIterator` — iterates over multi-call results, unwraps single-element lists, and raises `Fault` for fault dicts.
+
+**Extended types:** `DateTime` — `__eq__`, `__lt__`, `__le__`, `__gt__`, `__ge__` (lexicographic value comparison); `Binary` — `__eq__` comparing `.data` bytes.
+
+**Constants:** `WRAPPERS = (DateTime, Binary)`; `FastParser = FastMarshaller = FastUnmarshaller = None`.
+
+12 test cases verified against CPython 3.14 (fixture 246).
+
 ## v0.0.245 - 2026-04-26
 
 `xmlrpc` package — namespace, `xmlrpc.client`, and `xmlrpc.server` submodules.
