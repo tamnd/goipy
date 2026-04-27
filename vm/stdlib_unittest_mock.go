@@ -249,12 +249,14 @@ func mockInitInstance(inst *object.Instance, callable bool) {
 	inst.Dict.SetStr("mock_calls", &object.List{})
 	inst.Dict.SetStr("_children", object.NewDict())
 	inst.Dict.SetStr("_spec", object.None)
+	inst.Dict.SetStr("_spec_set", object.None)
 	inst.Dict.SetStr("_callable", object.BoolOf(callable))
 	inst.Dict.SetStr("return_value", object.None)
 	inst.Dict.SetStr("_return_value_set", object.BoolOf(false))
 	inst.Dict.SetStr("side_effect", object.None)
 	inst.Dict.SetStr("_name", object.None)
 	inst.Dict.SetStr("_side_effect_idx", object.NewInt(0))
+	inst.Dict.SetStr("_wraps", object.None)
 }
 
 // buildMockCore builds the core Mock/NonCallableMock class.
@@ -282,6 +284,13 @@ func buildMockCore(i *Interp, callCls *object.Class, callable bool, className st
 				}
 				if sp, ok := kw.GetStr("spec"); ok {
 					inst.Dict.SetStr("_spec", sp)
+				}
+				if ss, ok := kw.GetStr("spec_set"); ok {
+					inst.Dict.SetStr("_spec_set", ss)
+					inst.Dict.SetStr("_spec", ss) // spec_set implies spec
+				}
+				if wr, ok := kw.GetStr("wraps"); ok {
+					inst.Dict.SetStr("_wraps", wr)
 				}
 			}
 			return object.None, nil
@@ -353,6 +362,21 @@ func buildMockCore(i *Interp, callCls *object.Class, callable bool, className st
 			inst := a[0].(*object.Instance)
 			name := object.Str_(a[1])
 			val := a[2]
+			// spec_set prevents setting attributes not on the spec
+			specSetObj, _ := inst.Dict.GetStr("_spec_set")
+			if specSetObj != nil && specSetObj != object.None {
+				// Allow internal _-prefixed attrs and standard mock attrs
+				allowed := map[string]bool{
+					"return_value": true, "side_effect": true, "called": true,
+					"call_count": true, "call_args": true, "call_args_list": true,
+					"method_calls": true, "mock_calls": true,
+				}
+				if !allowed[name] && !strings.HasPrefix(name, "_") {
+					if !mockSpecHasAttr(specSetObj, name) {
+						return nil, object.Errorf(i.attrErr, "Cannot set '%s': attribute not on spec", name)
+					}
+				}
+			}
 			if name == "return_value" {
 				inst.Dict.SetStr("_return_value_set", object.BoolOf(true))
 			}
@@ -469,6 +493,29 @@ func buildMockCore(i *Interp, callCls *object.Class, callable bool, className st
 					}
 				}
 
+				// wraps: call through if return_value not explicitly set
+				wrapsObj, _ := inst.Dict.GetStr("_wraps")
+				if wrapsObj != nil && wrapsObj != object.None {
+					rvSetObj, _ := inst.Dict.GetStr("_return_value_set")
+					if !object.Truthy(rvSetObj) {
+						interp := ii.(*Interp)
+						return interp.callObject(wrapsObj, args, kw)
+					}
+				}
+
+				rvSetObj2, _ := inst.Dict.GetStr("_return_value_set")
+				if !object.Truthy(rvSetObj2) {
+					// Auto-create a child Mock as return_value (lazy, cached in _auto_rv)
+					rvAuto, rvOk2 := inst.Dict.GetStr("_auto_rv")
+					if !rvOk2 || rvAuto == nil {
+						child := &object.Instance{Class: cls, Dict: object.NewDict()}
+						mockInitInstance(child, true)
+						child.Dict.SetStr("_name", &object.Str{V: "()"})
+						inst.Dict.SetStr("_auto_rv", child)
+						rvAuto = child
+					}
+					return rvAuto, nil
+				}
 				rvObj, _ := inst.Dict.GetStr("return_value")
 				if rvObj != nil {
 					return rvObj, nil
@@ -734,6 +781,29 @@ func buildMockCore(i *Interp, callCls *object.Class, callable bool, className st
 		},
 	})
 
+	// attach_mock — attach a child mock as named attribute
+	cls.Dict.SetStr("attach_mock", &object.BuiltinFunc{
+		Name: "attach_mock",
+		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			if len(a) < 3 {
+				return object.None, nil
+			}
+			parent := a[0].(*object.Instance)
+			child := a[1]
+			nameStr := object.Str_(a[2])
+
+			childrenObj, _ := parent.Dict.GetStr("_children")
+			cd, _ := childrenObj.(*object.Dict)
+			if cd == nil {
+				cd = object.NewDict()
+				parent.Dict.SetStr("_children", cd)
+			}
+			cd.SetStr(nameStr, child)
+			parent.Dict.SetStr(nameStr, child)
+			return object.None, nil
+		},
+	})
+
 	return cls
 }
 
@@ -790,10 +860,18 @@ func mockPatchNameEnter(interp *Interp, inst *object.Instance, mockCls *object.C
 	modName := target[:dot]
 	attrName := target[dot+1:]
 
-	mod, err := interp.loadModule(modName)
-	if err != nil {
-		return nil, err
+	// Resolve the target module — "builtins" uses a fake module wrapping i.Builtins
+	var mod *object.Module
+	if modName == "builtins" {
+		mod = &object.Module{Name: "builtins", Dict: interp.Builtins}
+	} else {
+		var err error
+		mod, err = interp.loadModule(modName)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	orig, _ := mod.Dict.GetStr(attrName)
 	inst.Dict.SetStr("_original", orig)
 	inst.Dict.SetStr("_target_mod", mod)
@@ -1016,7 +1094,62 @@ func buildPatcherClass(i *Interp, mockCls *object.Class) *object.Class {
 		},
 	})
 
+	// start() — manual patch activation
+	cls.Dict.SetStr("start", &object.BuiltinFunc{
+		Name: "start",
+		Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return object.None, nil
+			}
+			inst := a[0].(*object.Instance)
+			return doEnter(ii.(*Interp), inst)
+		},
+	})
+
+	// stop() — manual patch deactivation
+	cls.Dict.SetStr("stop", &object.BuiltinFunc{
+		Name: "stop",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return object.None, nil
+			}
+			inst := a[0].(*object.Instance)
+			doExit(inst)
+			return object.None, nil
+		},
+	})
+
 	return cls
+}
+
+// mockSplitLines splits text into lines keeping trailing newlines, matching
+// Python's file.readlines() and for-line-in-file behavior.
+// mockOpenChildMock creates a bare Mock instance suitable for use as a child
+// mock in mock_open (write, __enter__, __exit__).
+func mockOpenChildMock(mockCls *object.Class) *object.Instance {
+	m := &object.Instance{Class: mockCls, Dict: object.NewDict()}
+	mockInitInstance(m, true)
+	return m
+}
+
+func mockSplitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var lines []string
+	for {
+		idx := strings.Index(s, "\n")
+		if idx < 0 {
+			lines = append(lines, s)
+			break
+		}
+		lines = append(lines, s[:idx+1])
+		s = s[idx+1:]
+		if s == "" {
+			break
+		}
+	}
+	return lines
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1201,6 +1334,115 @@ func (i *Interp) buildUnittestMock() *object.Module {
 	})
 
 	m.Dict.SetStr("PropertyMock", buildMockCore(i, callCls, true, "PropertyMock"))
+
+	// mock_open — create a mock suitable for use as the open() builtin
+	m.Dict.SetStr("mock_open", &object.BuiltinFunc{
+		Name: "mock_open",
+		Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			args := mpArgs(a)
+			readData := ""
+			if len(args) >= 1 {
+				if s, ok := args[0].(*object.Str); ok {
+					readData = s.V
+				}
+			}
+			if kw != nil {
+				if rd, ok := kw.GetStr("read_data"); ok {
+					if s, ok2 := rd.(*object.Str); ok2 {
+						readData = s.V
+					}
+				}
+			}
+
+			lines := mockSplitLines(readData)
+
+			// Build file handle: a Mock instance with real read/readline/readlines/write
+			handle := &object.Instance{Class: mockCls, Dict: object.NewDict()}
+			mockInitInstance(handle, true)
+			handle.Dict.SetStr("_pos", object.NewInt(0))
+			handle.Dict.SetStr("_line_idx", object.NewInt(0))
+
+			// read() — returns all data (once)
+			handle.Dict.SetStr("read", &object.BuiltinFunc{
+				Name: "read",
+				Call: func(_ any, ha []object.Object, _ *object.Dict) (object.Object, error) {
+					return &object.Str{V: readData}, nil
+				},
+			})
+
+			// readline() — returns lines one at a time; captures handle directly
+			// because BuiltinFuncs in instance dicts are unbound (no self in args).
+			handle.Dict.SetStr("readline", &object.BuiltinFunc{
+				Name: "readline",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					idxObj, _ := handle.Dict.GetStr("_line_idx")
+					idx := int64(0)
+					if li, ok := idxObj.(*object.Int); ok {
+						idx = li.Int64()
+					}
+					if int(idx) >= len(lines) {
+						return &object.Str{V: ""}, nil
+					}
+					handle.Dict.SetStr("_line_idx", object.NewInt(idx+1))
+					return &object.Str{V: lines[idx]}, nil
+				},
+			})
+
+			// readlines() — returns list of all lines
+			handle.Dict.SetStr("readlines", &object.BuiltinFunc{
+				Name: "readlines",
+				Call: func(_ any, ha []object.Object, _ *object.Dict) (object.Object, error) {
+					objs := make([]object.Object, len(lines))
+					for j, l := range lines {
+						objs[j] = &object.Str{V: l}
+					}
+					return &object.List{V: objs}, nil
+				},
+			})
+
+			// write() — tracked Mock instance stored on handle
+			writeMock := mockOpenChildMock(mockCls)
+			handle.Dict.SetStr("write", writeMock)
+
+			// __enter__ — Mock instance stored directly so assertions work on it.
+			// When the VM calls handle.__enter__(), it finds this Mock, calls it via
+			// mockCls.__call__, which records the call and returns return_value=handle.
+			enterMock := mockOpenChildMock(mockCls)
+			enterMock.Dict.SetStr("return_value", handle)
+			enterMock.Dict.SetStr("_return_value_set", object.BoolOf(true))
+			handle.Dict.SetStr("__enter__", enterMock)
+
+			// __exit__ — same pattern; return_value=False suppresses exceptions
+			exitMock := mockOpenChildMock(mockCls)
+			exitMock.Dict.SetStr("return_value", object.BoolOf(false))
+			exitMock.Dict.SetStr("_return_value_set", object.BoolOf(true))
+			handle.Dict.SetStr("__exit__", exitMock)
+
+			// __iter__ — iterate over lines
+			handle.Dict.SetStr("__iter__", &object.BuiltinFunc{
+				Name: "__iter__",
+				Call: func(_ any, ha []object.Object, _ *object.Dict) (object.Object, error) {
+					pos := int64(0)
+					return &object.Iter{Next: func() (object.Object, bool, error) {
+						if int(pos) >= len(lines) {
+							return nil, false, nil
+						}
+						line := lines[pos]
+						pos++
+						return &object.Str{V: line}, true, nil
+					}}, nil
+				},
+			})
+
+			// Main callable mock — returns handle on every call
+			mainMock := &object.Instance{Class: mockCls, Dict: object.NewDict()}
+			mockInitInstance(mainMock, true)
+			mainMock.Dict.SetStr("return_value", handle)
+			mainMock.Dict.SetStr("_return_value_set", object.BoolOf(true))
+
+			return mainMock, nil
+		},
+	})
 
 	return m
 }
