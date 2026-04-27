@@ -261,6 +261,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPstats(), true
 	case "timeit":
 		return i.buildTimeit(), true
+	case "trace":
+		return i.buildTrace(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":
