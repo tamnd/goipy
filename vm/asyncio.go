@@ -269,6 +269,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildEnsurepip(), true
 	case "venv":
 		return i.buildVenv(), true
+	case "zipapp":
+		return i.buildZipapp(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":

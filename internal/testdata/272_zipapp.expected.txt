@@ -1,0 +1,16 @@
+test_import: OK
+test_create_archive_basic: OK
+test_create_archive_is_valid_zip: OK
+test_create_archive_contains_main: OK
+test_create_archive_multiple_files: OK
+test_create_archive_with_interpreter: OK
+test_create_archive_shebang_content: OK
+test_create_archive_no_shebang_still_valid_zip: OK
+test_get_interpreter_none_when_no_shebang: OK
+test_get_interpreter_returns_string: OK
+test_get_interpreter_roundtrip: OK
+test_create_archive_auto_target: OK
+test_create_archive_with_main: OK
+test_create_archive_main_content: OK
+test_create_archive_compressed: OK
+test_create_archive_copy_existing: OK
