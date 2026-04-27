@@ -153,6 +153,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildGettext(), true
 	case "locale":
 		return i.buildLocale(), true
+	case "pydoc":
+		return i.buildPydoc(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":

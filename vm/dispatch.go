@@ -1374,6 +1374,12 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				Name:     codeObj.Name,
 				QualName: codeObj.QualName,
 			}
+			// co_consts[0] is the docstring if it's a string.
+			if len(codeObj.Consts) > 0 {
+				if ds, ok := codeObj.Consts[0].(*object.Str); ok {
+					fn.Doc = ds
+				}
+			}
 			f.push(fn)
 		case op.SET_FUNCTION_ATTRIBUTE:
 			fn := f.pop().(*object.Function)
