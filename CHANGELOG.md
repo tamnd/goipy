@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.255 - 2026-04-27
+
+Python Development Mode (`devmode`) — adds `sys.flags`, missing `sys` functions, and the `faulthandler` module.
+
+**`sys.flags`:** sequence-like object with 18 named attributes matching CPython's layout: `debug`, `inspect`, `interactive`, `optimize`, `dont_write_bytecode`, `no_user_site`, `no_site`, `ignore_environment`, `verbose`, `bytes_warning`, `quiet`, `hash_randomization` (=1), `isolated`, `dev_mode` (=False), `utf8_mode`, `warn_default_encoding`, `safe_path`, `int_max_str_digits` (=4300). Supports attribute access, index access (`flags[0]`, `flags[-1]`), `len()` (18), and iteration.
+
+**New `sys` attributes:** `sys.warnoptions` (empty list), `sys._xoptions` (empty dict), `sys.maxunicode` (1114111), `sys.stdin` (None stub).
+
+**New `sys` functions:** `getdefaultencoding()` → `'utf-8'`; `getfilesystemencoding()` → `'utf-8'`; `getfilesystemencodeerrors()` → `'surrogateescape'`; `intern(s)` → same string; `addaudithook(hook)` → None (no-op); `audit(event, *args)` → None (no-op); `getsizeof(o)` → positive int; `is_finalizing()` → False.
+
+**`faulthandler` module:** `is_enabled()` → False; `enable()`, `disable()`, `dump_traceback()`, `cancel_dump_traceback_later()` → None stubs.
+
+13 test functions verified against CPython 3.14 (fixture 255).
+
 ## v0.0.254 - 2026-04-27
 
 `pydoc` — runtime-sufficient implementation of the standard library pydoc module. Also fixes a pre-existing bug in `repr()` for control characters (was not zero-padding `\x` escapes).

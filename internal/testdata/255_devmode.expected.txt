@@ -1,0 +1,62 @@
+flags
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+False
+0
+0
+False
+4300
+test_flags_attrs ok
+18
+0
+False
+4300
+tuple
+18
+0
+False
+test_flags_sequence ok
+not in dev mode
+not verbose
+not optimized
+test_flags_devmode_guard ok
+list
+0
+test_warnoptions ok
+dict
+0
+False
+test_xoptions ok
+str
+utf-8
+test_getdefaultencoding ok
+str
+utf-8
+str
+test_getfilesystemencoding ok
+str
+hello
+world
+test_intern ok
+test_audit ok
+int
+True
+True
+test_getsizeof ok
+1114111
+test_maxunicode ok
+False
+test_is_finalizing ok
+module
+False
+test_faulthandler ok
