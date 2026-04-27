@@ -249,6 +249,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildFilecmp(), true
 	case "linecache":
 		return i.buildLinecache(), true
+	case "bdb":
+		return i.buildBdb(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":
