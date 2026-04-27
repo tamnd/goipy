@@ -19,6 +19,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildArray(), true
 	case "weakref":
 		return i.buildWeakref(), true
+	case "abc":
+		return i.buildAbc(), true
 	case "collections":
 		return i.buildCollections(), true
 	case "collections.abc":

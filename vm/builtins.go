@@ -1082,12 +1082,59 @@ func (i *Interp) initBuiltins() {
 		return object.BoolOf(isinstance(a[0], a[1])), nil
 	}})
 	b.SetStr("issubclass", &object.BuiltinFunc{Name: "issubclass", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
 		ca, okA := a[0].(*object.Class)
+		// Second arg may be a tuple of classes.
+		if tup, ok := a[1].(*object.Tuple); ok {
+			for _, tt := range tup.V {
+				if c2, ok2 := tt.(*object.Class); ok2 && okA {
+					if object.IsSubclass(ca, c2) {
+						return object.True, nil
+					}
+					if regsT, ok3 := abcGetRegistered(c2); ok3 {
+						for _, r := range regsT {
+							if object.IsSubclass(ca, r) {
+								return object.True, nil
+							}
+						}
+					}
+				}
+			}
+			return object.False, nil
+		}
 		cb, okB := a[1].(*object.Class)
 		if !okA || !okB {
 			return object.False, nil
 		}
-		return object.BoolOf(object.IsSubclass(ca, cb)), nil
+		// Structural subclass check.
+		if object.IsSubclass(ca, cb) {
+			return object.True, nil
+		}
+		// Check __subclasshook__ on the parent class.
+		if hookVal, ok2 := classLookup(cb, "__subclasshook__"); ok2 {
+			var hookResult object.Object
+			var hookErr error
+			switch hv := hookVal.(type) {
+			case *object.ClassMethod:
+				hookResult, hookErr = in.callObject(hv.Fn, []object.Object{cb, ca}, nil)
+			case *object.BoundMethod:
+				hookResult, hookErr = in.callObject(hv.Fn, []object.Object{hv.Self, ca}, nil)
+			default:
+				hookResult, hookErr = in.callObject(hookVal, []object.Object{ca}, nil)
+			}
+			if hookErr == nil && hookResult != object.NotImplemented && hookResult != nil {
+				return object.BoolOf(isTruthy(hookResult)), nil
+			}
+		}
+		// ABC virtual subclass registry check.
+		if regs, ok3 := abcGetRegistered(cb); ok3 {
+			for _, r := range regs {
+				if object.IsSubclass(ca, r) {
+					return object.True, nil
+				}
+			}
+		}
+		return object.False, nil
 	}})
 	b.SetStr("type", &object.BuiltinFunc{Name: "type", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if inst, ok := a[0].(*object.Instance); ok {

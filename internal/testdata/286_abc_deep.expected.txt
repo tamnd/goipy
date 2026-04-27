@@ -1,0 +1,40 @@
+True
+False
+isabstractmethod ok
+TypeError raised
+True
+cannot_instantiate ok
+3.14
+concrete_ok ok
+TypeError raised
+True
+multiple_abstract ok
+TypeError raised
+partial_abstract ok
+meow
+walk
+full_impl ok
+True
+register ok
+True
+register_subclass ok
+True
+True
+cache_token ok
+TypeError raised
+42
+abcmeta ok
+True
+True
+True
+isinstance_inheritance ok
+True
+False
+subclasshook ok
+True
+True
+True
+abstract_variants ok
+99
+abstract_property ok
+done

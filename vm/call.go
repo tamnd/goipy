@@ -66,6 +66,9 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 			}
 			return result, nil
 		}
+		if err := checkAbstractMethods(i, fn); err != nil {
+			return nil, err
+		}
 		inst := &object.Instance{Class: fn, Dict: object.NewDict()}
 		if init, ok := classLookup(fn, "__init__"); ok {
 			initArgs := append([]object.Object{inst}, args...)
