@@ -107,7 +107,17 @@ func New() *Interp {
 func (i *Interp) Run(code *object.Code) (object.Object, error) {
 	globals := object.NewDict()
 	globals.SetStr("__name__", &object.Str{V: "__main__"})
+	globals.SetStr("__doc__", object.None)
+	globals.SetStr("__annotations__", object.NewDict())
 	globals.SetStr("__builtins__", i.Builtins)
+	globals.SetStr("__spec__", object.None)
+	globals.SetStr("__loader__", object.None)
+	globals.SetStr("__package__", object.None)
+	// Register the live namespace as __main__ so `import __main__` works.
+	if i.modules == nil {
+		i.modules = map[string]*object.Module{}
+	}
+	i.modules["__main__"] = &object.Module{Name: "__main__", Dict: globals}
 	frame := NewFrame(code, globals, i.Builtins, globals)
 	return i.runFrame(frame)
 }
