@@ -253,6 +253,12 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildBdb(), true
 	case "pdb":
 		return i.buildPdb(), true
+	case "profile":
+		return i.buildProfile(), true
+	case "cProfile":
+		return i.buildCProfile(), true
+	case "pstats":
+		return i.buildPstats(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":
