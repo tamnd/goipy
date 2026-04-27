@@ -159,6 +159,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildFaulthandler(), true
 	case "doctest":
 		return i.buildDoctest(), true
+	case "unittest":
+		return i.buildUnittest(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":

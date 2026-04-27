@@ -952,6 +952,13 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 		m.Dict.SetStr(name, val)
 		return nil
 	}
+	if fn, ok := o.(*object.Function); ok {
+		if fn.Dict == nil {
+			fn.Dict = object.NewDict()
+		}
+		fn.Dict.SetStr(name, val)
+		return nil
+	}
 	if fin, ok := o.(*object.PyFinalizer); ok {
 		if name == "atexit" {
 			fin.Atexit = object.Truthy(val)

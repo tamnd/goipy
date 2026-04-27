@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.0.257 - 2026-04-27
+
+`unittest` — implements the standard library unittest framework.
+
+**Exception:** `SkipTest(reason)` — raises to signal a skipped test.
+
+**`TestCase(methodName='runTest')`:** full constructor storing `_testMethodName`; `run(result)` calls `setUp`, the test method, and `tearDown`, recording skips/failures/errors/success in the result; `debug()` runs without result capture; `skipTest(reason)`, `fail(msg)`, `countTestCases()`, `id()`, `shortDescription()`, `addCleanup()`, `doCleanups()`, `subTest()`.
+
+**Assertions (35 methods):** `assertEqual`, `assertNotEqual`, `assertTrue`, `assertFalse`, `assertIs`, `assertIsNot`, `assertIsNone`, `assertIsNotNone`, `assertIn`, `assertNotIn`, `assertIsInstance`, `assertNotIsInstance`, `assertGreater`, `assertGreaterEqual`, `assertLess`, `assertLessEqual`, `assertAlmostEqual` / `assertNotAlmostEqual` (places kwarg), `assertRegex`, `assertNotRegex`, `assertCountEqual`, `assertMultiLineEqual`, `assertSequenceEqual`, `assertListEqual`, `assertTupleEqual`, `assertSetEqual`, `assertDictEqual`, `assertRaises` (context manager and direct-call form), `assertRaisesRegex`, `assertWarns`, `assertWarnsRegex`, `assertLogs`, `assertNoLogs`, `addTypeEqualityFunc`.
+
+**`TestResult`:** `errors`, `failures`, `skipped`, `expectedFailures`, `unexpectedSuccesses` lists; `testsRun`, `shouldStop`, `buffer`, `failfast`; `wasSuccessful()`, `stop()`, `startTest()`, `stopTest()`, `startTestRun()`, `stopTestRun()`, `addSuccess()`, `addError()`, `addFailure()`, `addSkip()`, `addExpectedFailure()`, `addUnexpectedSuccess()`, `addSubTest()`, `addDuration()`.
+
+**`TextTestResult(stream, descriptions, verbosity)`:** inherits TestResult; `printErrors()`, `getDescription()`.
+
+**`TextTestRunner(...)`:** `run(test)` creates a TextTestResult, runs the test/suite through it, returns the result.
+
+**`TestSuite(tests=())`:** `addTest()`, `addTests()`, `countTestCases()`, `run(result)`, `__iter__()`.
+
+**`TestLoader`:** `testMethodPrefix='test'`; `getTestCaseNames(cls)` → sorted list; `loadTestsFromTestCase(cls)` discovers and instantiates all `test*` methods; `loadTestsFromModule()`, `loadTestsFromName()`, `loadTestsFromNames()`, `discover()` return empty stubs.
+
+**`FunctionTestCase(testFunc, setUp=None, tearDown=None)`:** wraps a plain function as a test.
+
+**Skip decorators:** `@skip(reason)`, `@skipIf(condition, reason)`, `@skipUnless(condition, reason)` set `__unittest_skip__` / `__unittest_skip_why__` on the decorated function; `@expectedFailure` sets `__unittest_expecting_failure__`. Requires the `*object.Function` setAttr fix added to `vm/ops.go`.
+
+**Module attributes:** `defaultTestLoader` (shared `TestLoader` instance), `main()` stub.
+
+9 test functions verified against CPython 3.14 (fixture 257).
+
 ## v0.0.256 - 2026-04-27
 
 `doctest` — implements the standard library `doctest` module.
