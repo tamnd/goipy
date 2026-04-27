@@ -13,12 +13,13 @@ func (i *Interp) buildDataclasses() *object.Module {
 	missClass := &object.Class{Name: "_MISSING_TYPE", Dict: object.NewDict()}
 	missing := &object.Instance{Class: missClass, Dict: object.NewDict()}
 	m.Dict.SetStr("MISSING", missing)
-	m.Dict.SetStr("HAS_DEFAULT_FACTORY", missing) // expose as alias
+	// HAS_DEFAULT_FACTORY is its own sentinel in CPython; aliasing MISSING is close enough.
+	m.Dict.SetStr("HAS_DEFAULT_FACTORY", missing)
 
 	// ── KW_ONLY sentinel ─────────────────────────────────────────────────────
 	kwOnlyClass := &object.Class{Name: "_KW_ONLY_TYPE", Dict: object.NewDict()}
-	kwOnly := &object.Instance{Class: kwOnlyClass, Dict: object.NewDict()}
-	m.Dict.SetStr("KW_ONLY", kwOnly)
+	kwOnlySentinel := &object.Instance{Class: kwOnlyClass, Dict: object.NewDict()}
+	m.Dict.SetStr("KW_ONLY", kwOnlySentinel)
 
 	// ── FrozenInstanceError ───────────────────────────────────────────────────
 	frozenErr := &object.Class{
@@ -38,8 +39,12 @@ func (i *Interp) buildDataclasses() *object.Module {
 
 	// ── field() constructor ───────────────────────────────────────────────────
 	m.Dict.SetStr("field", &object.BuiltinFunc{Name: "field",
-		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-			return dcMakeField(fieldCls, missing, a, kw), nil
+		Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			interp := interpFrom(ii)
+			if interp == nil {
+				interp = i
+			}
+			return dcMakeField(interp, fieldCls, missing, a, kw)
 		}})
 
 	// ── is_dataclass(obj) ─────────────────────────────────────────────────────
@@ -109,7 +114,7 @@ func (i *Interp) buildDataclasses() *object.Module {
 			return dcReplace(ii, a[0], kw, missing)
 		}})
 
-	// ── make_dataclass(cls_name, fields, ...) ────────────────────────────────
+	// ── make_dataclass(cls_name, fields, *, bases=(), ...) ───────────────────
 	m.Dict.SetStr("make_dataclass", &object.BuiltinFunc{Name: "make_dataclass",
 		Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
 			ii := interpFrom(interp)
@@ -136,7 +141,6 @@ func (i *Interp) buildDataclasses() *object.Module {
 				}
 			}
 			cls := &object.Class{Name: name, Bases: bases, Dict: object.NewDict()}
-			// Build __annotations__ from the field spec list.
 			fieldList, _ := a[1].(*object.List)
 			if fieldList == nil {
 				if ft, ok := a[1].(*object.Tuple); ok {
@@ -146,13 +150,19 @@ func (i *Interp) buildDataclasses() *object.Module {
 			if fieldList != nil {
 				dcBuildAnnotations(ii, cls, fieldList.V, fieldCls, missing)
 			}
-			// Now run the full dataclass processing to wire __init__, __repr__, __eq__.
-			return dcProcessClass(ii, cls, fieldCls, missing, frozenErr, false, false, true, true, true), nil
+			doFrozen := dcKwBool(kw, "frozen", false)
+			doOrder := dcKwBool(kw, "order", false)
+			doInit := dcKwBool(kw, "init", true)
+			doRepr := dcKwBool(kw, "repr", true)
+			doEq := dcKwBool(kw, "eq", true)
+			doMatchArgs := dcKwBool(kw, "match_args", true)
+			doKwOnly := dcKwBool(kw, "kw_only", false)
+			doUnsafeHash := dcKwBool(kw, "unsafe_hash", false)
+			return dcProcessClass(ii, cls, fieldCls, missing, frozenErr, kwOnlySentinel,
+				doFrozen, doOrder, doInit, doRepr, doEq, doMatchArgs, doKwOnly, doUnsafeHash), nil
 		}})
 
 	// ── @dataclass decorator ──────────────────────────────────────────────────
-	// Supports: @dataclass, @dataclass(init=True, repr=True, eq=True,
-	//           order=False, unsafe_hash=False, frozen=False, slots=False)
 	var dcDecorator object.Object
 	dcDecorator = &object.BuiltinFunc{Name: "dataclass",
 		Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -163,7 +173,8 @@ func (i *Interp) buildDataclasses() *object.Module {
 			// Called as @dataclass (no parens) → a[0] is the class.
 			if len(a) == 1 {
 				if cls, ok := a[0].(*object.Class); ok {
-					return dcProcessClass(ii, cls, fieldCls, missing, frozenErr, false, false, true, true, true), nil
+					return dcProcessClass(ii, cls, fieldCls, missing, frozenErr, kwOnlySentinel,
+						false, false, true, true, true, true, false, false), nil
 				}
 			}
 			// Called as @dataclass(...) → return a decorator.
@@ -172,7 +183,9 @@ func (i *Interp) buildDataclasses() *object.Module {
 			doEq := dcKwBool(kw, "eq", true)
 			doOrder := dcKwBool(kw, "order", false)
 			frozen := dcKwBool(kw, "frozen", false)
-			_ = dcKwBool(kw, "unsafe_hash", false)
+			doMatchArgs := dcKwBool(kw, "match_args", true)
+			doKwOnly := dcKwBool(kw, "kw_only", false)
+			doUnsafeHash := dcKwBool(kw, "unsafe_hash", false)
 			_ = dcKwBool(kw, "slots", false)
 			return &object.BuiltinFunc{Name: "dataclass_decorator",
 				Call: func(interp2 any, a2 []object.Object, _ *object.Dict) (object.Object, error) {
@@ -187,7 +200,8 @@ func (i *Interp) buildDataclasses() *object.Module {
 					if !ok {
 						return nil, object.Errorf(ii2.typeErr, "dataclass() applied to non-class")
 					}
-					return dcProcessClass(ii2, cls, fieldCls, missing, frozenErr, frozen, doOrder, doInit, doRepr, doEq), nil
+					return dcProcessClass(ii2, cls, fieldCls, missing, frozenErr, kwOnlySentinel,
+						frozen, doOrder, doInit, doRepr, doEq, doMatchArgs, doKwOnly, doUnsafeHash), nil
 				}}, nil
 		}}
 	_ = dcDecorator
@@ -220,7 +234,7 @@ func dcMakeFieldClass() *object.Class {
 	return cls
 }
 
-func dcMakeField(fieldCls *object.Class, missing *object.Instance, a []object.Object, kw *object.Dict) *object.Instance {
+func dcMakeField(ii *Interp, fieldCls *object.Class, missing *object.Instance, a []object.Object, kw *object.Dict) (*object.Instance, error) {
 	f := &object.Instance{Class: fieldCls, Dict: object.NewDict()}
 	f.Dict.SetStr("name", &object.Str{V: ""})
 
@@ -260,6 +274,13 @@ func dcMakeField(fieldCls *object.Class, missing *object.Instance, a []object.Ob
 		}
 	}
 
+	// Raise ValueError if both default and default_factory are set.
+	if def != object.Object(missing) && defFactory != object.Object(missing) {
+		if ii != nil {
+			return nil, object.Errorf(ii.valueErr, "cannot specify both default and default_factory")
+		}
+	}
+
 	f.Dict.SetStr("default", def)
 	f.Dict.SetStr("default_factory", defFactory)
 	f.Dict.SetStr("repr", repr)
@@ -268,35 +289,41 @@ func dcMakeField(fieldCls *object.Class, missing *object.Instance, a []object.Ob
 	f.Dict.SetStr("compare", compare)
 	f.Dict.SetStr("metadata", metadata)
 	f.Dict.SetStr("kw_only", kwOnly)
-	return f
+	return f, nil
 }
 
 // ── dataclass params ──────────────────────────────────────────────────────────
 
-func dcMakeParams(frozen, order, init, matchArgs bool) *object.Instance {
+func dcMakeParams(frozen, order, init, matchArgs, kwOnly, unsafeHash bool) *object.Instance {
 	cls := &object.Class{Name: "_DataclassParams", Dict: object.NewDict()}
 	inst := &object.Instance{Class: cls, Dict: object.NewDict()}
 	inst.Dict.SetStr("frozen", object.BoolOf(frozen))
 	inst.Dict.SetStr("order", object.BoolOf(order))
 	inst.Dict.SetStr("init", object.BoolOf(init))
 	inst.Dict.SetStr("match_args", object.BoolOf(matchArgs))
+	inst.Dict.SetStr("kw_only", object.BoolOf(kwOnly))
+	inst.Dict.SetStr("unsafe_hash", object.BoolOf(unsafeHash))
 	return inst
 }
 
 // ── process class ─────────────────────────────────────────────────────────────
 
 func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missing *object.Instance,
-	frozenErr *object.Class, frozen, order, doInit, doRepr, doEq bool) *object.Class {
+	frozenErr *object.Class, kwOnlySentinel *object.Instance,
+	frozen, order, doInit, doRepr, doEq, matchArgs, classKwOnly, unsafeHash bool) *object.Class {
 
 	// Build __dataclass_fields__ from class annotations.
 	fields := object.NewDict()
 	cls.Dict.SetStr("__dataclass_fields__", fields)
-	cls.Dict.SetStr("__dataclass_params__", dcMakeParams(frozen, order, doInit, doEq))
+	cls.Dict.SetStr("__dataclass_params__", dcMakeParams(frozen, order, doInit, matchArgs, classKwOnly, unsafeHash))
 
 	// Collect annotations. Python 3.14 uses __annotate_func__ (lazy evaluation);
 	// fallback to __annotations__ for older .pyc or pre-3.14 paths.
 	annoDict := dcGetAnnotations(ii, cls)
-	var fieldOrder []string
+	var ownFieldOrder []string
+
+	// Track whether we've passed a KW_ONLY sentinel in the annotation list.
+	seenKwOnly := classKwOnly
 
 	if annoDict != nil {
 		keys, vals := annoDict.Items()
@@ -306,7 +333,24 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 				continue
 			}
 			fname := ks.V
-			fieldOrder = append(fieldOrder, fname)
+			typeVal := vals[k]
+
+			// KW_ONLY sentinel field: marks all subsequent fields as kw_only.
+			if kwOnlySentinel != nil {
+				if typeInst, ok3 := typeVal.(*object.Instance); ok3 && typeInst == kwOnlySentinel {
+					seenKwOnly = true
+					continue
+				}
+				// Also match any instance of the KW_ONLY class.
+				if typeInst, ok3 := typeVal.(*object.Instance); ok3 &&
+					typeInst.Class == kwOnlySentinel.Class {
+					seenKwOnly = true
+					continue
+				}
+			}
+
+			ownFieldOrder = append(ownFieldOrder, fname)
+
 			// Check if class has a default/field() value for this name.
 			var defVal object.Object = missing
 			var defFactory object.Object = missing
@@ -324,20 +368,84 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 						defFactory = df
 					}
 					cls.Dict.SetStr(fname, missing)
-				} else {
+				} else if existing != object.Object(missing) {
 					defVal = existing
 				}
 			}
 			if fobj == nil {
-				fobj = dcMakeField(fieldCls, missing, nil, nil)
+				fobj, _ = dcMakeField(ii, fieldCls, missing, nil, nil)
 			}
 			fobj.Dict.SetStr("name", &object.Str{V: fname})
-			fobj.Dict.SetStr("type", vals[k])
+			fobj.Dict.SetStr("type", typeVal)
 			fobj.Dict.SetStr("default", defVal)
 			fobj.Dict.SetStr("default_factory", defFactory)
+			// Apply per-field or class-level kw_only.
+			if seenKwOnly {
+				fobj.Dict.SetStr("kw_only", object.True)
+			}
 			fields.Set(key, fobj)
 		}
 	}
+
+	// ── Inheritance: prepend fields from dataclass base classes ───────────────
+	// CPython rule: fields from base classes come first, in left-to-right MRO order.
+	// Child fields override same-named base fields.
+	var inheritedOrder []string
+	for _, base := range cls.Bases {
+		fo, ok := base.Dict.GetStr("__dataclass_field_order__")
+		if !ok {
+			continue
+		}
+		baseOrder, ok2 := fo.(*object.List)
+		if !ok2 {
+			continue
+		}
+		fd, ok3 := base.Dict.GetStr("__dataclass_fields__")
+		if !ok3 {
+			continue
+		}
+		baseFields, ok4 := fd.(*object.Dict)
+		if !ok4 {
+			continue
+		}
+		for _, nameObj := range baseOrder.V {
+			ns, ok5 := nameObj.(*object.Str)
+			if !ok5 {
+				continue
+			}
+			// Child overrides: skip if child defined same name.
+			childOverrides := false
+			for _, cn := range ownFieldOrder {
+				if cn == ns.V {
+					childOverrides = true
+					break
+				}
+			}
+			if childOverrides {
+				continue
+			}
+			// Skip if already added from a prior base.
+			alreadyAdded := false
+			for _, prev := range inheritedOrder {
+				if prev == ns.V {
+					alreadyAdded = true
+					break
+				}
+			}
+			if alreadyAdded {
+				continue
+			}
+			fobj, ok6 := baseFields.GetStr(ns.V)
+			if !ok6 {
+				continue
+			}
+			inheritedOrder = append(inheritedOrder, ns.V)
+			fields.Set(nameObj, fobj)
+		}
+	}
+
+	// Final field order: inherited first, then own.
+	fieldOrder := append(inheritedOrder, ownFieldOrder...)
 
 	// Store field order for __init__ and __repr__.
 	orderList := make([]object.Object, len(fieldOrder))
@@ -345,6 +453,27 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 		orderList[k] = &object.Str{V: n}
 	}
 	cls.Dict.SetStr("__dataclass_field_order__", &object.List{V: orderList})
+
+	// ── __match_args__ ────────────────────────────────────────────────────────
+	if matchArgs {
+		var matchArgsSlice []object.Object
+		for _, n := range fieldOrder {
+			fobj, ok := dcLookupField(fields, n)
+			if !ok {
+				continue
+			}
+			isKwOnly := false
+			if kwOnlyV, ok2 := fobj.Dict.GetStr("kw_only"); ok2 {
+				if b, ok3 := kwOnlyV.(*object.Bool); ok3 {
+					isKwOnly = b.V
+				}
+			}
+			if !isKwOnly {
+				matchArgsSlice = append(matchArgsSlice, &object.Str{V: n})
+			}
+		}
+		cls.Dict.SetStr("__match_args__", &object.Tuple{V: matchArgsSlice})
+	}
 
 	// ── __init__ ──────────────────────────────────────────────────────────────
 	if doInit {
@@ -363,35 +492,8 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 				}
 				argIdx := 1 // a[0] = self
 
-				// Collect fields in order.
-				fkeys, fvals := fields.Items()
-				orderedFields := make([]struct {
-					name string
-					fobj *object.Instance
-				}, 0, len(fkeys))
-				for k, fk := range fkeys {
-					if ks, ok2 := fk.(*object.Str); ok2 {
-						if fInst, ok3 := fvals[k].(*object.Instance); ok3 {
-							orderedFields = append(orderedFields, struct {
-								name string
-								fobj *object.Instance
-							}{ks.V, fInst})
-						}
-					}
-				}
-				// Sort by fieldOrder.
-				sortedFields := make([]struct {
-					name string
-					fobj *object.Instance
-				}, len(fieldOrder))
-				for idx, n := range fieldOrder {
-					for _, of := range orderedFields {
-						if of.name == n {
-							sortedFields[idx] = of
-							break
-						}
-					}
-				}
+				// Sort fields into declaration order.
+				sortedFields := dcSortedFields(fields, fieldOrder)
 
 				for _, sf := range sortedFields {
 					fname := sf.name
@@ -402,7 +504,6 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 					// Skip fields with init=False.
 					if initFlag, ok2 := fobj.Dict.GetStr("init"); ok2 {
 						if b, ok3 := initFlag.(*object.Bool); ok3 && !b.V {
-							// Use default value.
 							defVal, _ := fobj.Dict.GetStr("default")
 							if defVal != nil && defVal != object.Object(missing) {
 								self.Dict.SetStr(fname, defVal)
@@ -416,13 +517,23 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 							continue
 						}
 					}
+					// Determine if this field is kw_only.
+					isKwOnly := false
+					if kwOnlyV, ok2 := fobj.Dict.GetStr("kw_only"); ok2 {
+						if b, ok3 := kwOnlyV.(*object.Bool); ok3 {
+							isKwOnly = b.V
+						}
+					}
+
 					var val object.Object
+					// Check kwargs first.
 					if kw != nil {
 						if v, ok2 := kw.GetStr(fname); ok2 {
 							val = v
 						}
 					}
-					if val == nil && argIdx < len(a) {
+					// Positional args (only for non-kw_only fields).
+					if val == nil && !isKwOnly && argIdx < len(a) {
 						val = a[argIdx]
 						argIdx++
 					}
@@ -441,7 +552,6 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 							return nil, object.Errorf(execII.typeErr, "__init__() missing argument: '%s'", fname)
 						}
 					}
-					// Write directly to the instance dict; bypasses Go __setattr__.
 					self.Dict.SetStr(fname, val)
 				}
 				// Call __post_init__ if defined.
@@ -472,7 +582,6 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 					if !hasFld {
 						continue
 					}
-					// Skip if repr=False on field.
 					if rv, ok2 := fobj.Dict.GetStr("repr"); ok2 {
 						if b, ok3 := rv.(*object.Bool); ok3 && !b.V {
 							continue
@@ -564,7 +673,6 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 							}
 						}
 					}
-					// All equal.
 					switch opName {
 					case "__lt__", "__gt__":
 						return object.False, nil
@@ -599,8 +707,8 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 			}})
 	}
 
-	// ── __hash__ ──────────────────────────────────────────────────────────────
-	if frozen {
+	// ── __hash__ (frozen or unsafe_hash) ─────────────────────────────────────
+	if frozen || (unsafeHash && doEq) {
 		cls.Dict.SetStr("__hash__", &object.BuiltinFunc{Name: "__hash__",
 			Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 				if len(a) == 0 {
@@ -612,9 +720,19 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 				}
 				var h uint64
 				for _, n := range fieldOrder {
-					if v, ok2 := self.Dict.GetStr(n); ok2 {
-						hv, _ := object.Hash(v)
-						h = h*31 + hv
+					fobj, ok2 := dcLookupField(fields, n)
+					if !ok2 {
+						continue
+					}
+					// Respect hash=False on individual fields.
+					if hv, ok3 := fobj.Dict.GetStr("hash"); ok3 {
+						if b, ok4 := hv.(*object.Bool); ok4 && !b.V {
+							continue
+						}
+					}
+					if v, ok2b := self.Dict.GetStr(n); ok2b {
+						hval, _ := object.Hash(v)
+						h = h*31 + hval
 					}
 				}
 				return object.NewInt(int64(h)), nil
@@ -622,6 +740,31 @@ func dcProcessClass(ii *Interp, cls *object.Class, fieldCls *object.Class, missi
 	}
 
 	return cls
+}
+
+// dcSortedFields returns fields in declaration order for use in __init__.
+func dcSortedFields(fields *object.Dict, fieldOrder []string) []struct {
+	name string
+	fobj *object.Instance
+} {
+	fkeys, fvals := fields.Items()
+	fieldMap := make(map[string]*object.Instance, len(fkeys))
+	for k, fk := range fkeys {
+		if ks, ok := fk.(*object.Str); ok {
+			if fInst, ok2 := fvals[k].(*object.Instance); ok2 {
+				fieldMap[ks.V] = fInst
+			}
+		}
+	}
+	result := make([]struct {
+		name string
+		fobj *object.Instance
+	}, len(fieldOrder))
+	for idx, n := range fieldOrder {
+		result[idx].name = n
+		result[idx].fobj = fieldMap[n]
+	}
+	return result
 }
 
 // dcBuildAnnotations builds __annotations__ in a class dict from a list of
@@ -667,7 +810,6 @@ func dcBuildAnnotations(_ *Interp, cls *object.Class, specs []object.Object, _ *
 // Handles Python 3.14's __annotate_func__ lazy evaluation as well as the
 // older __annotations__ dict set by SETUP_ANNOTATIONS.
 func dcGetAnnotations(ii *Interp, cls *object.Class) *object.Dict {
-	// Python 3.14: lazy annotation function.
 	if annotateFn, ok := cls.Dict.GetStr("__annotate_func__"); ok {
 		result, err := ii.callObject(annotateFn, []object.Object{object.NewInt(1)}, nil)
 		if err == nil {
@@ -676,7 +818,6 @@ func dcGetAnnotations(ii *Interp, cls *object.Class) *object.Dict {
 			}
 		}
 	}
-	// Fallback: __annotations__ dict.
 	if annObj, ok := cls.Dict.GetStr("__annotations__"); ok {
 		if d, ok2 := annObj.(*object.Dict); ok2 {
 			return d
@@ -771,7 +912,6 @@ func dcAsdict(ii *Interp, o object.Object, seen map[uintptr]bool) (object.Object
 			continue
 		}
 		val, _ := inst.Dict.GetStr(ns.V)
-		// Recurse for nested dataclasses/lists/tuples/dicts.
 		conv, err := dcAsdictConvert(ii, val, seen)
 		if err != nil {
 			return nil, err
@@ -882,9 +1022,7 @@ func dcReplace(ii *Interp, o object.Object, changes *object.Dict, missing *objec
 	if !ok || !dcIsDataclass(o) {
 		return nil, object.Errorf(ii.typeErr, "replace() argument must be a dataclass instance")
 	}
-	// Create a new instance of the same class.
 	newInst := &object.Instance{Class: inst.Class, Dict: object.NewDict()}
-	// Copy all current field values.
 	fields, _ := dcGetFields(inst)
 	for _, f := range fields {
 		nameObj, _ := f.Dict.GetStr("name")
@@ -895,7 +1033,6 @@ func dcReplace(ii *Interp, o object.Object, changes *object.Dict, missing *objec
 		val, _ := inst.Dict.GetStr(ns.V)
 		newInst.Dict.SetStr(ns.V, val)
 	}
-	// Apply changes.
 	if changes != nil {
 		keys, vals := changes.Items()
 		for k, key := range keys {

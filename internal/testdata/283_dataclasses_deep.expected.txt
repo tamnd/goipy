@@ -1,0 +1,78 @@
+True
+True
+True
+False
+False
+True
+meta ok
+x
+y
+z
+hello
+0.0
+True
+False
+True
+False
+3
+field_attrs ok
+True
+False
+compare_false ok
+meters
+2
+metadata ok
+True
+False
+eq_false ok
+NoRepr<42>
+repr_false ok
+10
+init_false ok
+True
+False
+unsafe_hash ok
+('x', 'y', 'z')
+3
+x
+match_args ok
+False
+no_match_args ok
+5 10
+3 0
+kw_only_class ok
+10 20 30 40
+1 0 0 1
+('a', 'b')
+kw_only_sentinel ok
+Toyota 2020 2
+3
+make
+year
+doors
+True
+Car(make='Toyota', year=2020, doors=2)
+inheritance ok
+Tesla 2023 4 500
+4
+multi_inherit ok
+Ford 2010 99
+True
+42
+frozen ok
+make_dataclass_advanced ok
+ValueError raised
+field_both_defaults ok
+True
+False
+True
+True
+missing ok
+True
+True
+field_repr ok
+True
+True
+True
+params_flags ok
+done
