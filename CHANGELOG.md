@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.282 - 2026-04-28
+
+`__main__` — implements `import __main__` from https://docs.python.org/3/library/__main__.html. The module's dict is the live top-level execution namespace, so variables defined in the running script are accessible via `__main__` attributes.
+
+**`Run()` enriched:** `__doc__`, `__annotations__`, `__spec__`, `__loader__`, `__package__` are now set on the main globals dict in addition to the existing `__name__` and `__builtins__`. The module is registered in `i.modules["__main__"]` so `import __main__` returns the live namespace.
+
+**`buildMain()` fallback:** provides a well-formed `__main__` module for contexts where `Run()` has not yet been called (e.g. subinterpreter imports).
+
+**Shared namespace:** `import __main__; __main__.x` reflects variables defined in the running script because the module dict IS the script globals.
+
+**`if __name__ == '__main__':` pattern** works correctly (was already the case; now the module is also importable).
+
 ## v0.0.281 - 2026-04-28
 
 `builtins` — implements `import builtins` from https://docs.python.org/3/library/builtins.html. The module's `__dict__` is the live built-in namespace, so mutations like `builtins.len = ...` take effect interpreter-wide.
