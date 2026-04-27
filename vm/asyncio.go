@@ -263,6 +263,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildTimeit(), true
 	case "trace":
 		return i.buildTrace(), true
+	case "tracemalloc":
+		return i.buildTracemalloc(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":

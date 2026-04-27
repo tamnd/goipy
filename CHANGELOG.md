@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.0.269 - 2026-04-27
+
+`tracemalloc` — implements the Python memory allocation tracer module from https://docs.python.org/3/library/tracemalloc.html. goipy has no malloc hooking, so all tracing is a no-op, but every class and function exposes the correct interface.
+
+**Module-level functions:** `start(nframe=1)` / `stop()` / `is_tracing()` track a tracing flag; `get_traceback_limit()` returns the configured nframe; `get_traced_memory()` returns `(0, 0)`; `get_tracemalloc_memory()` returns `0`; `reset_peak()` / `clear_traces()` are no-ops; `get_object_traceback(obj)` returns `None`; `take_snapshot()` returns an empty `Snapshot`.
+
+**`Frame(filename, lineno)`:** read-only `.filename` (str) and `.lineno` (int).
+
+**`Traceback(frames)`:** sequence of `Frame`; `.total_nframe` → `None`; `.format(limit, most_recent_first)` → list of `"  File ..., line N"` strings.
+
+**`Trace(traceback, size, domain)`:** `.size` int, `.traceback` Traceback, `.domain` int (always 0).
+
+**`Statistic(traceback, count, size)`:** `.count`, `.size`, `.traceback`; `str()` → `"<traceback>: size=N, count=N"`.
+
+**`StatisticDiff(traceback, count, size, count_diff, size_diff)`:** same attrs plus `.count_diff` and `.size_diff`; `str()` includes diff values.
+
+**`Snapshot`:** `.traces` (empty tuple), `.traceback_limit` (int); `statistics(key_type, cumulative)` → empty list; `compare_to(old, key_type, cumulative)` → empty list; `filter_traces(filters)` → new empty Snapshot; `dump(filename)` → writes `{}`; `load(filename)` → classmethod returning empty Snapshot.
+
+**`Filter(inclusive, filename_pattern, lineno, all_frames, domain)`:** all five attrs stored read-only.
+
+**`DomainFilter(inclusive, domain)`:** both attrs stored read-only.
+
 ## v0.0.268 - 2026-04-27
 
 `trace` — implements the Python execution tracing and coverage module from https://docs.python.org/3/library/trace.html.
