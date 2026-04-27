@@ -205,13 +205,28 @@ func (i *Interp) buildSys() *object.Module {
 
 	// ── sys.addaudithook / sys.audit ──────────────────────────────────────────
 	m.Dict.SetStr("addaudithook", &object.BuiltinFunc{Name: "addaudithook",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "addaudithook() requires 1 argument")
+			}
+			hook := a[0]
+			interp := ii.(*Interp)
+			// Notify existing hooks before adding the new one.
+			if err := interp.fireAudit("sys.addaudithook", []object.Object{hook}); err != nil {
+				return nil, err
+			}
+			interp.auditHooks = append(interp.auditHooks, hook)
 			return object.None, nil
 		},
 	})
 	m.Dict.SetStr("audit", &object.BuiltinFunc{Name: "audit",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
+		Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "audit() requires at least 1 argument")
+			}
+			event := object.Str_(a[0])
+			interp := ii.(*Interp)
+			return object.None, interp.fireAudit(event, a[1:])
 		},
 	})
 

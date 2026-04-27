@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.262 - 2026-04-27
+
+`sys` audit events — implements the audit hook mechanism from https://docs.python.org/3/library/audit_events.html.
+
+**`sys.addaudithook(hook)`:** registers a permanent audit hook (cannot be removed); fires the `sys.addaudithook` event to all existing hooks before adding the new one; uses the executing interpreter (`ii.(*Interp)`) so hooks accumulate on the correct per-goroutine copy.
+
+**`sys.audit(event, *args)`:** calls every registered hook with `(event: str, args: tuple)`; `RuntimeError` raised by a hook is suppressed and the remaining hooks continue; any other exception propagates immediately, aborting remaining hooks.
+
+**`open` event:** `builtins.open()` now fires `open(path, mode, flags)` before opening the file, matching CPython audit event semantics (`flags` is always `0` in goipy's pure-Go implementation).
+
+**`Interp.fireAudit`:** new internal helper used by both `sys.audit` and `builtins.open`; `threadCopy` gives each goroutine a snapshot of hooks at spawn time.
+
 ## v0.0.261 - 2026-04-27
 
 `unittest.mock` extended — fixture 261 covers the advanced APIs from the official unittest.mock-examples page.

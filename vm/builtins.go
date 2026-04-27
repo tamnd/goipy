@@ -1634,6 +1634,11 @@ func builtinOpen(in *Interp, a []object.Object, kw *object.Dict) (object.Object,
 		}
 	}
 
+	// Audit event: open(path, mode, flags)
+	if err := in.fireAudit("open", []object.Object{path, &object.Str{V: mode}, object.NewInt(0)}); err != nil {
+		return nil, err
+	}
+
 	binary := strings.ContainsRune(mode, 'b')
 
 	var flag int

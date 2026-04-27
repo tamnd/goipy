@@ -85,6 +85,10 @@ type Interp struct {
 	// ctxStack is the per-goroutine context variable stack (contextvars module).
 	// Each entry is an active Context; the last element is the current context.
 	ctxStack []*cvContext
+
+	// auditHooks holds callables registered via sys.addaudithook.
+	// Hooks are permanent and cannot be removed.
+	auditHooks []object.Object
 }
 
 // New builds a fresh interpreter.
@@ -141,7 +145,37 @@ func (i *Interp) threadCopy() *Interp {
 	} else {
 		tc.ctxStack = nil
 	}
+	// Snapshot audit hooks so goroutine inherits existing hooks but new hooks
+	// added in the goroutine don't leak back to the parent.
+	if len(i.auditHooks) > 0 {
+		tc.auditHooks = make([]object.Object, len(i.auditHooks))
+		copy(tc.auditHooks, i.auditHooks)
+	}
 	return &tc
+}
+
+// fireAudit calls every registered audit hook with (event, args-tuple).
+// RuntimeError raised by a hook is suppressed; any other exception propagates
+// immediately, aborting remaining hooks.
+func (i *Interp) fireAudit(event string, args []object.Object) error {
+	if len(i.auditHooks) == 0 {
+		return nil
+	}
+	argTuple := &object.Tuple{V: args}
+	eventStr := &object.Str{V: event}
+	hookArgs := []object.Object{eventStr, argTuple}
+	for _, hook := range i.auditHooks {
+		_, err := i.callObject(hook, hookArgs, nil)
+		if err != nil {
+			if exc, ok := err.(*object.Exception); ok {
+				if object.IsSubclass(exc.Class, i.runtimeErr) {
+					continue
+				}
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (i *Interp) runFrame(f *Frame) (object.Object, error) {

@@ -1,0 +1,13 @@
+test_basic_hook: OK
+test_audit_no_args: OK
+test_args_is_tuple: OK
+test_event_name_is_str: OK
+test_multiple_hooks_order: OK
+test_runtimeerror_suppressed: OK
+test_exception_propagates: OK
+test_hooks_persist: OK
+test_args_values: OK
+test_open_fires_event: OK
+test_open_event_args: OK
+test_addaudithook_event: OK
+test_event_name_verbatim: OK
