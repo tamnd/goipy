@@ -1,5 +1,139 @@
 # Changelog
 
+## v0.0.280 - 2026-04-27
+
+`sys.monitoring` — implements the Python 3.12+ monitoring API from https://docs.python.org/3/library/sys.monitoring.html. No real instrumentation hooks (goipy runs Go, not CPython bytecode), but the full API surface is present.
+
+**Tool IDs:** `DEBUGGER_ID=0`, `COVERAGE_ID=1`, `PROFILER_ID=2`, `OPTIMIZER_ID=5`, `MISSING` sentinel.
+
+**`events` namespace:** all 17 event constants (`NO_EVENTS`, `BRANCH`, `CALL`, `LINE`, `PY_RETURN`, etc.) with correct bitmask values.
+
+**`use_tool_id(id, name)` / `free_tool_id(id)`:** register/release a monitoring tool slot.
+
+**`set_events(id, event_set)` / `get_events(id)`:** per-tool event bitmask stored in module closure.
+
+**`register_callback(id, event, func)`:** stores callback per tool+event; returns old callback.
+
+**`set_local_events` / `get_local_events`:** no-ops (no per-code tracking); `_all_events()` → `{}`.
+
+## v0.0.279 - 2026-04-27
+
+`site` — implements the site-customization module from https://docs.python.org/3/library/site.html. No site packages are physically installed; paths are computed from OS home directory.
+
+**`USER_BASE` / `USER_SITE`:** platform-aware defaults (`~/.local` on Unix, `%APPDATA%\Python` on Windows).
+
+**`getsitepackages(prefixes=None)`:** returns list of `lib/python3.14/site-packages` paths under each prefix.
+
+**`getusersitepackages()` / `getuserbase()`:** return `USER_SITE` / `USER_BASE` strings.
+
+**`addsitedir` / `addpackage` / `addsitepackages` / `main` / `setquit` / `setcopyright` / `sethelper` / `execsitecustomize` / `execusercustomize` / `removeduppaths` / `abs_paths` / `check_enableusersite`:** all no-op stubs.
+
+## v0.0.278 - 2026-04-27
+
+`annotationlib` — implements the Python 3.14 annotation utilities from https://docs.python.org/3/library/annotationlib.html.
+
+**`Format` enum:** `VALUE=1`, `FORWARDREF=2`, `STRING=3`.
+
+**`ForwardRef(arg)`:** stores `__forward_arg__`, `__forward_evaluated__=False`; `repr` → `ForwardRef('arg')`.
+
+**`get_annotations(obj)`:** extracts `__annotations__` dict from Class/Instance/Module/Function; falls back to `{}`.
+
+**`get_annotate_function(obj)`:** returns `__annotate__` attribute if present, else `None`.
+
+**`call_annotate_function(annotate, format)`:** calls the annotate function with the format arg via `ii.(*Interp)`.
+
+**`type_repr(annotation)`:** returns `.Name` for `*object.Class` and `*object.BuiltinFunc` (goipy stores built-in types as BuiltinFunc).
+
+## v0.0.277 - 2026-04-27
+
+`inspect` — implements the inspection module from https://docs.python.org/3/library/inspect.html.
+
+**Type predicates:** `ismodule`, `isclass`, `isfunction`, `isbuiltin`, `ismethod`, `isroutine`, `iscode`, `isgenerator`, `isgeneratorfunction`, `iscoroutinefunction`, `isframe`, and 10 others. `isgeneratorfunction` checks `Code.Flags & 0x20`; goipy has no Coroutine type so `iscoroutine`/`isawaitable` always return False.
+
+**`getmembers(obj, predicate=None)`:** returns `(name, value)` pairs from obj's dict.
+
+**`getmro(cls)`:** returns `(cls, *cls.Bases)` tuple.
+
+**`getdoc` / `getfile` / `getsourcefile` / `getmodulename` / `cleandoc`:** string-based helpers.
+
+**`signature(fn)`:** returns `Signature` instance; `Parameter` class with five kind constants and `empty` sentinel.
+
+**`getfullargspec` / `getargvalues` / `getframeinfo`:** stub NamedTuple-like instances.
+
+**`getattr_static(obj, name, default=)`:** non-descriptor attribute lookup across Instance/Class/Module.
+
+**`classify_class_attrs` / `stack` / `trace` / `currentframe` / `getouterframes` / `getinnerframes`:** stub implementations.
+
+## v0.0.276 - 2026-04-27
+
+`sysconfig` — implements the build configuration module from https://docs.python.org/3/library/sysconfig.html.
+
+**`get_python_version()`** → `"3.14"`.
+
+**`get_platform()`:** returns platform string based on `runtime.GOOS`/`GOARCH` (e.g. `"linux-amd64"`, `"macosx-14.0-arm64"`).
+
+**`get_scheme_names()`** → tuple of 6 install scheme names.
+
+**`get_paths(scheme=None)`:** dict with `stdlib`, `platstdlib`, `platlib`, `purelib`, `include`, `scripts`, `data` keys, all under `/usr`.
+
+**`get_config_vars(*args)`:** returns dict of ~20 build variables (no args) or list of values for named keys.
+
+**`get_config_var(name)`:** single-key lookup; returns `None` for unknown keys.
+
+**`get_default_scheme` / `get_path` / `get_path_names` / `get_makefile_filename` / `get_config_h_filename` / `is_python_build` / `parse_config_h`:** all implemented.
+
+## v0.0.275 - 2026-04-27
+
+`gc` — implements the garbage collector interface from https://docs.python.org/3/library/gc.html. Go has its own GC; this module exposes the CPython API surface as stubs backed by `runtime.GC()`.
+
+**`enable()` / `disable()` / `isenabled()`:** in-memory flag (no effect on Go GC).
+
+**`collect(generation=2)`:** calls `runtime.GC()`, returns 0.
+
+**`get_count()`** → `(0, 0, 0)`; **`get_threshold()` / `set_threshold(t0, t1, t2)`:** in-memory state, defaults `(700, 10, 10)`.
+
+**`get_objects()` / `get_referents()` / `get_referrers()`** → `[]`; **`is_tracked()` / `is_finalized()`** → `False`.
+
+**`freeze()` / `unfreeze()` / `get_freeze_count()`** → `0`; **`set_debug()` / `get_debug()`** → `0`.
+
+**Debug constants:** `DEBUG_STATS=1`, `DEBUG_COLLECTABLE=2`, `DEBUG_UNCOLLECTABLE=4`, `DEBUG_SAVEALL=32`, `DEBUG_LEAK=38`.
+
+**`callbacks`:** mutable list attribute.
+
+## v0.0.274 - 2026-04-27
+
+`traceback` — implements the traceback utilities from https://docs.python.org/3/library/traceback.html.
+
+**`FrameSummary(filename, lineno, name)`:** stores frame info; attrs `filename`, `lineno`, `name`, `line`, `end_lineno`, `colno`, `end_colno`.
+
+**`StackSummary`:** `from_list(entries)` accepts both `FrameSummary` instances and raw `(filename, lineno, name, text)` tuples; `format()` → list of formatted frame strings; `extract()` classmethod stub.
+
+**`extract_stack()`:** walks `i.curFrame → .Back` chain to build a live `StackSummary`.
+
+**`format_list(entries)`:** accepts both a raw list of tuples and a `StackSummary`; formats each as `'  File ..., line N, in func\n    source\n'`.
+
+**`format_exception_only(exc_type, exc_value)`:** formats exception class name + message.
+
+**`format_exc()` / `print_exc()`:** capture and format the current exception from `f.ExcInfo`.
+
+**`format_exception` / `print_exception` / `print_last` / `print_tb` / `format_tb` / `print_stack` / `format_stack` / `print_list` / `clear_frames` / `walk_stack` / `walk_tb`:** full set of module-level helpers.
+
+**`TracebackException`:** `from_exception(e)` classmethod; `format_exception_only()` iterator; `format()` iterator; `print()` writes to stderr.
+
+## v0.0.273 - 2026-04-27
+
+`atexit` — implements the exit handler registration module from https://docs.python.org/3/library/atexit.html.
+
+**`register(func, *args, **kwargs)`:** registers a callable to be called at interpreter shutdown; returns the callable.
+
+**`unregister(func)`:** removes all registrations for the given callable (compares via `objectEqual`).
+
+**`_run_exitfuncs()`:** calls all registered handlers in LIFO order via `ii.(*Interp)` (thread-safe).
+
+**`_clear()`:** removes all registered handlers.
+
+**`_ncallbacks()`:** returns the number of currently registered handlers.
+
 ## v0.0.272 - 2026-04-28
 
 `zipapp` — implements the Python executable zip archive module from https://docs.python.org/3/library/zipapp.html. Unlike most stub modules, this is a genuine implementation that creates and reads real zip files.

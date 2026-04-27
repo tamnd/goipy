@@ -271,6 +271,22 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildVenv(), true
 	case "zipapp":
 		return i.buildZipapp(), true
+	case "atexit":
+		return i.buildAtexit(), true
+	case "traceback":
+		return i.buildTraceback(), true
+	case "gc":
+		return i.buildGc(), true
+	case "sysconfig":
+		return i.buildSysconfig(), true
+	case "inspect":
+		return i.buildInspect(), true
+	case "annotationlib":
+		return i.buildAnnotationlib(), true
+	case "site":
+		return i.buildSite(), true
+	case "sys.monitoring":
+		return i.buildSysMonitoring(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":
