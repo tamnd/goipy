@@ -159,6 +159,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildFaulthandler(), true
 	case "contextlib":
 		return i.buildContextlib(), true
+	case "dataclasses":
+		return i.buildDataclasses(), true
 	case "doctest":
 		return i.buildDoctest(), true
 	case "unittest":

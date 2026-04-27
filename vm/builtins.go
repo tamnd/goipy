@@ -641,14 +641,22 @@ func (i *Interp) initBuiltins() {
 		if len(a) == 0 {
 			return &object.Str{V: ""}, nil
 		}
+		interp := ii.(*Interp)
 		// For exception subclasses with a custom __repr__, call it via the interpreter.
 		if exc, ok := a[0].(*object.Exception); ok && exc.Class != nil {
 			if reprFn, found := classLookup(exc.Class, "__repr__"); found {
-				interp := ii.(*Interp)
 				if result, err := interp.callObject(reprFn, []object.Object{exc}, nil); err == nil {
 					if s, ok := result.(*object.Str); ok {
 						return s, nil
 					}
+				}
+			}
+		}
+		// For regular instances, call __repr__ if defined on the class.
+		if inst, ok := a[0].(*object.Instance); ok {
+			if r, ok2, err := interp.callInstanceDunder(inst, "__repr__"); ok2 && err == nil {
+				if s, ok3 := r.(*object.Str); ok3 {
+					return s, nil
 				}
 			}
 		}

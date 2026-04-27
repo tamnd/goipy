@@ -1,0 +1,57 @@
+1 2
+Point(x=1, y=2)
+True
+False
+True
+True
+basic ok
+localhost 8080 False
+example.com 443 False
+Config(host='localhost', port=8080, debug=False)
+defaults ok
+[1]
+[]
+unnamed
+field_factory ok
+2
+x
+y
+tuple
+fields ok
+dict
+255 128 0
+asdict ok
+tuple
+(1, 2, 3)
+astuple ok
+Point(x=0, y=0)
+Point(x=3, y=4)
+dict
+0 0
+nested ok
+1 2
+1 10
+True
+replace ok
+3 4
+True
+frozen error caught
+frozen ok
+True
+True
+True
+False
+order ok
+2.0
+12.566
+post_init ok
+Secret(username='admin')
+field_repr_false ok
+5 0
+True
+make_dataclass ok
+True
+False
+False
+42
+misc ok
