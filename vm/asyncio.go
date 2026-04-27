@@ -259,6 +259,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCProfile(), true
 	case "pstats":
 		return i.buildPstats(), true
+	case "timeit":
+		return i.buildTimeit(), true
 	case "shutil":
 		return i.buildShutil(), true
 	case "pickle":

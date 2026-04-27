@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.267 - 2026-04-27
+
+`timeit` — implements the Python micro-benchmarking module from https://docs.python.org/3/library/timeit.html.
+
+**`timeit.Timer(stmt='pass', setup='pass', timer=default_timer, globals=None)`:** micro-benchmark timer class.
+- `timeit(number=1000000)` — runs `setup` once then `stmt` `number` times; returns total elapsed seconds as `float`; callable stmts invoked via `callObject`; string stmts treated as no-ops (goipy has no exec builtin)
+- `repeat(repeat=5, number=1000000)` — calls `timeit(number)` `repeat` times; returns list of floats
+- `autorange(callback=None)` — finds a `number` such that one run takes ≥ 0.2 s; tries the CPython sequence 1→2→5→10→20→50→…; returns `(number, time_taken)` tuple; calls `callback(number, time_taken)` after each trial if provided
+- `print_exc(file=None)` — no-op stub
+
+**`timeit.default_timer`:** callable returning elapsed seconds (monotonic wall clock via `time.Since`).
+
+**`timeit.timeit(stmt, setup, timer, number, globals)`:** module-level shortcut; creates a `Timer` and calls `.timeit(number)`.
+
+**`timeit.repeat(stmt, setup, timer, repeat, number, globals)`:** module-level shortcut; creates a `Timer` and calls `.repeat(repeat, number)`.
+
 ## v0.0.266 - 2026-04-27
 
 `profile` / `cProfile` / `pstats` — implements the Python profiler suite from https://docs.python.org/3/library/profile.html.
