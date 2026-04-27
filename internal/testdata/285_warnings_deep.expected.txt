@@ -1,0 +1,60 @@
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+hierarchy ok
+script.py:42: UserWarning: oops
+formatwarning ok
+f.py:10: UserWarning: hello
+showwarning ok
+2
+basic message
+UserWarning
+DeprecationWarning
+warn_record ok
+caught UserWarning
+warn_error ok
+0
+warn_ignore ok
+3
+warn_always ok
+2
+warn_once ok
+1
+resetwarnings ok
+1
+explicit msg
+RuntimeWarning
+myfile.py
+99
+warn_explicit ok
+1
+show this
+filterwarnings_pattern ok
+2
+fine
+caught_dep
+filterwarnings_category ok
+True
+catch_warnings_restore ok
+check attrs
+SyntaxWarning
+True
+True
+True
+True
+warning_message_attrs ok
+FutureWarning
+warn_category_kwarg ok
+True
+True
+always
+filters_list ok
+done
