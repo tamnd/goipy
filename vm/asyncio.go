@@ -271,6 +271,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildVenv(), true
 	case "zipapp":
 		return i.buildZipapp(), true
+	case "builtins":
+		return i.buildBuiltins(), true
 	case "atexit":
 		return i.buildAtexit(), true
 	case "traceback":
