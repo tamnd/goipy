@@ -1,0 +1,84 @@
+8
+4
+32
+2
+1
+16
+1024
+64
+128
+256
+512
+<BLANKLINE>
+...
+test_constants ok
+int
+True
+True
+True
+test_register_optionflag ok
+Example
+'1+1\n'
+'2\n'
+3
+0
+dict
+test_example ok
+DocTest
+mytest
+file.py
+1
+docstring
+1
+dict
+True
+True
+test_doctest_class ok
+list
+2
+Example
+'1 + 1\n'
+'2\n'
+test_parser_get_examples ok
+list
+True
+True
+test_parser_parse ok
+DocTest
+mymod
+1
+test_parser_get_doctest ok
+OutputChecker
+True
+False
+True
+True
+test_output_checker ok
+TestResults
+0
+3
+test_test_results ok
+TestResults
+0
+2
+test_runner ok
+list
+True
+DocTest
+myfunc
+1
+test_finder ok
+DocTestFailure
+True
+True
+got
+UnexpectedException
+True
+test_exceptions ok
+str
+True
+True
+test_script_from_examples ok
+TestResults
+True
+test_testmod ok
