@@ -82,6 +82,9 @@ type Interp struct {
 	// logStates holds per-module logState for logging/logging.config sharing.
 	logStates map[string]*logState
 
+	// warnState holds per-Interp warnings module state.
+	warnState *warnState
+
 	// ctxStack is the per-goroutine context variable stack (contextvars module).
 	// Each entry is an active Context; the last element is the current context.
 	ctxStack []*cvContext
