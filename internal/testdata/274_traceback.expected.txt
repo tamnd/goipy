@@ -1,0 +1,12 @@
+test.py
+42
+myfunc
+True
+True
+True
+True
+True
+True
+True
+True
+done
