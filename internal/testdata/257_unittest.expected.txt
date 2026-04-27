@@ -1,0 +1,37 @@
+TestBasicAssertions
+1
+True
+test_test_case_api ok
+TestSuite
+2
+test_suite ok
+TestSuite
+True
+list
+True
+test_loader ok
+TestResult
+0
+True
+0
+0
+0
+test_result ok
+True
+1
+test_run ok
+TextTestResult
+True
+test_runner ok
+True
+always skip
+True
+True
+test_skip_decorators ok
+True
+True
+test_expected_failure ok
+True
+True
+TestLoader
+test_main_api ok
