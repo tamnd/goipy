@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.287 - 2026-04-28
+
+`atexit` — comprehensive deep-coverage fixture (287) for https://docs.python.org/3/library/atexit.html. Builds on the basic implementation from fixture 273.
+
+**`register(func, *args, **kwargs)`:** returns `func` unchanged, so it works as a plain decorator (`@atexit.register`). Accepts positional and keyword arguments that are forwarded on exit.
+
+**`unregister(func)`:** removes **all** instances of `func` from the handler list (silent no-op if not registered).
+
+**LIFO order:** handlers are called last-registered-first.
+
+**Multiple registrations:** the same function can be registered multiple times (with different args); `unregister` removes every occurrence.
+
+**Exception suppression:** if a handler raises, the exception is suppressed and remaining handlers continue to run (matching CPython behaviour).
+
+**`_run_exitfuncs` semantics fix:** after running the snapshot of handlers in LIFO order, the entire handler list is cleared — including any handlers registered *during* the run. This matches CPython's `atexitmodule.c` behaviour.
+
 ## v0.0.286 - 2026-04-28
 
 `abc` — full coverage of https://docs.python.org/3/library/abc.html. New module `vm/stdlib_abc_module.go`; registered as `"abc"` in the module switch.

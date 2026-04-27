@@ -59,7 +59,8 @@ func (i *Interp) buildAtexit() *object.Module {
 	})
 
 	// _run_exitfuncs calls handlers in LIFO order — used by tests and by the
-	// interpreter shutdown path.
+	// interpreter shutdown path. Matches CPython: after running the snapshot,
+	// the entire handler list is cleared (including any registered during the run).
 	runExitFuncs := func(ii any) {
 		state.mu.Lock()
 		handlers := make([]atexitHandler, len(state.handlers))
@@ -70,6 +71,11 @@ func (i *Interp) buildAtexit() *object.Module {
 			h := handlers[idx]
 			interp.callObject(h.fn, h.args, h.kw) //nolint
 		}
+		// Clear all handlers after the run (CPython semantics: wipes anything
+		// registered during the run too).
+		state.mu.Lock()
+		state.handlers = state.handlers[:0]
+		state.mu.Unlock()
 	}
 
 	m.Dict.SetStr("_run_exitfuncs", &object.BuiltinFunc{
