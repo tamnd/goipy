@@ -157,6 +157,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPydoc(), true
 	case "faulthandler":
 		return i.buildFaulthandler(), true
+	case "doctest":
+		return i.buildDoctest(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":
