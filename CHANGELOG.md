@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.0.283 - 2026-04-28
+
+`dataclasses` — comprehensive coverage of https://docs.python.org/3/library/dataclasses.html. Extends the initial implementation (v0.0.259) with all missing features.
+
+**Inheritance:** `@dataclass` child classes now inherit fields from dataclass base classes in correct MRO order. Child fields override same-named base fields.
+
+**`match_args=True` (default):** generates `__match_args__` tuple from all non-kw_only fields. `match_args=False` suppresses it.
+
+**`kw_only=True` at class level:** marks all fields as keyword-only; `__init__` skips positional fallback for those fields.
+
+**`KW_ONLY` sentinel:** `_: KW_ONLY` in annotations marks all following fields as keyword-only. These fields are excluded from `__match_args__`.
+
+**`unsafe_hash=True`:** generates `__hash__` (same logic as `frozen=True`) even when the class is mutable.
+
+**`field()` validation:** raises `ValueError` when both `default` and `default_factory` are provided.
+
+**`__dataclass_params__` enriched:** now includes `match_args`, `kw_only`, `unsafe_hash` attributes.
+
+**`make_dataclass()` kwargs:** now forwards `frozen`, `eq`, `order`, `repr`, `init`, `match_args`, `kw_only`, `unsafe_hash` to the decorator.
+
+**Field attributes `type`, `name`, `metadata`, `compare`, `repr`, `hash`, `init`, `kw_only`:** all accessible on Field instances returned by `fields()`.
+
+**`fields()` on instances:** `fields(instance)` works the same as `fields(Class)`.
+
+**`@dataclass(eq=False)` / `(repr=False)` / `(init=False)`:** each decorator flag correctly suppresses the corresponding generated method.
+
 ## v0.0.282 - 2026-04-28
 
 `__main__` — implements `import __main__` from https://docs.python.org/3/library/__main__.html. The module's dict is the live top-level execution namespace, so variables defined in the running script are accessible via `__main__` attributes.
