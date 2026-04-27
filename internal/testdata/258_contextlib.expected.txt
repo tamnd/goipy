@@ -1,0 +1,44 @@
+suppress ok
+suppress multi ok
+suppress no-exc ok
+True
+True
+closing ok
+True
+42
+nullcontext ok
+hello
+20
+contextmanager ok
+['enter', 'body', 'exit']
+contextmanager_cleanup ok
+contextmanager_exception_suppress ok
+captured
+redirect_stdout ok
+err output
+redirect_stderr ok
+[3, 2, 1]
+exitstack_callback ok
+['enter a', 'enter b', 'body', 'exit b', 'exit a']
+exitstack_enter_context ok
+['suppressed']
+exitstack_suppress ok
+True
+True
+abstract ok
+True
+True
+chdir ok
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+module_attrs ok

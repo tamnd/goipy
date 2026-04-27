@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.0.258 - 2026-04-27
+
+`contextlib` — implements the standard library context management utilities.
+
+**Generator throw support:** added `PendingThrow`/`YieldIP` fields to `Frame`; `throwGenerator` injects exceptions at the last yield point so `try/except` around `yield` catches them; `gen.throw(exc)` method now available on generators.
+
+**`AbstractContextManager` / `AbstractAsyncContextManager`:** base classes with default `__enter__`/`__exit__` (`__aenter__`/`__aexit__`) implementations.
+
+**`suppress(*exceptions)`:** context manager that silently suppresses matching exception types; `__exit__` returns `True` when the exception matches, `False` otherwise.
+
+**`closing(thing)`:** calls `thing.close()` on context exit.
+
+**`nullcontext(enter_result=None)`:** no-op context manager returning `enter_result` as the `as` value.
+
+**`@contextmanager`:** wraps a generator function as a `_GeneratorContextManager`; `__enter__` drives the generator to the first `yield`; `__exit__` on clean path calls `next(gen)` (expects `StopIteration`); on exception path calls `gen.throw(exc)` and suppresses if the generator swallows it.
+
+**`@asynccontextmanager`:** same as `contextmanager` but named for async use.
+
+**`redirect_stdout(new_target)` / `redirect_stderr(new_target)`:** replaces `Interp.Stdout`/`Interp.Stderr` with an adapter writing to the Python `StringIO` target; also updates `sys.stdout`/`sys.stderr` for Python-level reads.
+
+**`chdir(path)`:** saves the current directory on enter, changes to `path`, restores on exit.
+
+**`ExitStack` / `AsyncExitStack`:** LIFO stack of exit callbacks; `enter_context(cm)` pushes `cm.__exit__`; `callback(fn, *args)` pushes a plain cleanup thunk; `push(fn)` pushes an exit function called with `(exc_type, exc_val, tb)`; `close()` flushes all callbacks; `pop_all()` transfers callbacks to a new stack.
+
+**`ContextDecorator`:** base class for context managers usable as decorators.
+
+**`SUPPRESS` sentinel:** exported as `'<no value>'` string.
+
+14 test functions verified against CPython 3.14 (fixture 258).
+
 ## v0.0.257 - 2026-04-27
 
 `unittest` — implements the standard library unittest framework.

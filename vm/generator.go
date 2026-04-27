@@ -45,6 +45,35 @@ func (i *Interp) resumeGenerator(gen *object.Generator, sent object.Object) (obj
 	return nil, exc
 }
 
+// throwGenerator injects an exception into a suspended generator at the last
+// yield point. The exception is handled by the generator's own exception table
+// (allowing try/except around yield to catch it).
+func (i *Interp) throwGenerator(gen *object.Generator, exc *object.Exception) (object.Object, error) {
+	if gen.Done {
+		return nil, exc
+	}
+	frame := gen.Frame.(*Frame)
+	// Rewind IP to the YIELD_VALUE so the exception table covers it.
+	frame.IP = frame.YieldIP
+	frame.PendingThrow = exc
+	gen.Started = true
+	result, err := i.runFrame(frame)
+	if errors.Is(err, errYielded) {
+		v := frame.Yielded
+		frame.Yielded = nil
+		return v, nil
+	}
+	gen.Done = true
+	if err != nil {
+		return nil, err
+	}
+	exc2 := object.NewException(i.stopIter, "")
+	if result != nil && result != object.None {
+		exc2.Args = &object.Tuple{V: []object.Object{result}}
+	}
+	return nil, exc2
+}
+
 // genMethod resolves generator attribute lookups for send/close/throw.
 func (i *Interp) genMethod(gen *object.Generator, name string) (object.Object, bool) {
 	switch name {
@@ -58,6 +87,22 @@ func (i *Interp) genMethod(gen *object.Generator, name string) (object.Object, b
 				v = a[0]
 			}
 			return i.resumeGenerator(gen, v)
+		}}, true
+	case "throw":
+		return &object.BuiltinFunc{Name: "throw", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return nil, object.Errorf(i.typeErr, "throw() requires an exception argument")
+			}
+			var exc *object.Exception
+			switch v := a[0].(type) {
+			case *object.Exception:
+				exc = v
+			case *object.Class:
+				exc = object.NewException(v, "")
+			default:
+				return nil, object.Errorf(i.typeErr, "exceptions must derive from BaseException")
+			}
+			return i.throwGenerator(gen, exc)
 		}}, true
 	case "close":
 		return &object.BuiltinFunc{Name: "close", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {

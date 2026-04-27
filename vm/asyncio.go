@@ -157,6 +157,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPydoc(), true
 	case "faulthandler":
 		return i.buildFaulthandler(), true
+	case "contextlib":
+		return i.buildContextlib(), true
 	case "doctest":
 		return i.buildDoctest(), true
 	case "unittest":

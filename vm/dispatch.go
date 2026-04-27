@@ -36,6 +36,13 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		var result object.Object
 		var err error
 
+		// Pending exception injection for generator.throw().
+		if f.PendingThrow != nil {
+			err = f.PendingThrow
+			f.PendingThrow = nil
+			goto handleErr
+		}
+
 		switch opcode {
 		// --- no-ops & meta ---
 		case op.NOP, op.RESUME, op.RESUME_CHECK, op.NOT_TAKEN,
@@ -1294,6 +1301,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			// it as a no-op: the POP_TOP that follows pops the `sent` value
 			// the driver pushed before dispatching.
 		case op.YIELD_VALUE:
+			f.YieldIP = startIP
 			f.Yielded = f.pop()
 			return nil, errYielded
 		case op.SEND:

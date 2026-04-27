@@ -31,6 +31,13 @@ type Frame struct {
 	// consumed by the generator driver on resume.
 	Yielded object.Object
 
+	// YieldIP is the bytecode offset of the most recent YIELD_VALUE opcode;
+	// used by throwGenerator to re-enter at the right exception-table entry.
+	YieldIP int
+	// PendingThrow, if non-nil, is an exception injected by throwGenerator.
+	// Dispatch checks it at the start of each iteration and redirects to handleErr.
+	PendingThrow error
+
 	// Inline buffers avoid a separate heap allocation for Fast/Stack on
 	// small frames (most Python functions fit). Fast/Stack reference
 	// these when the required size fits; otherwise they point at a
