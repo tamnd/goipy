@@ -805,6 +805,12 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		if name == "__name__" {
 			return &object.Str{V: fn.Name}, nil
 		}
+		if name == "__doc__" {
+			if fn.Doc != nil && fn.Doc != object.None {
+				return fn.Doc, nil
+			}
+			return object.None, nil
+		}
 		if fn.Dict != nil {
 			if v, ok := fn.Dict.GetStr(name); ok {
 				return v, nil

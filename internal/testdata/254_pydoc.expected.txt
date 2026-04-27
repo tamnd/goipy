@@ -1,0 +1,74 @@
+ErrorDuringImport
+True
+test_error_during_import ok
+'Return the answer.'
+'A simple class.'
+''
+test_getdoc ok
+function myfunc
+class MyClass
+int
+str
+list
+dict
+tuple
+NoneType
+test_describe ok
+('Synopsis only.', '')
+('Synopsis line.', 'Details here.')
+('', 'First line.\nNo blank line.')
+('', '')
+test_splitdoc ok
+'b d'
+'hello'
+'\x08b'
+test_plain ok
+<function foo>
+no address here
+<class bar at 0xABC>
+test_stripid ok
+hello earth
+xyz
+unchanged
+test_replace ok
+True
+True
+True
+False
+False
+test_isdata ok
+True
+False
+True
+True
+False
+False
+test_visiblename ok
+True
+True
+False
+False
+test_ispath ok
+hello world
+he...rld
+hi
+test_cram ok
+Repr
+42
+'hello'
+[1, 2, 3]
+True
+test_repr_class ok
+Helper
+<pydoc.Helper instance>
+True
+test_helper ok
+str
+True
+test_render_doc ok
+True
+True
+test_locate ok
+True
+True
+test_safeimport ok

@@ -480,8 +480,7 @@ func pyStrRepr(s string) string {
 			b.WriteRune(r)
 		default:
 			if r < 0x20 || r == 0x7f {
-				b.WriteString(`\x`)
-				b.WriteString(strconv.FormatInt(int64(r), 16))
+				b.WriteString(fmt.Sprintf(`\x%02x`, r))
 			} else {
 				b.WriteRune(r)
 			}
