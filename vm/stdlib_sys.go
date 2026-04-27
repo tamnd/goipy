@@ -89,6 +89,213 @@ func (i *Interp) buildSys() *object.Module {
 		return object.None, nil
 	}})
 
+	// ── sys.flags ─────────────────────────────────────────────────────────────
+	// Sequence of 18 flag values matching CPython's sys.flags layout.
+	// All are 0/False in goipy (no dev-mode support).
+	flagFields := []string{
+		"debug", "inspect", "interactive", "optimize", "dont_write_bytecode",
+		"no_user_site", "no_site", "ignore_environment", "verbose", "bytes_warning",
+		"quiet", "hash_randomization", "isolated", "dev_mode", "utf8_mode",
+		"warn_default_encoding", "safe_path", "int_max_str_digits",
+	}
+	flagVals := []object.Object{
+		object.NewInt(0), object.NewInt(0), object.NewInt(0), object.NewInt(0), object.NewInt(0),
+		object.NewInt(0), object.NewInt(0), object.NewInt(0), object.NewInt(0), object.NewInt(0),
+		object.NewInt(0), object.NewInt(1), object.NewInt(0), object.BoolOf(false), object.NewInt(0),
+		object.NewInt(0), object.BoolOf(false), object.NewInt(4300),
+	}
+	flagsCls := &object.Class{Name: "flags", Dict: object.NewDict()}
+	flagsCls.Dict.SetStr("__getitem__", &object.BuiltinFunc{Name: "__getitem__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			vals, _ := inst.Dict.GetStr("__values__")
+			list := vals.(*object.List)
+			idx := 0
+			if n, ok := a[1].(*object.Int); ok {
+				idx = int(n.V.Int64())
+			}
+			if idx < 0 {
+				idx = len(list.V) + idx
+			}
+			if idx < 0 || idx >= len(list.V) {
+				return nil, object.Errorf(i.indexErr, "index out of range")
+			}
+			return list.V[idx], nil
+		},
+	})
+	flagsCls.Dict.SetStr("__len__", &object.BuiltinFunc{Name: "__len__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.NewInt(18), nil
+		},
+	})
+	flagsCls.Dict.SetStr("__iter__", &object.BuiltinFunc{Name: "__iter__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			vals, _ := inst.Dict.GetStr("__values__")
+			list := vals.(*object.List)
+			return &object.List{V: append([]object.Object{}, list.V...)}, nil
+		},
+	})
+	flagsCls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			fields, _ := inst.Dict.GetStr("__fields__")
+			vals, _ := inst.Dict.GetStr("__values__")
+			flist := fields.(*object.List)
+			vlist := vals.(*object.List)
+			var parts []string
+			for j, fv := range flist.V {
+				fname := fv.(*object.Str).V
+				parts = append(parts, fname+"="+object.Repr(vlist.V[j]))
+			}
+			return &object.Str{V: "sys.flags(" + joinStrings(parts, ", ") + ")"}, nil
+		},
+	})
+	flagsInst := &object.Instance{Class: flagsCls, Dict: object.NewDict()}
+	fieldObjs := make([]object.Object, len(flagFields))
+	for j, f := range flagFields {
+		fieldObjs[j] = &object.Str{V: f}
+	}
+	flagsInst.Dict.SetStr("__fields__", &object.List{V: fieldObjs})
+	flagsInst.Dict.SetStr("__values__", &object.List{V: flagVals})
+	for j, fname := range flagFields {
+		flagsInst.Dict.SetStr(fname, flagVals[j])
+	}
+	m.Dict.SetStr("flags", flagsInst)
+
+	// ── sys.warnoptions / sys._xoptions ───────────────────────────────────────
+	m.Dict.SetStr("warnoptions", &object.List{V: nil})
+	m.Dict.SetStr("_xoptions", object.NewDict())
+
+	// ── sys.maxunicode ────────────────────────────────────────────────────────
+	m.Dict.SetStr("maxunicode", object.NewInt(1114111))
+
+	// ── sys.getdefaultencoding ────────────────────────────────────────────────
+	m.Dict.SetStr("getdefaultencoding", &object.BuiltinFunc{Name: "getdefaultencoding",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: "utf-8"}, nil
+		},
+	})
+
+	// ── sys.getfilesystemencoding / getfilesystemencodeerrors ─────────────────
+	m.Dict.SetStr("getfilesystemencoding", &object.BuiltinFunc{Name: "getfilesystemencoding",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: "utf-8"}, nil
+		},
+	})
+	m.Dict.SetStr("getfilesystemencodeerrors", &object.BuiltinFunc{Name: "getfilesystemencodeerrors",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: "surrogateescape"}, nil
+		},
+	})
+
+	// ── sys.intern ────────────────────────────────────────────────────────────
+	m.Dict.SetStr("intern", &object.BuiltinFunc{Name: "intern",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "intern() requires 1 argument")
+			}
+			s, ok := a[0].(*object.Str)
+			if !ok {
+				return nil, object.Errorf(i.typeErr, "intern() argument must be str")
+			}
+			return s, nil
+		},
+	})
+
+	// ── sys.addaudithook / sys.audit ──────────────────────────────────────────
+	m.Dict.SetStr("addaudithook", &object.BuiltinFunc{Name: "addaudithook",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+	m.Dict.SetStr("audit", &object.BuiltinFunc{Name: "audit",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+
+	// ── sys.getsizeof ─────────────────────────────────────────────────────────
+	m.Dict.SetStr("getsizeof", &object.BuiltinFunc{Name: "getsizeof",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return nil, object.Errorf(i.typeErr, "getsizeof() requires at least 1 argument")
+			}
+			// Stub: return a reasonable positive size based on type
+			var size int64 = 28
+			switch a[0].(type) {
+			case *object.Str:
+				size = 50
+			case *object.List:
+				size = 56
+			case *object.Dict:
+				size = 64
+			case *object.Tuple:
+				size = 40
+			case *object.Float:
+				size = 24
+			case *object.Bool:
+				size = 28
+			}
+			return object.NewInt(size), nil
+		},
+	})
+
+	// ── sys.is_finalizing ─────────────────────────────────────────────────────
+	m.Dict.SetStr("is_finalizing", &object.BuiltinFunc{Name: "is_finalizing",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.BoolOf(false), nil
+		},
+	})
+
+	// ── sys.stdin (stub) ──────────────────────────────────────────────────────
+	m.Dict.SetStr("stdin", object.None)
+
+	return m
+}
+
+// joinStrings joins a slice of strings with a separator.
+func joinStrings(parts []string, sep string) string {
+	result := ""
+	for j, p := range parts {
+		if j > 0 {
+			result += sep
+		}
+		result += p
+	}
+	return result
+}
+
+// buildFaulthandler returns a minimal faulthandler module stub.
+func (i *Interp) buildFaulthandler() *object.Module {
+	m := &object.Module{Name: "faulthandler", Dict: object.NewDict()}
+
+	m.Dict.SetStr("is_enabled", &object.BuiltinFunc{Name: "is_enabled",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.BoolOf(false), nil
+		},
+	})
+	m.Dict.SetStr("enable", &object.BuiltinFunc{Name: "enable",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+	m.Dict.SetStr("disable", &object.BuiltinFunc{Name: "disable",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+	m.Dict.SetStr("dump_traceback", &object.BuiltinFunc{Name: "dump_traceback",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+	m.Dict.SetStr("cancel_dump_traceback_later", &object.BuiltinFunc{Name: "cancel_dump_traceback_later",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
+
 	return m
 }
 
