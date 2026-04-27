@@ -281,39 +281,6 @@ func joinStrings(parts []string, sep string) string {
 	return result
 }
 
-// buildFaulthandler returns a minimal faulthandler module stub.
-func (i *Interp) buildFaulthandler() *object.Module {
-	m := &object.Module{Name: "faulthandler", Dict: object.NewDict()}
-
-	m.Dict.SetStr("is_enabled", &object.BuiltinFunc{Name: "is_enabled",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.BoolOf(false), nil
-		},
-	})
-	m.Dict.SetStr("enable", &object.BuiltinFunc{Name: "enable",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
-		},
-	})
-	m.Dict.SetStr("disable", &object.BuiltinFunc{Name: "disable",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
-		},
-	})
-	m.Dict.SetStr("dump_traceback", &object.BuiltinFunc{Name: "dump_traceback",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
-		},
-	})
-	m.Dict.SetStr("cancel_dump_traceback_later", &object.BuiltinFunc{Name: "cancel_dump_traceback_later",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
-		},
-	})
-
-	return m
-}
-
 // buildWarnings exposes a minimal warnings module.
 func (i *Interp) buildWarnings() *object.Module {
 	m := &object.Module{Name: "warnings", Dict: object.NewDict()}
