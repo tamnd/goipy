@@ -12,6 +12,7 @@ func (i *Interp) buildContextlib() *object.Module {
 
 	// ── AbstractContextManager ────────────────────────────────────────────────
 	absCM := &object.Class{Name: "AbstractContextManager", Dict: object.NewDict()}
+	// Default __enter__ returns self; subclasses may override.
 	absCM.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			if len(a) > 0 {
@@ -22,6 +23,11 @@ func (i *Interp) buildContextlib() *object.Module {
 	absCM.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.None, nil
+		}})
+	// __class_getitem__ for Generic support (returns a generic alias stub).
+	absCM.Dict.SetStr("__class_getitem__", &object.BuiltinFunc{Name: "__class_getitem__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return absCM, nil
 		}})
 	m.Dict.SetStr("AbstractContextManager", absCM)
 
@@ -38,7 +44,56 @@ func (i *Interp) buildContextlib() *object.Module {
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return object.None, nil
 		}})
+	absACM.Dict.SetStr("__class_getitem__", &object.BuiltinFunc{Name: "__class_getitem__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return absACM, nil
+		}})
 	m.Dict.SetStr("AbstractAsyncContextManager", absACM)
+
+	// ── ContextDecorator ─────────────────────────────────────────────────────
+	// Mixin that makes a context manager usable as a function decorator.
+	// Subclasses inherit __call__ which wraps the decorated function in `with self:`.
+	ctxDecoratorCls := &object.Class{Name: "ContextDecorator", Dict: object.NewDict()}
+	ctxDecoratorCls.Dict.SetStr("_recreate_cm", &object.BuiltinFunc{Name: "_recreate_cm",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			// Default: return self (same instance reused each call).
+			if len(a) > 0 {
+				return a[0], nil
+			}
+			return object.None, nil
+		}})
+	ctxDecoratorCls.Dict.SetStr("__call__", &object.BuiltinFunc{Name: "__call__",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interpFrom(interp)
+			if ii == nil {
+				ii = i
+			}
+			// a[0]=self (the CM instance), a[1]=fn to decorate
+			if len(a) < 2 {
+				return object.None, nil
+			}
+			selfCM := a[0]
+			fn := a[1]
+			return ctxlibWrapWithCM(ii, selfCM, fn), nil
+		}})
+	m.Dict.SetStr("ContextDecorator", ctxDecoratorCls)
+
+	// ── AsyncContextDecorator (Python 3.10+) ─────────────────────────────────
+	asyncCtxDecCls := &object.Class{Name: "AsyncContextDecorator", Dict: object.NewDict()}
+	asyncCtxDecCls.Dict.SetStr("__call__", &object.BuiltinFunc{Name: "__call__",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interpFrom(interp)
+			if ii == nil {
+				ii = i
+			}
+			if len(a) < 2 {
+				return object.None, nil
+			}
+			selfCM := a[0]
+			fn := a[1]
+			return ctxlibWrapWithCM(ii, selfCM, fn), nil
+		}})
+	m.Dict.SetStr("AsyncContextDecorator", asyncCtxDecCls)
 
 	// ── suppress(*exceptions) ────────────────────────────────────────────────
 	m.Dict.SetStr("suppress", &object.BuiltinFunc{Name: "suppress",
@@ -50,8 +105,14 @@ func (i *Interp) buildContextlib() *object.Module {
 				}
 			}
 			cls := &object.Class{Name: "_SuppressContext", Dict: object.NewDict()}
+			inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+			// Python 3.12+: exceptions attribute holds the suppressed exception.
+			inst.Dict.SetStr("exceptions", &object.List{V: []object.Object{}})
+
 			cls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
 				Call: func(_ any, a2 []object.Object, _ *object.Dict) (object.Object, error) {
+					// Reset exceptions on entry.
+					inst.Dict.SetStr("exceptions", &object.List{V: []object.Object{}})
 					if len(a2) > 0 {
 						return a2[0], nil
 					}
@@ -69,12 +130,20 @@ func (i *Interp) buildContextlib() *object.Module {
 					}
 					for _, cls2 := range classes {
 						if object.IsSubclass(excCls, cls2) {
+							// Record the suppressed exception.
+							if len(a2) >= 3 && a2[2] != object.None {
+								if exList, ok2 := inst.Dict.GetStr("exceptions"); ok2 {
+									if lst, ok3 := exList.(*object.List); ok3 {
+										lst.V = append(lst.V, a2[2])
+									}
+								}
+							}
 							return object.True, nil
 						}
 					}
 					return object.False, nil
 				}})
-			return &object.Instance{Class: cls, Dict: object.NewDict()}, nil
+			return inst, nil
 		}})
 
 	// ── closing(thing) ───────────────────────────────────────────────────────
@@ -106,6 +175,55 @@ func (i *Interp) buildContextlib() *object.Module {
 			return inst, nil
 		}})
 
+	// ── aclosing(athing) (Python 3.10+) ─────────────────────────────────────
+	// Async version of closing — calls athing.aclose() on exit.
+	m.Dict.SetStr("aclosing", &object.BuiltinFunc{Name: "aclosing",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interpFrom(interp)
+			if ii == nil {
+				ii = i
+			}
+			var thing object.Object = object.None
+			if len(a) > 0 {
+				thing = a[0]
+			}
+			cls := &object.Class{Name: "aclosing", Dict: object.NewDict()}
+			inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+			inst.Dict.SetStr("thing", thing)
+			cls.Dict.SetStr("__aenter__", &object.BuiltinFunc{Name: "__aenter__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					return ctxlibOneShotIter(ii, thing), nil
+				}})
+			cls.Dict.SetStr("__aexit__", &object.BuiltinFunc{Name: "__aexit__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					// Try aclose() first, fall back to close().
+					if acm, err := ii.getAttr(thing, "aclose"); err == nil {
+						coro, cerr := ii.callObject(acm, nil, nil)
+						if cerr == nil {
+							if gen, ok := coro.(*object.Generator); ok {
+								_, _ = ii.driveCoroutine(gen)
+							}
+						}
+					} else if cm, err2 := ii.getAttr(thing, "close"); err2 == nil {
+						_, _ = ii.callObject(cm, nil, nil)
+					}
+					return ctxlibOneShotIter(ii, object.False), nil
+				}})
+			// Also supply synchronous enter/exit so it can be used in non-async code.
+			cls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					return thing, nil
+				}})
+			cls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					if cm, err := ii.getAttr(thing, "close"); err == nil {
+						_, _ = ii.callObject(cm, nil, nil)
+					}
+					return object.False, nil
+				}})
+			return inst, nil
+		}})
+
 	// ── nullcontext(enter_result=None) ───────────────────────────────────────
 	m.Dict.SetStr("nullcontext", &object.BuiltinFunc{Name: "nullcontext",
 		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
@@ -121,11 +239,22 @@ func (i *Interp) buildContextlib() *object.Module {
 			cls := &object.Class{Name: "nullcontext", Dict: object.NewDict()}
 			inst := &object.Instance{Class: cls, Dict: object.NewDict()}
 			inst.Dict.SetStr("enter_result", enterResult)
-			cls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
+			enter := &object.BuiltinFunc{Name: "__enter__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					return enterResult, nil
+				}}
+			exit := &object.BuiltinFunc{Name: "__exit__",
+				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+					return object.False, nil
+				}}
+			cls.Dict.SetStr("__enter__", enter)
+			cls.Dict.SetStr("__exit__", exit)
+			// Async variants (Python 3.10+): same semantics.
+			cls.Dict.SetStr("__aenter__", &object.BuiltinFunc{Name: "__aenter__",
 				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 					return enterResult, nil
 				}})
-			cls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__",
+			cls.Dict.SetStr("__aexit__", &object.BuiltinFunc{Name: "__aexit__",
 				Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 					return object.False, nil
 				}})
@@ -143,7 +272,8 @@ func (i *Interp) buildContextlib() *object.Module {
 				return nil, object.Errorf(ii.typeErr, "contextmanager() requires a function argument")
 			}
 			fn := a[0]
-			return &object.BuiltinFunc{Name: "contextmanager_wrapper",
+			var wrapper *object.BuiltinFunc
+			wrapper = &object.BuiltinFunc{Name: "contextmanager_wrapper",
 				Call: func(interp2 any, args []object.Object, kw *object.Dict) (object.Object, error) {
 					ii2 := interpFrom(interp2)
 					if ii2 == nil {
@@ -157,8 +287,15 @@ func (i *Interp) buildContextlib() *object.Module {
 					if !ok {
 						return nil, object.Errorf(ii2.typeErr, "contextmanager: function must be a generator function")
 					}
-					return ctxlibMakeGenCtxMgr(genObj, ii2), nil
-				}}, nil
+					cm := ctxlibMakeGenCtxMgr(genObj, ii2)
+					// Store wrapper + original args so the CM can be recreated for decorator use.
+					cm.Dict.SetStr("_cm_wrapper", wrapper)
+					argsCopy := make([]object.Object, len(args))
+					copy(argsCopy, args)
+					cm.Dict.SetStr("_cm_args", &object.Tuple{V: argsCopy})
+					return cm, nil
+				}}
+			return wrapper, nil
 		}})
 
 	// ── asynccontextmanager decorator ────────────────────────────────────────
@@ -261,36 +398,85 @@ func (i *Interp) buildContextlib() *object.Module {
 			if ii == nil {
 				ii = i
 			}
-			return ctxlibMakeExitStack(ii), nil
+			return ctxlibMakeExitStackWith(ii, &[]exitStackCb{}, true), nil
 		}})
-
-	// ── contextdecorator ─────────────────────────────────────────────────────
-	ctxDecoratorCls := &object.Class{Name: "ContextDecorator", Dict: object.NewDict()}
-	ctxDecoratorCls.Dict.SetStr("__call__", &object.BuiltinFunc{Name: "__call__",
-		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			ii := interpFrom(interp)
-			if ii == nil {
-				ii = i
-			}
-			if len(a) < 2 {
-				return object.None, nil
-			}
-			fn := a[1]
-			return &object.BuiltinFunc{Name: "decorator_wrapper",
-				Call: func(interp2 any, args []object.Object, kw *object.Dict) (object.Object, error) {
-					ii2 := interpFrom(interp2)
-					if ii2 == nil {
-						ii2 = ii
-					}
-					return ii2.callObject(fn, args, kw)
-				}}, nil
-		}})
-	m.Dict.SetStr("ContextDecorator", ctxDecoratorCls)
 
 	// ── SUPPRESS sentinel ─────────────────────────────────────────────────────
 	m.Dict.SetStr("SUPPRESS", &object.Str{V: "<no value>"})
 
 	return m
+}
+
+// ctxlibWrapWithCM returns a BuiltinFunc that, when called, wraps the call
+// to fn inside a `with selfCM:` block. Used by ContextDecorator.__call__ and
+// _GeneratorContextManager.__call__.
+func ctxlibWrapWithCM(ii *Interp, selfCM object.Object, fn object.Object) *object.BuiltinFunc {
+	return &object.BuiltinFunc{Name: "decorator_wrapper",
+		Call: func(interp2 any, args []object.Object, kw *object.Dict) (object.Object, error) {
+			ii2 := interpFrom(interp2)
+			if ii2 == nil {
+				ii2 = ii
+			}
+			// If selfCM has _cm_wrapper, recreate the CM fresh for this call.
+			cm := selfCM
+			if inst, ok := selfCM.(*object.Instance); ok {
+				if wrapperObj, ok2 := inst.Dict.GetStr("_cm_wrapper"); ok2 {
+					var cmArgs []object.Object
+					if argsObj, ok3 := inst.Dict.GetStr("_cm_args"); ok3 {
+						if t, ok4 := argsObj.(*object.Tuple); ok4 {
+							cmArgs = t.V
+						}
+					}
+					freshCM, err := ii2.callObject(wrapperObj, cmArgs, nil)
+					if err != nil {
+						return nil, err
+					}
+					cm = freshCM
+				}
+			}
+			// __enter__
+			enterMethod, err := ii2.getAttr(cm, "__enter__")
+			if err != nil {
+				return nil, err
+			}
+			_, err = ii2.callObject(enterMethod, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			// call fn
+			result, fnErr := ii2.callObject(fn, args, kw)
+			// __exit__
+			exitMethod, exitGetErr := ii2.getAttr(cm, "__exit__")
+			if exitGetErr == nil {
+				exitArgs := []object.Object{object.None, object.None, object.None}
+				if fnErr != nil {
+					if exc, ok := fnErr.(*object.Exception); ok {
+						exitArgs = []object.Object{exc.Class, fnErr, object.None}
+					}
+				}
+				suppressed, _ := ii2.callObject(exitMethod, exitArgs, nil)
+				if fnErr != nil && isTruthy(suppressed) {
+					return object.None, nil
+				}
+			}
+			if fnErr != nil {
+				return nil, fnErr
+			}
+			return result, nil
+		}}
+}
+
+// ctxlibOneShotIter returns a one-shot Iter that resolves to val when awaited.
+func ctxlibOneShotIter(ii *Interp, val object.Object) *object.Iter {
+	done := false
+	return &object.Iter{Next: func() (object.Object, bool, error) {
+		if done {
+			return nil, false, nil
+		}
+		done = true
+		exc := &object.Exception{Class: ii.stopIter, Args: &object.Tuple{V: []object.Object{val}}}
+		return nil, false, exc
+	}}
 }
 
 // ctxlibMakeGenCtxMgr creates a _GeneratorContextManager instance.
@@ -301,7 +487,6 @@ func ctxlibMakeGenCtxMgr(gen *object.Generator, ii *Interp) *object.Instance {
 
 	cls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			// Advance to the yield point and return the yielded value.
 			v, err := ii.resumeGenerator(gen, object.None)
 			if err != nil {
 				if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
@@ -314,10 +499,8 @@ func ctxlibMakeGenCtxMgr(gen *object.Generator, ii *Interp) *object.Instance {
 
 	cls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			// a[0]=self, a[1]=exc_type, a[2]=exc_val, a[3]=tb
 			noExc := len(a) < 2 || a[1] == object.None
 			if noExc {
-				// Drive generator to completion; expect StopIteration.
 				_, err := ii.resumeGenerator(gen, object.None)
 				if err != nil {
 					if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
@@ -327,7 +510,6 @@ func ctxlibMakeGenCtxMgr(gen *object.Generator, ii *Interp) *object.Instance {
 				}
 				return object.False, object.Errorf(ii.runtimeErr, "generator didn't stop")
 			}
-			// Exception occurred — throw it into the generator.
 			var excVal *object.Exception
 			if len(a) >= 3 {
 				if ev, ok := a[2].(*object.Exception); ok {
@@ -335,8 +517,8 @@ func ctxlibMakeGenCtxMgr(gen *object.Generator, ii *Interp) *object.Instance {
 				}
 			}
 			if excVal == nil && len(a) >= 2 {
-				if cls, ok := a[1].(*object.Class); ok {
-					excVal = object.NewException(cls, "")
+				if cls2, ok := a[1].(*object.Class); ok {
+					excVal = object.NewException(cls2, "")
 				}
 			}
 			if excVal == nil {
@@ -345,17 +527,81 @@ func ctxlibMakeGenCtxMgr(gen *object.Generator, ii *Interp) *object.Instance {
 			_, throwErr := ii.throwGenerator(gen, excVal)
 			if throwErr != nil {
 				if exc, ok := throwErr.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
-					// StopIteration means the generator handled the exception and exited.
 					return object.True, nil
 				}
-				// The generator re-raised (or raised something else).
 				if throwErr == excVal || throwErr == error(excVal) {
 					return object.False, nil
 				}
 				return object.False, throwErr
 			}
-			// Generator yielded again — this is an error.
 			return object.False, object.Errorf(ii.runtimeErr, "generator didn't stop after throw()")
+		}})
+
+	// __aenter__ / __aexit__ delegate to the sync methods, wrapping results for await.
+	cls.Dict.SetStr("__aenter__", &object.BuiltinFunc{Name: "__aenter__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			v, err := ii.resumeGenerator(gen, object.None)
+			if err != nil {
+				if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
+					return nil, object.Errorf(ii.runtimeErr, "generator didn't yield")
+				}
+				return nil, err
+			}
+			return ctxlibOneShotIter(ii, v), nil
+		}})
+
+	cls.Dict.SetStr("__aexit__", &object.BuiltinFunc{Name: "__aexit__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			noExc := len(a) < 2 || a[1] == object.None
+			if noExc {
+				_, err := ii.resumeGenerator(gen, object.None)
+				if err != nil {
+					if exc, ok := err.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
+						return ctxlibOneShotIter(ii, object.False), nil
+					}
+					return nil, err
+				}
+				return nil, object.Errorf(ii.runtimeErr, "generator didn't stop")
+			}
+			var excVal *object.Exception
+			if len(a) >= 3 {
+				if ev, ok := a[2].(*object.Exception); ok {
+					excVal = ev
+				}
+			}
+			if excVal == nil && len(a) >= 2 {
+				if cls2, ok := a[1].(*object.Class); ok {
+					excVal = object.NewException(cls2, "")
+				}
+			}
+			if excVal == nil {
+				return ctxlibOneShotIter(ii, object.False), nil
+			}
+			_, throwErr := ii.throwGenerator(gen, excVal)
+			if throwErr != nil {
+				if exc, ok := throwErr.(*object.Exception); ok && object.IsSubclass(exc.Class, ii.stopIter) {
+					return ctxlibOneShotIter(ii, object.True), nil
+				}
+				if throwErr == excVal || throwErr == error(excVal) {
+					return ctxlibOneShotIter(ii, object.False), nil
+				}
+				return nil, throwErr
+			}
+			return nil, object.Errorf(ii.runtimeErr, "generator didn't stop after throw()")
+		}})
+
+	// __call__ makes the _GeneratorContextManager usable as a function decorator.
+	// It recreates the generator context manager for each invocation of the
+	// decorated function (via the stored _cm_wrapper and _cm_args).
+	cls.Dict.SetStr("__call__", &object.BuiltinFunc{Name: "__call__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			// a[0]=self, a[1]=fn to decorate
+			if len(a) < 2 {
+				return object.None, nil
+			}
+			selfInst := inst
+			fn := a[1]
+			return ctxlibWrapWithCM(ii, selfInst, fn), nil
 		}})
 
 	return inst
@@ -371,7 +617,6 @@ func ctxlibRedirect(i *Interp, stream string, target object.Object) *object.Inst
 
 	cls.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			// Redirect the interpreter's Go-level stream to the Python target.
 			if sio, ok := target.(*object.StringIO); ok {
 				adapter := &stringIOWriter{sio: sio}
 				if stream == "stdout" {
@@ -382,7 +627,6 @@ func ctxlibRedirect(i *Interp, stream string, target object.Object) *object.Inst
 					i.Stderr = adapter
 				}
 			}
-			// Also update sys.stdout / sys.stderr for Python code that reads it.
 			if sysModule, ok := i.modules["sys"]; ok {
 				sysModule.Dict.SetStr(stream, target)
 			}
@@ -403,33 +647,40 @@ func ctxlibRedirect(i *Interp, stream string, target object.Object) *object.Inst
 	return inst
 }
 
+type exitStackCbKind int
+
+const (
+	exitStackCbExit  exitStackCbKind = iota
+	exitStackCbClean
+)
+
+type exitStackCb struct {
+	kind exitStackCbKind
+	fn   object.Object
+	args []object.Object
+	kw   *object.Dict
+}
+
 // ctxlibMakeExitStack creates an ExitStack instance.
 func ctxlibMakeExitStack(ii *Interp) *object.Instance {
-	// exitCB is callable with signature (exc_type, exc_val, tb) → bool|None.
-	// cleanCB is a plain thunk with pre-bound args, never suppresses.
-	type cbKind int
-	const (
-		cbExit  cbKind = iota // push / enter_context
-		cbClean               // callback(fn, *args)
-	)
-	type cb struct {
-		kind cbKind
-		fn   object.Object
-		args []object.Object // only used for cbClean
-	}
-	var cbs []cb
+	return ctxlibMakeExitStackWith(ii, &[]exitStackCb{}, false)
+}
 
-	cls := &object.Class{Name: "ExitStack", Dict: object.NewDict()}
+func ctxlibMakeExitStackWith(ii *Interp, cbsPtr *[]exitStackCb, async bool) *object.Instance {
+	name := "ExitStack"
+	if async {
+		name = "AsyncExitStack"
+	}
+	cls := &object.Class{Name: name, Dict: object.NewDict()}
 	inst := &object.Instance{Class: cls, Dict: object.NewDict()}
 
-	// runCallbacks invokes all registered callbacks in LIFO order.
-	// Returns true if any exit callback suppressed the current exception.
 	runCallbacks := func(excType, excVal, tb object.Object) bool {
 		suppressed := false
+		cbs := *cbsPtr
 		for idx := len(cbs) - 1; idx >= 0; idx-- {
 			c := cbs[idx]
 			switch c.kind {
-			case cbExit:
+			case exitStackCbExit:
 				res, _ := ii.callObject(c.fn, []object.Object{excType, excVal, tb}, nil)
 				if isTruthy(res) {
 					suppressed = true
@@ -437,10 +688,11 @@ func ctxlibMakeExitStack(ii *Interp) *object.Instance {
 					excVal = object.None
 					tb = object.None
 				}
-			case cbClean:
-				_, _ = ii.callObject(c.fn, c.args, nil)
+			case exitStackCbClean:
+				_, _ = ii.callObject(c.fn, c.args, c.kw)
 			}
 		}
+		*cbsPtr = nil
 		return suppressed
 	}
 
@@ -451,7 +703,6 @@ func ctxlibMakeExitStack(ii *Interp) *object.Instance {
 
 	cls.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			// a[0]=self a[1]=exc_type a[2]=exc_val a[3]=tb
 			excType := object.Object(object.None)
 			excVal := object.Object(object.None)
 			tb := object.Object(object.None)
@@ -467,9 +718,31 @@ func ctxlibMakeExitStack(ii *Interp) *object.Instance {
 			return object.BoolOf(runCallbacks(excType, excVal, tb)), nil
 		}})
 
+	// __aenter__ / __aexit__ for AsyncExitStack
+	cls.Dict.SetStr("__aenter__", &object.BuiltinFunc{Name: "__aenter__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return ctxlibOneShotIter(ii, inst), nil
+		}})
+	cls.Dict.SetStr("__aexit__", &object.BuiltinFunc{Name: "__aexit__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			excType := object.Object(object.None)
+			excVal := object.Object(object.None)
+			tb := object.Object(object.None)
+			if len(a) >= 2 {
+				excType = a[1]
+			}
+			if len(a) >= 3 {
+				excVal = a[2]
+			}
+			if len(a) >= 4 {
+				tb = a[3]
+			}
+			result := object.BoolOf(runCallbacks(excType, excVal, tb))
+			return ctxlibOneShotIter(ii, result), nil
+		}})
+
 	cls.Dict.SetStr("enter_context", &object.BuiltinFunc{Name: "enter_context",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			// a[0]=self a[1]=cm
 			if len(a) < 2 {
 				return object.None, nil
 			}
@@ -484,48 +757,77 @@ func ctxlibMakeExitStack(ii *Interp) *object.Instance {
 			}
 			exitMethod, getErr2 := ii.getAttr(cm, "__exit__")
 			if getErr2 == nil {
-				cbs = append(cbs, cb{kind: cbExit, fn: exitMethod})
+				*cbsPtr = append(*cbsPtr, exitStackCb{kind: exitStackCbExit, fn: exitMethod})
+			}
+			return result, nil
+		}})
+
+	cls.Dict.SetStr("enter_async_context", &object.BuiltinFunc{Name: "enter_async_context",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 2 {
+				return object.None, nil
+			}
+			cm := a[1]
+			enterMethod, getErr := ii.getAttr(cm, "__aenter__")
+			if getErr != nil {
+				// fallback to sync
+				enterMethod, getErr = ii.getAttr(cm, "__enter__")
+				if getErr != nil {
+					return object.None, nil
+				}
+			}
+			result, err := ii.callObject(enterMethod, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			exitMethod, getErr2 := ii.getAttr(cm, "__aexit__")
+			if getErr2 != nil {
+				exitMethod, getErr2 = ii.getAttr(cm, "__exit__")
+			}
+			if getErr2 == nil {
+				*cbsPtr = append(*cbsPtr, exitStackCb{kind: exitStackCbExit, fn: exitMethod})
 			}
 			return result, nil
 		}})
 
 	cls.Dict.SetStr("callback", &object.BuiltinFunc{Name: "callback",
 		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
-			// a[0]=self a[1]=fn a[2..]=extra_args
 			if len(a) < 2 {
 				return object.None, nil
 			}
 			fn := a[1]
 			extra := append([]object.Object(nil), a[2:]...)
-			cbs = append(cbs, cb{kind: cbClean, fn: fn, args: extra})
+			*cbsPtr = append(*cbsPtr, exitStackCb{kind: exitStackCbClean, fn: fn, args: extra, kw: kw})
 			return fn, nil
 		}})
 
 	cls.Dict.SetStr("push", &object.BuiltinFunc{Name: "push",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			// a[0]=self a[1]=exit_fn  — called with (exc_type, exc_val, tb)
 			if len(a) < 2 {
 				return object.None, nil
 			}
 			fn := a[1]
-			cbs = append(cbs, cb{kind: cbExit, fn: fn})
+			if exitMethod, err := ii.getAttr(fn, "__exit__"); err == nil {
+				*cbsPtr = append(*cbsPtr, exitStackCb{kind: exitStackCbExit, fn: exitMethod})
+			} else {
+				*cbsPtr = append(*cbsPtr, exitStackCb{kind: exitStackCbExit, fn: fn})
+			}
 			return fn, nil
 		}})
 
 	cls.Dict.SetStr("pop_all", &object.BuiltinFunc{Name: "pop_all",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			newStack := ctxlibMakeExitStack(ii)
-			cbs = nil
-			return newStack, nil
+			// Transfer our callbacks to a new stack and clear ours.
+			transferred := append([]exitStackCb(nil), *cbsPtr...)
+			*cbsPtr = nil
+			return ctxlibMakeExitStackWith(ii, &transferred, async), nil
 		}})
 
 	cls.Dict.SetStr("close", &object.BuiltinFunc{Name: "close",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			runCallbacks(object.None, object.None, object.None)
-			cbs = nil
 			return object.None, nil
 		}})
 
 	return inst
 }
-
