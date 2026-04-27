@@ -1,0 +1,49 @@
+True
+abstract_cm ok
+True
+abstract_acm ok
+hello
+context_decorator ok
+10
+contextmanager_basic ok
+99
+contextmanager_decorator ok
+contextmanager_suppress ok
+True
+closing ok
+42
+True
+nullcontext ok
+suppress ok
+suppress_multi ok
+7
+suppress_noexc ok
+hello stdout
+redirect_stdout ok
+hello stderr
+redirect_stderr ok
+True
+True
+chdir ok
+A B
+['B', 'A']
+exitstack_basic ok
+['y', 'x']
+exitstack_callback ok
+['exit_fn']
+exitstack_push ok
+exitstack_suppress ok
+[]
+['a']
+exitstack_pop_all ok
+['cb']
+async_exitstack ok
+11
+asynccontextmanager ok
+True
+aclosing ok
+[1]
+suppress_passthrough ok
+hi
+nullcontext_kw ok
+done

@@ -116,7 +116,7 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 // It skips bindArgs entirely and copies directly into Fast.
 func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args []object.Object) (object.Object, error) {
 	code := fn.Code
-	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
+	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR) != 0
 	var frame *Frame
 	if !isGen {
 		code.Mu.Lock()
@@ -191,7 +191,7 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 // kwnames/kwvals describe keyword args. Skips building a kwargs dict.
 func (i *Interp) callFunctionFastKw(fn *object.Function, pos []object.Object, kwnames []object.Object, kwvals []object.Object) (object.Object, error) {
 	code := fn.Code
-	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
+	isGen := code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR) != 0
 	var frame *Frame
 	if !isGen {
 		code.Mu.Lock()
@@ -338,7 +338,7 @@ func (i *Interp) callFunction(fn *object.Function, args []object.Object, kwargs 
 	if err := i.bindArgs(fn, frame, args, kwargs); err != nil {
 		return nil, err
 	}
-	if code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0 {
+	if code.Flags&(CO_GENERATOR|CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR) != 0 {
 		return &object.Generator{Name: fn.Name, Frame: frame}, nil
 	}
 	return i.runFrame(frame)
@@ -515,6 +515,9 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 		if exc, ok := v.(*object.Exception); ok && object.IsSubclass(exc.Class, i.stopIter) {
 			return object.NewException(i.runtimeErr, "generator raised StopIteration"), nil
 		}
+		return v, nil
+	case op.INTRINSIC_ASYNC_GEN_WRAP:
+		// Wraps a value yielded by an async generator. In goipy we pass through.
 		return v, nil
 	}
 	return nil, object.Errorf(i.notImpl, "intrinsic %d not implemented", idx)
