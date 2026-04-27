@@ -81,6 +81,17 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 		}
 		return inst, nil
 	case *object.Instance:
+		// Instance dict __call__ takes priority (per-instance override).
+		if callFn, ok := fn.Dict.GetStr("__call__"); ok {
+			return i.callObject(callFn, args, kwargs)
+		}
+		// Class-level __call__, bound to the instance.
+		if fn.Class != nil {
+			if callFn, ok2 := classLookup(fn.Class, "__call__"); ok2 {
+				newArgs := append([]object.Object{fn}, args...)
+				return i.callObject(callFn, newArgs, kwargs)
+			}
+		}
 		if r, ok, err := i.callInstanceDunder(fn, "__call__", args...); ok {
 			return r, err
 		}

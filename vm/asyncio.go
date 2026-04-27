@@ -165,6 +165,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildDoctest(), true
 	case "unittest":
 		return i.buildUnittest(), true
+	case "unittest.mock":
+		return i.buildUnittestMock(), true
 	case "xmlrpc":
 		return i.buildXmlrpc(), true
 	case "xmlrpc.client":

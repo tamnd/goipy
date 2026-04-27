@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.0.260 - 2026-04-27
+
+`unittest.mock` — implements the standard library unittest.mock module.
+
+**`Mock` class:** tracks calls (`called`, `call_count`, `call_args`, `call_args_list`, `mock_calls`); configurable `return_value` and `side_effect`; child mock auto-creation on attribute access; `spec=` parameter restricts attributes; `name=` parameter for repr; `reset_mock()`; `configure_mock(**kwargs)`.
+
+**`side_effect` variants:** callable (invoked on each call), exception instance/class (raised on call), list/tuple (consumed in order, raises `StopIteration` when exhausted).
+
+**Assertion helpers:** `assert_called()`, `assert_not_called()`, `assert_called_once()`, `assert_called_with(*a, **kw)`, `assert_called_once_with(*a, **kw)`, `assert_any_call(*a, **kw)`, `assert_has_calls(calls)`.
+
+**`MagicMock`:** subclass of `Mock` with `__str__`, `__bool__` auto-configured; `__len__`, `__iter__`, `__enter__`/`__exit__`, `__contains__` overridable via assignment.
+
+**`NonCallableMock`:** raises `TypeError` on call; child mocks are also `NonCallableMock`.
+
+**`call` object:** `call(*a, **kw)` creates a call record; supports `==` comparison for assertion helpers; `repr()` shows `call(arg, kwarg=val)` form.
+
+**`patch(target, return_value=...)` context manager + decorator:** imports `target` module, replaces the named attribute with a fresh `Mock`, restores on exit; when used as a `@patch(...)` decorator, injects the mock as the last argument to the wrapped function.
+
+**`patch.object(obj, attr, return_value=...)`:** patches an attribute on any object/class/module.
+
+**`patch.dict(d, values, clear=False)`:** snapshots the dict, applies values, restores on exit; `clear=True` empties dict before applying.
+
+**`sentinel`:** factory for unique singleton objects; `sentinel.NAME` always returns the same object; `repr` shows `sentinel.NAME`.
+
+**`ANY`:** equality wildcard — `ANY == x` is `True` for any `x`.
+
+**`DEFAULT`:** sentinel value for "no explicit return_value set".
+
+**`create_autospec(spec, return_value=...)`:** creates a `Mock` bound to a spec object for attribute validation.
+
+**`PropertyMock`:** callable mock suitable for property descriptors.
+
+**VM fix:** `callObject` for `*object.Instance` now forwards `kwargs` when dispatching through `__call__`, fixing silent kwargs loss for all callable-instance patterns.
+
 ## v0.0.259 - 2026-04-27
 
 `dataclasses` — implements the standard library dataclasses module.
