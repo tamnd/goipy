@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.0.271 - 2026-04-27
+
+`venv` — implements the Python virtual environment creation module from https://docs.python.org/3/library/venv.html. goipy cannot set up a real Python interpreter, so all creation methods are stubs, but the full interface is exposed.
+
+**`venv.EnvBuilder(system_site_packages, clear, symlinks, upgrade, with_pip, prompt, upgrade_deps, scm_ignore_files)`:** all constructor kwargs stored as instance attributes with correct defaults.
+
+**`EnvBuilder.ensure_directories(env_dir)`:** returns a context object (`SimpleNamespace`-like Instance) with all standard attributes: `env_dir`, `env_name`, `prompt`, `executable`, `inc_path`, `lib_path`, `bin_path`, `bin_name`, `env_exe`, `env_exec_cmd`.
+
+**`EnvBuilder.create(env_dir)`:** no-op stub (goipy cannot create real Python environments).
+
+**`EnvBuilder.create_configuration(context)` / `setup_python(context)` / `setup_scripts(context)` / `post_setup(context)` / `upgrade_dependencies(context)` / `install_scripts(context, path)` / `create_git_ignore_file(context)`:** all no-op stubs.
+
+**`venv.create(env_dir, **kwargs)`:** module-level shortcut; no-op stub.
+
+## v0.0.270 - 2026-04-27
+
+`ensurepip` — implements the pip bootstrap module from https://docs.python.org/3/library/ensurepip.html. goipy cannot install packages, so bootstrap is a no-op, but the full interface is exposed.
+
+**`ensurepip.version()`:** returns `"24.0"` (representative bundled pip version).
+
+**`ensurepip.bootstrap(root, upgrade, user, altinstall, default_pip, verbosity)`:** no-op stub; raises `ValueError` when both `altinstall=True` and `default_pip=True` (mutually exclusive, matching CPython behaviour).
+
+**`ensurepip._bundled_packages()`:** returns `{"pip": "24.0"}`.
+
 ## v0.0.269 - 2026-04-27
 
 `tracemalloc` — implements the Python memory allocation tracer module from https://docs.python.org/3/library/tracemalloc.html. goipy has no malloc hooking, so all tracing is a no-op, but every class and function exposes the correct interface.

@@ -1,0 +1,16 @@
+test_import: OK
+test_version_returns_str: OK
+test_version_not_empty: OK
+test_version_has_dot: OK
+test_bootstrap_no_args: OK
+test_bootstrap_root: OK
+test_bootstrap_upgrade: OK
+test_bootstrap_user: OK
+test_bootstrap_default_pip: OK
+test_bootstrap_altinstall: OK
+test_bootstrap_verbosity: OK
+test_bootstrap_returns_none: OK
+test_bootstrap_altinstall_and_default_pip_raises: OK
+test_bundled_packages_returns_dict: OK
+test_bundled_packages_has_pip: OK
+test_bundled_packages_pip_version_str: OK
