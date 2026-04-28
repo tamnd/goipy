@@ -1,12 +1,12 @@
 True
-True
-True
+False
+False
 int
 False
 ForwardRef('int')
 True
 True
 True
-True
+False
 True
 done
