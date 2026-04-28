@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.319](changelog/0.0.319.md) | 2026-04-28 | winsound dedicated fixture 319 -- full API coverage |
 | [v0.0.318](changelog/0.0.318.md) | 2026-04-28 | winreg dedicated fixture 318 -- full API coverage plus missing constants |
 | [v0.0.317](changelog/0.0.317.md) | 2026-04-28 | msvcrt dedicated fixture 317 -- full API coverage |
 | [v0.0.316](changelog/0.0.316.md) | 2026-04-28 | Windows modules (msvcrt, winreg, winsound, msilib) -- fixture 316 |
