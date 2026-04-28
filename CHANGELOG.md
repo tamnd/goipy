@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.317](changelog/0.0.317.md) | 2026-04-28 | msvcrt dedicated fixture 317 -- full API coverage |
 | [v0.0.316](changelog/0.0.316.md) | 2026-04-28 | Windows modules (msvcrt, winreg, winsound, msilib) -- fixture 316 |
 | [v0.0.315](changelog/0.0.315.md) | 2026-04-28 | `pickletools` module — fixture 315 for https://docs.python.org/3/library/pick... |
 | [v0.0.314](changelog/0.0.314.md) | 2026-04-28 | `dis` module — fixture 314 for https://docs.python.org/3/library/dis.html. Fu... |
