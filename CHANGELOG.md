@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.315](changelog/0.0.315.md) | 2026-04-28 | `pickletools` module — fixture 315 for https://docs.python.org/3/library/pick... |
 | [v0.0.314](changelog/0.0.314.md) | 2026-04-28 | `dis` module — fixture 314 for https://docs.python.org/3/library/dis.html. Fu... |
 | [v0.0.313](changelog/0.0.313.md) | 2026-04-28 | `compileall` module — fixture 313 for https://docs.python.org/3/library/compi... |
 | [v0.0.312](changelog/0.0.312.md) | 2026-04-28 | `py_compile` module — fixture 312 for https://docs.python.org/3/library/py_co... |
