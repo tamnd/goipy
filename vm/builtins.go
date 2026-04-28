@@ -1280,9 +1280,13 @@ func (i *Interp) initBuiltins() {
 		return object.None, nil
 	}})
 	b.SetStr("callable", &object.BuiltinFunc{Name: "callable", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		switch a[0].(type) {
+		switch v := a[0].(type) {
 		case *object.BuiltinFunc, *object.Function, *object.BoundMethod, *object.Class:
 			return object.True, nil
+		case *object.Instance:
+			if _, ok := v.Class.Dict.GetStr("__call__"); ok {
+				return object.True, nil
+			}
 		}
 		return object.False, nil
 	}})
