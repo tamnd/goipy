@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.0.305 - 2026-04-28
+
+`ast` module — fixture 305 for https://docs.python.org/3/library/ast.html. Full AST node class hierarchy, `literal_eval`, utility functions, `NodeVisitor`, `NodeTransformer`.
+
+**New `vm/stdlib_ast.go` — `buildAst()`:**
+
+- **PyCF constants** — `PyCF_ONLY_AST=1024`, `PyCF_ALLOW_TOP_LEVEL_AWAIT=8192`, `PyCF_TYPE_COMMENTS=4096`, `PyCF_OPTIMIZED_AST=33792`
+- **Complete AST node class hierarchy** — all CPython 3.14 node classes with correct `_fields` and `_attributes` tuples; `__init__` accepts both positional (by `_fields` order) and keyword arguments:
+  - `AST` base class
+  - Abstract categories: `mod`, `stmt`, `expr`, `expr_context`, `boolop`, `operator`, `unaryop`, `cmpop`, `pattern`, `excepthandler`, `type_ignore`
+  - `mod` subclasses: `Module`, `Interactive`, `Expression`, `FunctionType`
+  - 26 `stmt` subclasses: `FunctionDef`, `AsyncFunctionDef`, `ClassDef`, `Return`, `Delete`, `Assign`, `AugAssign`, `AnnAssign`, `For`, `AsyncFor`, `While`, `If`, `With`, `AsyncWith`, `Match`, `Raise`, `Try`, `TryStar`, `Assert`, `Import`, `ImportFrom`, `Global`, `Nonlocal`, `Expr`, `Pass`, `Break`, `Continue`
+  - 26 `expr` subclasses: `BoolOp`, `NamedExpr`, `BinOp`, `UnaryOp`, `Lambda`, `IfExp`, `Dict`, `Set`, `ListComp`, `SetComp`, `DictComp`, `GeneratorExp`, `Await`, `Yield`, `YieldFrom`, `Compare`, `Call`, `FormattedValue`, `JoinedStr`, `Constant`, `Attribute`, `Subscript`, `Starred`, `Name`, `List`, `Tuple`, `Slice`
+  - `expr_context` singletons: `Load`, `Store`, `Del`
+  - `boolop` singletons: `And`, `Or`
+  - `operator` singletons: `Add`, `Sub`, `Mult`, `MatMult`, `Div`, `Mod`, `Pow`, `LShift`, `RShift`, `BitOr`, `BitXor`, `BitAnd`, `FloorDiv`
+  - `unaryop` singletons: `Invert`, `Not`, `UAdd`, `USub`
+  - `cmpop` singletons: `Eq`, `NotEq`, `Lt`, `LtE`, `Gt`, `GtE`, `Is`, `IsNot`, `In`, `NotIn`
+  - misc: `comprehension`, `ExceptHandler`, `arguments`, `arg`, `keyword`, `alias`, `withitem`, `match_case`, `TypeIgnore`
+  - `pattern` subclasses: `MatchValue`, `MatchSingleton`, `MatchSequence`, `MatchMapping`, `MatchClass`, `MatchStar`, `MatchAs`, `MatchOr`
+- **`ast.literal_eval(s)`** — full recursive-descent Go parser for Python literals: `int`, `float`, `str` (with escape sequences), `bool`, `None`, `list`, `tuple`, `dict`, `set`
+- **`ast.parse(source)`** — returns a stub `Module` node (no real parsing; goipy has no embedded Python parser)
+- **`ast.dump(node)`** — produces `ClassName(field=val, ...)` representation
+- **`ast.unparse(node)`** — simplified source reconstruction for `Module`, `Assign`, `Expr`, `Name`, `Constant`
+- **`ast.get_docstring(node)`** — extracts docstring from a `FunctionDef`/`Module` body's first `Expr(Constant(str))` node
+- **`ast.fix_missing_locations(node)`** — walks tree and sets missing `lineno`/`col_offset` to 1
+- **`ast.copy_location(new, old)`** — copies `lineno`, `col_offset`, `end_lineno`, `end_col_offset`
+- **`ast.increment_lineno(node, n=1)`** — increments `lineno`/`end_lineno` on all nodes in tree
+- **`ast.iter_fields(node)`** — iterator of `(fieldname, value)` for fields present on the instance
+- **`ast.iter_child_nodes(node)`** — iterator of direct child AST nodes from fields
+- **`ast.walk(node)`** — BFS iterator of all nodes in tree
+- **`NodeVisitor`** — base class with `visit()` (dispatches to `visit_<TypeName>` or `generic_visit`) and `generic_visit()` (visits all child nodes)
+- **`NodeTransformer`** — subclass of `NodeVisitor` with `generic_visit()` returning the node
+
+Registered `"ast"` in `vm/asyncio.go`.
+
 ## v0.0.304 - 2026-04-28
 
 `sys` path initialization attributes — fixture 304 for https://docs.python.org/3/library/sys_path_init.html. Covers all `sys` attributes related to path initialization and interpreter metadata.
