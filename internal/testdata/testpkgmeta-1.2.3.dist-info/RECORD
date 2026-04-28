@@ -1,0 +1,4 @@
+testpkgmeta/__init__.py,sha256=abc123def456,100
+testpkgmeta/__main__.py,sha256=fedcba654321,50
+testpkgmeta-1.2.3.dist-info/METADATA,sha256=111222333444,200
+testpkgmeta-1.2.3.dist-info/RECORD,,

@@ -57,5 +57,5 @@ True
 PackageNotFoundError
 list
 dict
-list
+EntryPoints
 done
