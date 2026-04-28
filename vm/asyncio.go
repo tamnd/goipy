@@ -33,6 +33,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildKeyword(), true
 	case "tokenize":
 		return i.buildTokenize(), true
+	case "tabnanny":
+		return i.buildTabnanny(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":

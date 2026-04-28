@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.0.310 - 2026-04-28
+
+`tabnanny` module — fixture 310 for https://docs.python.org/3/library/tabnanny.html. Full CPython 3.14 tabnanny API.
+
+**New `vm/stdlib_tabnanny.go` — `buildTabnanny()`:**
+
+- **`NannyNag(lineno, msg, line)`** — subclass of `Exception`; `get_lineno()` → int, `get_msg()` → str, `get_line()` → str; works correctly with goipy's exception fast-path (args stored in `exc.Args`)
+- **`process_tokens(tokens)`** — inspects INDENT tokens for mixed tab/space indentation; raises `NannyNag` on ambiguous indent, returns `None` for clean code
+- **`check(file_or_dir)`** — stub accepting any path, returns `None`
+- **`format_witnesses(witnesses)`** — returns comma-separated string of witness representations
+- **`errprint(*args)`** — stub (CPython calls `sys.exit(1)` after printing; stub avoids side-effects)
+- **`Whitespace`** — internal helper class, exposed publicly
+- **`filename_only = 0`**, **`verbose = 0`**, **`__version__ = '6'`**, **`__all__`** set correctly
+
+Registered `"tabnanny"` in `vm/asyncio.go`.
+
 ## v0.0.309 - 2026-04-28
 
 `tokenize` module — fixture 309 for https://docs.python.org/3/library/tokenize.html. Full CPython 3.14 tokenize API including re-exported token constants, `TokenInfo` namedtuple with `.exact_type`, `TokenError` exception, `Untokenizer` class, and `tokenize()`/`generate_tokens()`/`detect_encoding()`/`untokenize()` functions backed by a Go-based Python tokenizer.
