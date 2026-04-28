@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.0.301 - 2026-04-28
+
+`importlib.resources` comprehensive — fixture 301 for https://docs.python.org/3/library/importlib.resources.html. Real filesystem-backed implementation covering the full modern and legacy APIs.
+
+**New `vm/stdlib_importlib_resources.go`** replaces the previous stub with a working implementation:
+
+- **`files(anchor)`** accepts a module object or string name, resolves the package directory via `i.loadModule`, and returns a `Traversable` instance backed by the real filesystem. Traversable exposes `name`, `is_dir()`, `is_file()`, `iterdir()`, `joinpath(*parts)`, `open(mode='r', ...)`, `read_bytes()`, `read_text(encoding=...)`. `joinpath` handles the method-dispatch self-skipping. `iterdir()` yields child Traversables.
+- **`as_file(traversable)`** context manager: extracts `_path` from the Traversable and yields a `Path`-like instance. Does not use `mpArgs` (first arg is `*object.Instance`).
+- **`path(anchor, *names)`** context manager yielding a `Path` instance for `pkgDir(anchor)/names...`.
+- **`read_binary`**, **`read_text`**, **`open_binary`**, **`open_text`**, **`is_resource`**, **`contents`** — all real filesystem I/O via `os.ReadFile`/`os.ReadDir`.
+- **`makeBytesCM`** / **`makeTextCM`**: file-like context managers with `read`, `readline`, `readlines`, `close`, `__enter__`, `__exit__`.
+- **`buildImportlibResourcesAbc()`**: `importlib.resources.abc` module with `Traversable`, `TraversableResources`, `ResourceReader` classes and `TraversalError` exception.
+
+**New test package `internal/testdata/testpkgres/`**: `__init__.py` + compiled `__init__.pyc` + `greeting.txt` ("Hello, resource!") used as real filesystem resources by the fixture.
+
+**`vm/asyncio.go`**: registered `"importlib.resources.abc"` → `buildImportlibResourcesAbc()`.
+
 ## v0.0.300 - 2026-04-28
 
 `importlib` family — first comprehensive fixture (300) for https://docs.python.org/3/library/importlib.html. Full coverage of `importlib`, `importlib.util`, `importlib.abc`, `importlib.machinery`, `importlib.resources`, and `importlib.metadata`.

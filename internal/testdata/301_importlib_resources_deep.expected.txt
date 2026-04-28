@@ -1,0 +1,39 @@
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+testpkgres
+False
+True
+False
+greeting.txt
+Hello, resource!
+bytes
+True
+Hello, resource!
+list
+True
+True
+True
+True
+False
+list
+True
+bytes
+True
+Hello, resource!
+bytes
+True
+Hello, resource!
+Path
+Path
+True
+True
+True
+done

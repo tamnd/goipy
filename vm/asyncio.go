@@ -19,6 +19,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildImportlibMachinery(), true
 	case "importlib.resources":
 		return i.buildImportlibResources(), true
+	case "importlib.resources.abc":
+		return i.buildImportlibResourcesAbc(), true
 	case "importlib.metadata":
 		return i.buildImportlibMetadata(), true
 	case "functools":
