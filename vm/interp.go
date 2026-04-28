@@ -106,6 +106,32 @@ func New() *Interp {
 	return i
 }
 
+// CallObject invokes callable with positional and keyword args.
+// It is the public counterpart of the internal callObject method,
+// intended for use by native extension modules outside this package.
+func (i *Interp) CallObject(callable object.Object, args []object.Object, kwargs *object.Dict) (object.Object, error) {
+	return i.callObject(callable, args, kwargs)
+}
+
+// RegisterModule pre-registers a native module so that
+// `import <name>` resolves to mod without needing a .pyc file.
+// This is the public replacement for the old NativeModules field.
+func (i *Interp) RegisterModule(name string, mod *object.Module) {
+	if i.modules == nil {
+		i.modules = make(map[string]*object.Module)
+	}
+	i.modules[name] = mod
+}
+
+// NativeModules is a convenience setter: it registers all entries in the
+// map as native modules. Keys are module names, values are factory functions
+// called immediately with i to build each module.
+func (i *Interp) SetNativeModules(factories map[string]func(*Interp) *object.Module) {
+	for name, fn := range factories {
+		i.RegisterModule(name, fn(i))
+	}
+}
+
 // Run executes a code object as module-level code.
 func (i *Interp) Run(code *object.Code) (object.Object, error) {
 	globals := object.NewDict()
