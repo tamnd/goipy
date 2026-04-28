@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.0.306 - 2026-04-28
+
+`symtable` module — fixture 306 for https://docs.python.org/3/library/symtable.html. Full Symbol class with flag-based predicate methods, SymbolTable/Function/Class hierarchy, SymbolTableType namespace, and `symtable()` stub.
+
+**New `vm/stdlib_symtable.go` — `buildSymtable()`:**
+
+- **Integer constants** — all 19 CPython 3.14 bit-flag constants: `CELL=5`, `FREE=4`, `LOCAL=1`, `GLOBAL_EXPLICIT=2`, `GLOBAL_IMPLICIT=3`, `SCOPE_MASK=15`, `SCOPE_OFF=12`, `USE=16`, `DEF_GLOBAL`, `DEF_LOCAL`, `DEF_PARAM`, `DEF_NONLOCAL`, `DEF_FREE_CLASS`, `DEF_IMPORT`, `DEF_BOUND`, `DEF_ANNOT`, `DEF_COMP_ITER`, `DEF_TYPE_PARAM`, `DEF_COMP_CELL`
+- **`SymbolTableType`** — namespace instance with `MODULE='module'`, `FUNCTION='function'`, `CLASS='class'`, `ANNOTATION='annotation'`, `TYPE_ALIAS`, `TYPE_PARAMETERS`, `TYPE_VARIABLE`
+- **`Symbol` class** — publicly constructable with `(name, flags, namespaces=None, *, module_scope=False)`. All 17 predicate methods implemented via scope-bit arithmetic:
+  - `is_referenced()` → `flags & USE`
+  - `is_assigned()` → `flags & DEF_LOCAL`
+  - `is_parameter()` → `flags & DEF_PARAM`
+  - `is_imported()` → `flags & DEF_IMPORT`
+  - `is_nonlocal()` → `flags & DEF_NONLOCAL`
+  - `is_free_class()` → `flags & DEF_FREE_CLASS`
+  - `is_annotated()` → `flags & DEF_ANNOT`
+  - `is_comp_iter()` → `flags & DEF_COMP_ITER`
+  - `is_comp_cell()` → `flags & DEF_COMP_CELL`
+  - `is_type_parameter()` → `flags & DEF_TYPE_PARAM`
+  - `is_global()` → scope ∈ {GLOBAL_EXPLICIT, GLOBAL_IMPLICIT}
+  - `is_declared_global()` → scope == GLOBAL_EXPLICIT
+  - `is_local()` → scope == LOCAL
+  - `is_free()` → scope == FREE
+  - `is_namespace()`, `get_namespaces()`, `get_namespace()`
+- **`SymbolTable` class** — `get_type()`, `get_name()`, `get_id()`, `get_lineno()`, `is_optimized()`, `is_nested()`, `has_children()`, `get_identifiers()`, `lookup()`, `get_symbols()`, `get_children()`
+- **`Function` class** (subclass of `SymbolTable`) — adds `get_parameters()`, `get_locals()`, `get_globals()`, `get_frees()`, `get_nonlocals()`
+- **`Class` class** (subclass of `SymbolTable`) — adds `get_methods()`
+- **`symtable()` function** — returns a stub module-level `SymbolTable` with `get_type()='module'`, `get_name()='top'`, `get_lineno()=0`, empty symbols and children
+
+Registered `"symtable"` in `vm/asyncio.go`.
+
 ## v0.0.305 - 2026-04-28
 
 `ast` module — fixture 305 for https://docs.python.org/3/library/ast.html. Full AST node class hierarchy, `literal_eval`, utility functions, `NodeVisitor`, `NodeTransformer`.
