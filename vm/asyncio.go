@@ -25,6 +25,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildImportlibMetadata(), true
 	case "ast":
 		return i.buildAst(), true
+	case "symtable":
+		return i.buildSymtable(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
