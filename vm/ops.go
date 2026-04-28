@@ -728,6 +728,29 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 	if inst, ok := o.(*object.Instance); ok {
 		switch name {
 		case "__dict__":
+			if inst.Class != nil && inst.Class.NoDict {
+				return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '__dict__'", inst.Class.Name)
+			}
+			// If any class in the MRO declared __slots__, slot values
+			// shadow inst.Dict on read: present a filtered snapshot
+			// so __dict__ holds only the dynamic (non-slot) attrs,
+			// matching CPython's surface contract.
+			if inst.Class != nil && hasSlotsInMRO(inst.Class) {
+				out := object.NewDict()
+				ks, vs := inst.Dict.Items()
+				for idx, k := range ks {
+					kstr, ok := k.(*object.Str)
+					if !ok {
+						out.Set(k, vs[idx])
+						continue
+					}
+					if slotAllowed(inst.Class, kstr.V) {
+						continue
+					}
+					out.SetStr(kstr.V, vs[idx])
+				}
+				return out, nil
+			}
 			return inst.Dict, nil
 		case "__class__":
 			return inst.Class, nil
@@ -946,6 +969,9 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 				_, err := i.callObject(saFn, []object.Object{inst, &object.Str{V: name}, val}, nil)
 				return err
 			}
+			if inst.Class.NoDict && !slotAllowed(inst.Class, name) {
+				return object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
+			}
 		}
 		inst.Dict.SetStr(name, val)
 		return nil
@@ -988,6 +1014,9 @@ func (i *Interp) delAttr(o object.Object, name string) error {
 					return err
 				}
 			}
+		}
+		if inst.Class != nil && inst.Class.NoDict && !slotAllowed(inst.Class, name) {
+			return object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", inst.Class.Name, name)
 		}
 		ok, _ := inst.Dict.Delete(&object.Str{V: name})
 		if !ok {
