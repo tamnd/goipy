@@ -259,7 +259,13 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			return nil, object.Errorf(i.nameErr, "name '%s' is not defined", name)
 
 		// --- attribute access ---
-		case op.LOAD_ATTR:
+		case op.LOAD_ATTR,
+			op.LOAD_ATTR_CLASS, op.LOAD_ATTR_CLASS_WITH_METACLASS_CHECK,
+			op.LOAD_ATTR_GETATTRIBUTE_OVERRIDDEN, op.LOAD_ATTR_INSTANCE_VALUE,
+			op.LOAD_ATTR_METHOD_LAZY_DICT, op.LOAD_ATTR_METHOD_NO_DICT,
+			op.LOAD_ATTR_METHOD_WITH_VALUES, op.LOAD_ATTR_MODULE,
+			op.LOAD_ATTR_NONDESCRIPTOR_NO_DICT, op.LOAD_ATTR_NONDESCRIPTOR_WITH_VALUES,
+			op.LOAD_ATTR_PROPERTY, op.LOAD_ATTR_SLOT, op.LOAD_ATTR_WITH_HINT:
 			pushSelf := oparg&1 != 0
 			name := f.Code.Names[oparg>>1]
 			obj := f.pop()
@@ -371,7 +377,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			} else {
 				f.push(val)
 			}
-		case op.STORE_ATTR:
+		case op.STORE_ATTR,
+			op.STORE_ATTR_INSTANCE_VALUE, op.STORE_ATTR_SLOT, op.STORE_ATTR_WITH_HINT:
 			name := f.Code.Names[oparg]
 			obj := f.pop()
 			val := f.pop()
@@ -386,7 +393,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 
 		// --- arithmetic ---
-		case op.BINARY_OP:
+		case op.BINARY_OP, op.BINARY_OP_EXTEND:
 			sp := f.SP - 1
 			b := f.Stack[sp]
 			a := f.Stack[sp-1]
@@ -1030,7 +1037,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				goto handleErr
 			}
 			f.push(it)
-		case op.FOR_ITER, op.FOR_ITER_LIST, op.FOR_ITER_TUPLE, op.FOR_ITER_RANGE:
+		case op.FOR_ITER, op.FOR_ITER_LIST, op.FOR_ITER_TUPLE, op.FOR_ITER_RANGE, op.FOR_ITER_GEN:
 			it, ok := f.top().(*object.Iter)
 			if !ok {
 				conv, cerr := i.getIter(f.top())
@@ -1134,7 +1141,8 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			op.CALL_ISINSTANCE, op.CALL_LEN, op.CALL_LIST_APPEND,
 			op.CALL_METHOD_DESCRIPTOR_FAST, op.CALL_METHOD_DESCRIPTOR_FAST_WITH_KEYWORDS,
 			op.CALL_METHOD_DESCRIPTOR_NOARGS, op.CALL_METHOD_DESCRIPTOR_O,
-			op.CALL_NON_PY_GENERAL, op.CALL_STR_1, op.CALL_TUPLE_1, op.CALL_TYPE_1:
+			op.CALL_NON_PY_GENERAL, op.CALL_STR_1, op.CALL_TUPLE_1, op.CALL_TYPE_1,
+			op.CALL_ALLOC_AND_ENTER_INIT:
 			n := int(oparg)
 			base := f.SP - n - 2
 			callable := f.Stack[base]
@@ -1304,7 +1312,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			f.YieldIP = startIP
 			f.Yielded = f.pop()
 			return nil, errYielded
-		case op.SEND:
+		case op.SEND, op.SEND_GEN:
 			v := f.pop()
 			recv := f.top()
 			var yielded object.Object
@@ -1766,16 +1774,66 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			}
 			f.push(result)
 		case op.CHECK_EG_MATCH:
-			// Exception groups not supported; treat like CHECK_EXC_MATCH.
+			// PEP 654 except*: split TOS exception by `cls`. Replace TOS
+			// with the unmatched remainder (or None if fully matched), and
+			// push the matched part (or None if nothing matched).
 			excType := f.pop()
-			tos := f.top().(*object.Exception)
+			tos := f.pop().(*object.Exception)
 			cls, _ := excType.(*object.Class)
-			if cls != nil && object.IsSubclass(tos.Class, cls) {
+			if cls == nil {
 				f.push(tos)
 				f.push(object.None)
-			} else {
-				f.push(object.None)
+				continue
 			}
+			// Non-group: behaves like CHECK_EXC_MATCH.
+			isGroup := object.IsSubclass(tos.Class, i.baseExcGroup)
+			if !isGroup {
+				if object.IsSubclass(tos.Class, cls) {
+					f.push(object.None)
+					f.push(tos)
+				} else {
+					f.push(tos)
+					f.push(object.None)
+				}
+				continue
+			}
+			// Group: scan inner exceptions (Args[1]) and split.
+			var inners []object.Object
+			if tos.Args != nil && len(tos.Args.V) >= 2 {
+				if l, ok := tos.Args.V[1].(*object.List); ok {
+					inners = l.V
+				} else if t, ok := tos.Args.V[1].(*object.Tuple); ok {
+					inners = t.V
+				}
+			}
+			var matched, unmatched []object.Object
+			for _, inner := range inners {
+				if e, ok := inner.(*object.Exception); ok && object.IsSubclass(e.Class, cls) {
+					matched = append(matched, inner)
+				} else {
+					unmatched = append(unmatched, inner)
+				}
+			}
+			mkGroup := func(items []object.Object) object.Object {
+				if len(items) == 0 {
+					return object.None
+				}
+				msg := ""
+				if tos.Args != nil && len(tos.Args.V) >= 1 {
+					if s, ok := tos.Args.V[0].(*object.Str); ok {
+						msg = s.V
+					}
+				}
+				return &object.Exception{
+					Class: tos.Class,
+					Args: &object.Tuple{V: []object.Object{
+						&object.Str{V: msg},
+						&object.List{V: items},
+					}},
+				}
+			}
+			f.push(mkGroup(unmatched))
+			f.push(mkGroup(matched))
 
 		default:
 			return nil, object.Errorf(i.notImpl,

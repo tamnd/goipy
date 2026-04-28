@@ -522,11 +522,160 @@ func (i *Interp) intrinsic1(idx int, v object.Object) (object.Object, error) {
 	case op.INTRINSIC_ASYNC_GEN_WRAP:
 		// Wraps a value yielded by an async generator. In goipy we pass through.
 		return v, nil
+	case op.INTRINSIC_IMPORT_STAR:
+		// Stack: module. Copies module's public names into the current
+		// frame's globals (or locals at module top level). Honors __all__
+		// if present; otherwise copies every name not starting with "_".
+		dst := i.curFrame.Locals
+		if dst == nil {
+			dst = i.curFrame.Globals
+		}
+		var src *object.Dict
+		switch m := v.(type) {
+		case *object.Module:
+			src = m.Dict
+		case *object.Instance:
+			src = m.Dict
+		default:
+			return object.None, nil
+		}
+		var allowed map[string]bool
+		if a, ok := src.GetStr("__all__"); ok {
+			if t, ok := a.(*object.Tuple); ok {
+				allowed = map[string]bool{}
+				for _, n := range t.V {
+					if s, ok := n.(*object.Str); ok {
+						allowed[s.V] = true
+					}
+				}
+			} else if l, ok := a.(*object.List); ok {
+				allowed = map[string]bool{}
+				for _, n := range l.V {
+					if s, ok := n.(*object.Str); ok {
+						allowed[s.V] = true
+					}
+				}
+			}
+		}
+		ks, vs := src.Items()
+		for j, k := range ks {
+			s, ok := k.(*object.Str)
+			if !ok {
+				continue
+			}
+			if allowed != nil {
+				if !allowed[s.V] {
+					continue
+				}
+			} else if strings.HasPrefix(s.V, "_") {
+				continue
+			}
+			dst.SetStr(s.V, vs[j])
+		}
+		return object.None, nil
+	case op.INTRINSIC_TYPEVAR:
+		return i.makeTypeParam("TypeVar", v, object.None, &object.Tuple{V: nil}), nil
+	case op.INTRINSIC_PARAMSPEC:
+		return i.makeTypeParam("ParamSpec", v, object.None, &object.Tuple{V: nil}), nil
+	case op.INTRINSIC_TYPEVARTUPLE:
+		return i.makeTypeParam("TypeVarTuple", v, object.None, &object.Tuple{V: nil}), nil
+	case op.INTRINSIC_SUBSCRIPT_GENERIC:
+		// `class C[T]` emits this with the type-params tuple. We produce a
+		// pass-through generic-base placeholder; goipy's __build_class__
+		// silently ignores non-class bases anyway.
+		return v, nil
+	case op.INTRINSIC_TYPEALIAS:
+		// Stack: tuple (name, type_params, value_thunk).
+		t, ok := v.(*object.Tuple)
+		if !ok || len(t.V) < 3 {
+			return v, nil
+		}
+		var name object.Object = t.V[0]
+		var typeParams object.Object = t.V[1]
+		valueThunk := t.V[2]
+		var value object.Object = object.None
+		if valueThunk != nil && valueThunk != object.None {
+			r, err := i.callObject(valueThunk, nil, nil)
+			if err == nil {
+				value = r
+			}
+		}
+		cls := &object.Class{Name: "TypeAliasType", Dict: object.NewDict()}
+		inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+		inst.Dict.SetStr("__name__", name)
+		inst.Dict.SetStr("__type_params__", typeParams)
+		inst.Dict.SetStr("__value__", value)
+		return inst, nil
 	}
 	return nil, object.Errorf(i.notImpl, "intrinsic %d not implemented", idx)
 }
 
+// makeTypeParam builds a TypeVar/ParamSpec/TypeVarTuple-shaped instance.
+// name is the *object.Str produced by LOAD_CONST; bound and constraints
+// fill the standard typing.TypeVar attribute surface so that user code
+// inspecting __name__/__bound__/__constraints__ works.
+func (i *Interp) makeTypeParam(kind string, name, bound object.Object, constraints *object.Tuple) *object.Instance {
+	cls := &object.Class{Name: kind, Dict: object.NewDict()}
+	inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+	if name == nil {
+		name = &object.Str{V: ""}
+	}
+	inst.Dict.SetStr("__name__", name)
+	inst.Dict.SetStr("__bound__", bound)
+	inst.Dict.SetStr("__constraints__", constraints)
+	inst.Dict.SetStr("__covariant__", object.BoolOf(false))
+	inst.Dict.SetStr("__contravariant__", object.BoolOf(false))
+	inst.Dict.SetStr("__infer_variance__", object.BoolOf(true))
+	inst.Dict.SetStr("__default__", object.None)
+	return inst
+}
+
 func (i *Interp) intrinsic2(idx int, a, b object.Object) (object.Object, error) {
+	switch idx {
+	case op.INTRINSIC_2_INVALID:
+		return nil, object.Errorf(i.runtimeErr, "invalid intrinsic2")
+	case op.INTRINSIC_PREP_RERAISE_STAR:
+		// PEP 654: prepare the re-raise value after an `except*` block.
+		// a is the original exception (or None); b is a list of exceptions
+		// raised/unhandled by the except* handlers. If b is empty, no
+		// re-raise. Otherwise we surface the first unhandled exception so
+		// it propagates -- a faithful ExceptionGroup recombination would
+		// require a richer object model than we currently have.
+		if l, ok := b.(*object.List); ok {
+			if len(l.V) == 0 {
+				return object.None, nil
+			}
+			return l.V[0], nil
+		}
+		return object.None, nil
+	case op.INTRINSIC_TYPEVAR_WITH_BOUND:
+		return i.makeTypeParam("TypeVar", a, b, &object.Tuple{V: nil}), nil
+	case op.INTRINSIC_TYPEVAR_WITH_CONSTRAINTS:
+		var constraints *object.Tuple
+		if t, ok := b.(*object.Tuple); ok {
+			constraints = t
+		} else {
+			constraints = &object.Tuple{V: nil}
+		}
+		return i.makeTypeParam("TypeVar", a, object.None, constraints), nil
+	case op.INTRINSIC_SET_FUNCTION_TYPE_PARAMS:
+		// a is the function, b is the type-params tuple. Stash on the
+		// function so introspection can find it; return the function.
+		if fn, ok := a.(*object.Function); ok {
+			if fn.Dict == nil {
+				fn.Dict = object.NewDict()
+			}
+			fn.Dict.SetStr("__type_params__", b)
+		}
+		return a, nil
+	case op.INTRINSIC_SET_TYPEPARAM_DEFAULT:
+		// a is the typeparam instance, b is the default value. Returns the
+		// typeparam.
+		if inst, ok := a.(*object.Instance); ok {
+			inst.Dict.SetStr("__default__", b)
+		}
+		return a, nil
+	}
 	return nil, object.Errorf(i.notImpl, "intrinsic2 %d not implemented", idx)
 }
 
