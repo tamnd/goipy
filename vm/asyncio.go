@@ -39,6 +39,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPyclbr(), true
 	case "py_compile":
 		return i.buildPyCompile(), true
+	case "compileall":
+		return i.buildCompileall(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
