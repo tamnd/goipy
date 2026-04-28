@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.0.300 - 2026-04-28
+
+`importlib` family — first comprehensive fixture (300) for https://docs.python.org/3/library/importlib.html. Full coverage of `importlib`, `importlib.util`, `importlib.abc`, `importlib.machinery`, `importlib.resources`, and `importlib.metadata`.
+
+**Extended `vm/imports.go`:** added `invalidate_caches()` (returns None) to the existing `importlib` module; fixed `reload()` to gracefully handle builtin modules with no `.pyc` path by re-registering from the builtin registry instead of raising `ImportError`.
+
+**New `vm/stdlib_importlib_ext.go`** with five new submodules:
+
+- **`importlib.util`**: `MAGIC_NUMBER` (4-byte Python 3.14 magic `0x0a0d0e2b`); `cache_from_source(path, *, optimization=None)` producing `dir/__pycache__/stem.cpython-314[.opt-N].pyc`; `source_from_cache(path)` with `ValueError` for non-`__pycache__` paths; `resolve_name(name, package)` with leading-dot relative resolution and `ImportError` for missing package; `find_spec(name)` returning a live `ModuleSpec` for known modules or `None`; `source_hash(source_bytes)` → 8 deterministic bytes; `decode_source(source_bytes)` → UTF-8 string with BOM stripping; `spec_from_file_location(name, location, ...)` and `spec_from_loader(name, loader, ...)` returning `ModuleSpec` instances; `module_from_spec(spec)` creating a `*object.Module` with `__name__`/`__spec__`/`__loader__`/`__package__`/`__file__`; `Loader` abstract class; `LazyLoader(loader)` wrapper class.
+
+- **`importlib.machinery`**: `ModuleSpec(name, loader, *, origin=None, is_package=None)` class with `name`, `loader`, `origin`, `submodule_search_locations`, `has_location`, `cached`, `parent` attributes and `__repr__`; `SOURCE_SUFFIXES=['.py']`, `BYTECODE_SUFFIXES=['.pyc']`, `EXTENSION_SUFFIXES=['.so']`; `all_suffixes()` returning combined list; `BuiltinImporter` and `FrozenImporter` with `find_spec` stubs (return None); `PathFinder` with `find_spec` looking up known modules; stub classes for `FileFinder`, `SourceFileLoader`, `SourcelessFileLoader`, `ExtensionFileLoader`, `NamespaceLoader`, `AppleFrameworkLoader`, `WindowsRegistryFinder`.
+
+- **`importlib.abc`**: stub abstract base classes `Loader`, `MetaPathFinder`, `PathEntryFinder`, `InspectLoader`, `ExecutionLoader`, `FileLoader`, `SourceLoader`, `ResourceLoader`.
+
+- **`importlib.resources`**: `files(package)` returning a `Traversable`-like stub instance with `joinpath`, `iterdir`, `is_dir`, `is_file`, `open`, `read_bytes`, `read_text`; `as_file(path)` context manager; `path` context manager; stub functions `contents`, `is_resource`, `open_binary`, `open_text`, `read_binary`, `read_text`; `Package` and `Anchor` stubs.
+
+- **`importlib.metadata`**: `PackageNotFoundError` (subclass of `ImportError`); `version(name)` probing real disk `.dist-info` dirs or raising `PackageNotFoundError`; `distribution`, `metadata`, `requires`, `files` all raising `PackageNotFoundError`; `distributions()` empty iterator; `packages_distributions()` empty dict; `entry_points()` empty list; stub classes `Distribution`, `PathDistribution`, `EntryPoint`, `EntryPoints`, `PackagePath`, `PackageMetadata`.
+
 ## v0.0.299 - 2026-04-28
 
 `runpy` — first fixture (299) for https://docs.python.org/3/library/runpy.html. Full coverage of Python 3.14 `runpy` module public API.
