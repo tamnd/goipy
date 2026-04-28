@@ -1143,8 +1143,16 @@ func matchBuiltinTypeContainer(o object.Object, name string) (bool, bool) {
 		_, ok := o.(*object.List)
 		return ok, true
 	case "tuple":
-		_, ok := o.(*object.Tuple)
-		return ok, true
+		if _, ok := o.(*object.Tuple); ok {
+			return true, true
+		}
+		// Named-tuple-like instances (e.g. ModuleInfo) declare __namedtuple__ = True.
+		if inst, ok := o.(*object.Instance); ok {
+			if _, ok2 := inst.Class.Dict.GetStr("__namedtuple__"); ok2 {
+				return true, true
+			}
+		}
+		return false, true
 	case "dict":
 		_, ok := o.(*object.Dict)
 		return ok, true
