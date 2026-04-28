@@ -1441,6 +1441,16 @@ func (i *Interp) initBuiltins() {
 		// Execute class body in a fresh dict.
 		ns := object.NewDict()
 		frame := NewFrame(fn.Code, fn.Globals, in.Builtins, ns)
+		// Copy closure cells into freevar slots so PEP 695 generic class
+		// bodies can resolve `.type_params` via LOAD_FROM_DICT_OR_DEREF.
+		if fn.Closure != nil {
+			base := fn.Code.NLocals + fn.Code.NCells
+			for k, cell := range fn.Closure.V {
+				if c, ok := cell.(*object.Cell); ok && base+k < len(frame.Fast) {
+					frame.Fast[base+k] = c
+				}
+			}
+		}
 		if _, err := in.runFrame(frame); err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.331](changelog/0.0.331.md) | 2026-04-28 | v0.1.0 prep -- C3 MRO, all intrinsic1/2 cases, 20 specialized opcodes routed, ExceptionGroup split, PEP 695 closure fix |
 | [v0.0.330](changelog/0.0.330.md) | 2026-04-28 | syslog deep coverage -- 7 missing macOS facility constants and fixture 330 |
 | [v0.0.329](changelog/0.0.329.md) | 2026-04-28 | resource deep coverage -- ru_utime/ru_stime float fix and fixture 329 |
 | [v0.0.328](changelog/0.0.328.md) | 2026-04-28 | fcntl deep coverage -- 6 new constants, 5 removed, F_RDAHEAD fix, fcntl/ioctl return int |

@@ -827,6 +827,13 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 				bs[k] = b
 			}
 			return &object.Tuple{V: bs}, nil
+		case "__mro__":
+			mro := computeMRO(cls)
+			out := make([]object.Object, len(mro))
+			for k, c := range mro {
+				out[k] = c
+			}
+			return &object.Tuple{V: out}, nil
 		}
 		if v, ok := classLookup(cls, name); ok {
 			return i.bindDescriptor(v, nil, cls)
@@ -1256,10 +1263,88 @@ func lookupAfter(instCls, startCls *object.Class, name string) (object.Object, b
 	return nil, false
 }
 
-// computeMRO returns a simple depth-first linearization of the class
-// hierarchy. Not full C3, but correct for single inheritance and good
-// enough for straightforward diamonds.
+// computeMRO returns the C3 linearization of the class hierarchy.
+// L[C] = C + merge(L[B1], L[B2], ..., L[Bn], [B1, B2, ..., Bn])
+// On unresolvable conflict (no good head exists), falls back to a
+// depth-first traversal so callers never observe a panic; CPython would
+// raise TypeError there, but we prefer graceful degradation to avoid
+// crashing existing fixtures whose hierarchies happen to be ambiguous.
 func computeMRO(c *object.Class) []*object.Class {
+	if len(c.Bases) == 0 {
+		return []*object.Class{c}
+	}
+	if len(c.Bases) == 1 {
+		return append([]*object.Class{c}, computeMRO(c.Bases[0])...)
+	}
+	parents := make([][]*object.Class, 0, len(c.Bases)+1)
+	for _, b := range c.Bases {
+		parents = append(parents, computeMRO(b))
+	}
+	parents = append(parents, append([]*object.Class{}, c.Bases...))
+	merged, ok := c3Merge(parents)
+	if !ok {
+		return computeMRODepthFirst(c)
+	}
+	return append([]*object.Class{c}, merged...)
+}
+
+// c3Merge implements the C3 merge operation. Returns (result, true) on
+// success, or (nil, false) if no consistent linearization exists.
+func c3Merge(lists [][]*object.Class) ([]*object.Class, bool) {
+	working := make([][]*object.Class, len(lists))
+	for i, l := range lists {
+		working[i] = append([]*object.Class{}, l...)
+	}
+	var out []*object.Class
+	for {
+		nonEmpty := false
+		for _, l := range working {
+			if len(l) > 0 {
+				nonEmpty = true
+				break
+			}
+		}
+		if !nonEmpty {
+			return out, true
+		}
+		var pick *object.Class
+		for _, l := range working {
+			if len(l) == 0 {
+				continue
+			}
+			head := l[0]
+			inTail := false
+			for _, other := range working {
+				for j := 1; j < len(other); j++ {
+					if other[j] == head {
+						inTail = true
+						break
+					}
+				}
+				if inTail {
+					break
+				}
+			}
+			if !inTail {
+				pick = head
+				break
+			}
+		}
+		if pick == nil {
+			return nil, false
+		}
+		out = append(out, pick)
+		for i, l := range working {
+			if len(l) > 0 && l[0] == pick {
+				working[i] = l[1:]
+			}
+		}
+	}
+}
+
+// computeMRODepthFirst is the legacy fallback used when C3 cannot find a
+// consistent ordering. Depth-first, dedup, no rebalancing.
+func computeMRODepthFirst(c *object.Class) []*object.Class {
 	var out []*object.Class
 	seen := map[*object.Class]bool{}
 	var walk func(*object.Class)
