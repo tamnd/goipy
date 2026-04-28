@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.328](changelog/0.0.328.md) | 2026-04-28 | fcntl deep coverage -- 6 new constants, 5 removed, F_RDAHEAD fix, fcntl/ioctl return int |
 | [v0.0.327](changelog/0.0.327.md) | 2026-04-28 | pty deep coverage -- close, waitpid, setraw, tcgetattr, tcsetattr re-exports |
 | [v0.0.326](changelog/0.0.326.md) | 2026-04-28 | tty deep coverage -- cfmakeraw, cfmakecbreak, struct-index constants, fixture 326 |
 | [v0.0.325](changelog/0.0.325.md) | 2026-04-28 | termios deep coverage -- 4 constant fixes, remove 7 fake constants, fixture 325 |
