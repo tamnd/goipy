@@ -317,9 +317,9 @@ func Eq(a, b Object) (bool, error) {
 		}
 		return seqEq(av.V, bv.V)
 	case *Set:
-		return setEq(av.items, b)
+		return setEq(av.Items(), b)
 	case *Frozenset:
-		return setEq(av.items, b)
+		return setEq(av.Items(), b)
 	case *Dict:
 		if bv, ok := b.(*Dict); ok {
 			return dictEq(av, bv)
@@ -428,9 +428,11 @@ func Hash(o Object) (uint64, error) {
 		}
 		return h, nil
 	case *Frozenset:
-		// Commutative combiner so hash is order-independent.
+		// Commutative combiner so hash is order-independent. Snapshot
+		// under lock so concurrent writers can't tear the slice header.
+		items := v.Items()
 		var h uint64 = 0x9e3779b97f4a7c15
-		for _, x := range v.items {
+		for _, x := range items {
 			xh, err := Hash(x)
 			if err != nil {
 				return 0, err

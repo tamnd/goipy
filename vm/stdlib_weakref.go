@@ -1,6 +1,8 @@
 package vm
 
 import (
+	"sync"
+
 	"github.com/tamnd/goipy/object"
 )
 
@@ -8,7 +10,9 @@ func (i *Interp) buildWeakref() *object.Module {
 	m := &object.Module{Name: "weakref", Dict: object.NewDict()}
 
 	// --- ref table: track weak refs per object (for getweakrefcount/getweakrefs) ---
+	// tableMu guards table for concurrent goroutine access (no-GIL threading).
 	type refSlice struct{ refs []*object.PyWeakRef }
+	var tableMu sync.Mutex
 	table := map[object.Object]*refSlice{}
 
 	isWeakRefable := func(o object.Object) bool {
@@ -19,6 +23,7 @@ func (i *Interp) buildWeakref() *object.Module {
 		return false
 	}
 
+	// addRef appends r under target's slice; tableMu must be held.
 	addRef := func(target object.Object, r *object.PyWeakRef) {
 		if e, ok := table[target]; ok {
 			e.refs = append(e.refs, r)
@@ -28,6 +33,7 @@ func (i *Interp) buildWeakref() *object.Module {
 	}
 
 	// canonical(target) returns the existing no-callback ref if present.
+	// tableMu must be held.
 	canonical := func(target object.Object) *object.PyWeakRef {
 		if e, ok := table[target]; ok {
 			for _, r := range e.refs {
@@ -52,6 +58,8 @@ func (i *Interp) buildWeakref() *object.Module {
 		if len(a) >= 2 {
 			cb = a[1]
 		}
+		tableMu.Lock()
+		defer tableMu.Unlock()
 		// Canonical ref: reuse existing no-callback ref.
 		if cb == nil || isNoneObj(cb) {
 			if existing := canonical(target); existing != nil {
@@ -123,6 +131,8 @@ func (i *Interp) buildWeakref() *object.Module {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "getweakrefcount() takes 1 argument")
 		}
+		tableMu.Lock()
+		defer tableMu.Unlock()
 		if e, ok := table[a[0]]; ok {
 			return object.NewInt(int64(len(e.refs))), nil
 		}
@@ -134,6 +144,8 @@ func (i *Interp) buildWeakref() *object.Module {
 		if len(a) < 1 {
 			return nil, object.Errorf(i.typeErr, "getweakrefs() takes 1 argument")
 		}
+		tableMu.Lock()
+		defer tableMu.Unlock()
 		if e, ok := table[a[0]]; ok {
 			out := make([]object.Object, len(e.refs))
 			for k, r := range e.refs {

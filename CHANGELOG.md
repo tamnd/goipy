@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.332](changelog/0.0.332.md) | 2026-04-29 | threading correctness -- per-object locks on List/Set/Cell/Bytearray, atomic classEpoch, weakref table mutex, fixture 332 |
 | [v0.0.331](changelog/0.0.331.md) | 2026-04-28 | v0.1.0 prep -- C3 MRO, all intrinsic1/2 cases, 20 specialized opcodes routed, ExceptionGroup split, PEP 695 closure fix |
 | [v0.0.330](changelog/0.0.330.md) | 2026-04-28 | syslog deep coverage -- 7 missing macOS facility constants and fixture 330 |
 | [v0.0.329](changelog/0.0.329.md) | 2026-04-28 | resource deep coverage -- ru_utime/ru_stime float fix and fixture 329 |

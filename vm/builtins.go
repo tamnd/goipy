@@ -428,7 +428,7 @@ func (i *Interp) initBuiltins() {
 		case *object.Bytes:
 			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: true}, nil
 		case *object.Bytearray:
-			src.Views++
+			src.AddView()
 			return &object.Memoryview{Backing: src, Start: 0, Stop: len(src.V), Readonly: false}, nil
 		case *object.Memoryview:
 			return src, nil
@@ -1458,8 +1458,7 @@ func (i *Interp) initBuiltins() {
 		// Populate __class__ cell so zero-arg super() in methods resolves.
 		if v, ok := ns.GetStr("__classcell__"); ok {
 			if c, ok := v.(*object.Cell); ok {
-				c.V = cls
-				c.Set = true
+				c.Store(cls)
 			}
 		}
 		// __set_name__: notify descriptors of the attribute name they were
