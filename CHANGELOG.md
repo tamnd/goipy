@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.289 - 2026-04-28
+
+`__future__` — full coverage of https://docs.python.org/3/library/__future__.html. New module in `vm/stdlib_future.go`; registered as `"__future__"` in the module switch.
+
+**`_Feature` class:** constructor `_Feature(optionalRelease, mandatoryRelease, compiler_flag)`; `getOptionalRelease()` and `getMandatoryRelease()` return the stored 5-tuple or `None`.
+
+**Feature instances** (all `_Feature` objects, matching CPython values): `nested_scopes`, `generators`, `division`, `absolute_import`, `with_statement`, `print_function`, `unicode_literals`, `barry_as_FLUFL`, `generator_stop`, `annotations`.
+
+**`all_feature_names`:** list of the 10 feature name strings in definition order.
+
+**CO_* constants:** `CO_NESTED=16`, `CO_GENERATOR_ALLOWED=0`, `CO_FUTURE_DIVISION=131072`, `CO_FUTURE_ABSOLUTE_IMPORT=262144`, `CO_FUTURE_WITH_STATEMENT=524288`, `CO_FUTURE_PRINT_FUNCTION=1048576`, `CO_FUTURE_UNICODE_LITERALS=2097152`, `CO_FUTURE_BARRY_AS_BDFL=4194304`, `CO_FUTURE_GENERATOR_STOP=8388608`, `CO_FUTURE_ANNOTATIONS=16777216`.
+
 ## v0.0.288 - 2026-04-28
 
 `traceback` — comprehensive deep-coverage fixture (288) for https://docs.python.org/3/library/traceback.html. Extends the basic implementation from fixture 274.
