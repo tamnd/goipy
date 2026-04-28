@@ -43,6 +43,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCompileall(), true
 	case "dis":
 		return i.buildDis(), true
+	case "pickletools":
+		return i.buildPickletools(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
