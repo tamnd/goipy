@@ -303,6 +303,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildPkgutil(), true
 	case "modulefinder":
 		return i.buildModulefinder(), true
+	case "runpy":
+		return i.buildRunpy(), true
 	case "sys.monitoring":
 		return i.buildSysMonitoring(), true
 	case "shutil":
