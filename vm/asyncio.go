@@ -45,6 +45,14 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildDis(), true
 	case "pickletools":
 		return i.buildPickletools(), true
+	case "msvcrt":
+		return i.buildMsvcrt(), true
+	case "winreg":
+		return i.buildWinreg(), true
+	case "winsound":
+		return i.buildWinsound(), true
+	case "msilib":
+		return i.buildMsilib(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
