@@ -1,0 +1,29 @@
+True
+True
+True
+True
+TraversalError
+path traversal failed
+True
+root
+True
+False
+['data.bin', 'hello.txt']
+hello.txt
+True
+bytes
+b'Hello, ABC!'
+Hello, ABC!
+data.bin
+bytes
+3
+deep.txt
+deep content
+bytes
+b'Hello, ABC!'
+True
+False
+list
+['data.bin', 'hello.txt']
+FileNotFoundError
+done

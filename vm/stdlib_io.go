@@ -236,6 +236,15 @@ func stringIOAttr(i *Interp, sio *object.StringIO, name string) (object.Object, 
 			sio.Pos = end
 			return &object.Str{V: string(sio.V[start:end])}, nil
 		}}, true
+	case "__enter__":
+		return &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return sio, nil
+		}}, true
+	case "__exit__":
+		return &object.BuiltinFunc{Name: "__exit__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			sio.Closed = true
+			return object.False, nil
+		}}, true
 	}
 	return nil, false
 }
@@ -428,6 +437,15 @@ func bytesIOAttr(i *Interp, bio *object.BytesIO, name string) (object.Object, bo
 		return &object.BuiltinFunc{Name: "close", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			bio.Closed = true
 			return object.None, nil
+		}}, true
+	case "__enter__":
+		return &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return bio, nil
+		}}, true
+	case "__exit__":
+		return &object.BuiltinFunc{Name: "__exit__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			bio.Closed = true
+			return object.False, nil
 		}}, true
 	}
 	return nil, false
