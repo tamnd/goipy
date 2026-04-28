@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.296 - 2026-04-28
+
+`zipimport` — first fixture (296) for https://docs.python.org/3/library/zipimport.html. Full coverage of Python 3.14 `zipimport` module public API.
+
+**New module `vm/stdlib_zipimport.go`:** all 12 module-level constants (`path_sep`, `alt_path_sep`, `END_CENTRAL_DIR_SIZE`, `END_CENTRAL_DIR_SIZE_64`, `END_CENTRAL_DIR_LOCATOR_SIZE_64`, `MAX_COMMENT_LEN`, `MAX_UINT32`, `ZIP64_EXTRA_TAG`, `STRING_END_ARCHIVE`, `STRING_END_LOCATOR_64`, `STRING_END_ZIP_64`, `cp437_table`); `ZipImportError` (subclass of `ImportError`); `zipimporter` class with real `archive/zip` backed implementation: constructor parses path to find zip boundary and set `archive`/`prefix` attrs; `find_spec` (returns ModuleSpec-like instance or None), `is_package`, `get_filename`, `get_source`, `get_data` (reads bytes from zip entry), `get_code` (returns mock code object), `get_resource_reader`, `invalidate_caches`, `_get_files` (returns dict of all entries), `load_module`/`create_module`/`exec_module` stubs.
+
 ## v0.0.295 - 2026-04-28
 
 `codeop` — first fixture (295) for https://docs.python.org/3/library/codeop.html. Full coverage of Python 3.14 `codeop` module public API.
