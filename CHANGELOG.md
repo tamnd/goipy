@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.0.293 - 2026-04-28
+
+`site` — comprehensive deep-coverage fixture (293) for https://docs.python.org/3/library/site.html. Extends the basic fixture 279.
+
+**New functions:** `addusersitepackages(known_paths)` (returns set); `enablerlcompleter()` (no-op); `gethistoryfile()` (returns `~/.python_history`); `makepath(*paths)` (returns `(joined, joined)` 2-tuple); `register_readline()` (no-op); `venv(known_paths)` (returns set).
+
+**Fixed return types:** `addsitepackages` and `addusersitepackages` now return the `known_paths` set (matching CPython); `removeduppaths` returns a set; `venv` returns a set.
+
+**New classes:** `Quitter` (installed by `setquit` as `builtins.quit`/`builtins.exit`; repr shows usage hint; calling raises `SystemExit`); `_Printer` (installed by `setcopyright` as `builtins.copyright`/`.credits`/`.license`); `_Helper` (installed by `sethelper` as `builtins.help`).
+
+**Updated `setquit`/`setcopyright`/`sethelper`:** now install the appropriate objects into `builtins` (previously no-ops).
+
+**Fixed macOS paths:** `USER_BASE` and `USER_SITE` now use `~/Library/Python/3.14/...` matching CPython 3.14 on macOS.
+
 ## v0.0.292 - 2026-04-28
 
 `annotationlib` — comprehensive deep-coverage fixture (292) for https://docs.python.org/3/library/annotationlib.html. Extends the basic fixture 278.
