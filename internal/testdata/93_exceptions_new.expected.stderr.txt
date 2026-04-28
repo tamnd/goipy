@@ -1,0 +1,9 @@
+/Users/apple/github/tamnd/goipy/internal/testdata/93_exceptions_new.py:222: UserWarning: test warning
+  warnings.warn("test warning", UserWarning)
+/Users/apple/github/tamnd/goipy/internal/testdata/93_exceptions_new.py:223: DeprecationWarning: deprecation notice
+  warnings.warn("deprecation notice", DeprecationWarning)
+Traceback (most recent call last):
+  File "/Users/apple/github/tamnd/goipy/internal/testdata/93_exceptions_new.py", line 227, in <module>
+    print(issubclass(WindowsError, OSError))
+                     ^^^^^^^^^^^^
+NameError: name 'WindowsError' is not defined

@@ -1,1763 +1,250 @@
 # Changelog
 
-## v0.0.313 - 2026-04-28
-
-`compileall` module — fixture 313 for https://docs.python.org/3/library/compileall.html. Full CPython 3.14 compileall API surface.
-
-**New `vm/stdlib_compileall.go` — `buildCompileall()`:**
-
-- **`compile_file(fullname, ddir=None, force=False, rx=None, quiet=0, legacy=False, optimize=-1, invalidation_mode=None, ...)`** → `bool` — stub returning `True` (no bytecode compiler available; CPython returns `True` on success, `False` on syntax error)
-- **`compile_dir(dir, maxlevels=None, ddir=None, force=False, rx=None, quiet=0, ..., workers=1, ...)`** → `bool` — stub returning `True`
-- **`compile_path(skip_curdir=1, maxlevels=0, force=False, quiet=0, ...)`** → `bool` — stub returning `True`
-- **`main()`** → `None` — stub
-- **`__all__`** set to `['compile_dir', 'compile_file', 'compile_path']`
-
-Registered `"compileall"` in `vm/asyncio.go`.
-
-## v0.0.312 - 2026-04-28
-
-`py_compile` module — fixture 312 for https://docs.python.org/3/library/py_compile.html. Full CPython 3.14 py_compile API.
-
-**New `vm/stdlib_py_compile.go` — `buildPyCompile()`:**
-
-- **`PyCompileError(exc_type, exc_value, file, msg='')`** — subclass of `Exception`; uses goipy's exception fast-path (args stored in `exc.Args`); attributes `exc_type_name`, `exc_value`, `file`, `msg` derived via `__getattr__` from `exc.Args`; `exc_type_name` extracted from the class `Name` field; default `msg` formatted as `"Sorry: {type}: {value}"`; `__str__` returns `msg`; explicit `msg` arg overrides the default
-- **`PycInvalidationMode`** — enum-like namespace with `TIMESTAMP=1`, `CHECKED_HASH=2`, `UNCHECKED_HASH=3`; each member exposes `.value` (int) and `.name` (str); iterable via `list()` yielding members in value order
-- **`compile(file, ...)`** → `None` — stub (no bytecode compiler available)
-- **`main(args=None)`** → `None` — stub
-- **`__all__`** set to `['compile', 'main', 'PyCompileError', 'PycInvalidationMode']`
-
-Registered `"py_compile"` in `vm/asyncio.go`.
-
-## v0.0.311 - 2026-04-28
-
-`pyclbr` module — fixture 311 for https://docs.python.org/3/library/pyclbr.html. Full CPython 3.14 class browser API.
-
-**New `vm/stdlib_pyclbr.go` — `buildPyclbr()`:**
-
-- **`_Object(module, name, file, lineno, end_lineno, parent)`** — base class; sets all attributes and auto-registers `self` in `parent.children[name]` when `parent` is provided
-- **`Class(module, name, super_, file, lineno, parent=None, *, end_lineno=None)`** — subclass of `_Object`; adds `super` list and `methods` dict; `super_=None` yields empty list
-- **`Function(module, name, file, lineno, parent=None, is_async=False, *, end_lineno=None)`** — subclass of `_Object`; adds `is_async` flag; when `parent` is a `Class`, auto-registers `name→lineno` in `parent.methods`
-- **`readmodule(module, path=None)`** → `dict` — stub returning empty dict (no parser available)
-- **`readmodule_ex(module, path=None)`** → `dict` — stub returning empty dict
-- **`__all__`** set to `['readmodule', 'readmodule_ex', 'Class', 'Function']`
-
-Registered `"pyclbr"` in `vm/asyncio.go`.
-
-## v0.0.310 - 2026-04-28
-
-`tabnanny` module — fixture 310 for https://docs.python.org/3/library/tabnanny.html. Full CPython 3.14 tabnanny API.
-
-**New `vm/stdlib_tabnanny.go` — `buildTabnanny()`:**
-
-- **`NannyNag(lineno, msg, line)`** — subclass of `Exception`; `get_lineno()` → int, `get_msg()` → str, `get_line()` → str; works correctly with goipy's exception fast-path (args stored in `exc.Args`)
-- **`process_tokens(tokens)`** — inspects INDENT tokens for mixed tab/space indentation; raises `NannyNag` on ambiguous indent, returns `None` for clean code
-- **`check(file_or_dir)`** — stub accepting any path, returns `None`
-- **`format_witnesses(witnesses)`** — returns comma-separated string of witness representations
-- **`errprint(*args)`** — stub (CPython calls `sys.exit(1)` after printing; stub avoids side-effects)
-- **`Whitespace`** — internal helper class, exposed publicly
-- **`filename_only = 0`**, **`verbose = 0`**, **`__version__ = '6'`**, **`__all__`** set correctly
-
-Registered `"tabnanny"` in `vm/asyncio.go`.
-
-## v0.0.309 - 2026-04-28
-
-`tokenize` module — fixture 309 for https://docs.python.org/3/library/tokenize.html. Full CPython 3.14 tokenize API including re-exported token constants, `TokenInfo` namedtuple with `.exact_type`, `TokenError` exception, `Untokenizer` class, and `tokenize()`/`generate_tokens()`/`detect_encoding()`/`untokenize()` functions backed by a Go-based Python tokenizer.
-
-**New `vm/stdlib_tokenize.go` — `buildTokenize()`:**
-
-- **Re-exported from `token`** — all 70 integer constants (`ENDMARKER=0` … `NT_OFFSET=256`), `tok_name`, `EXACT_TOKEN_TYPES`, `ISEOF`/`ISTERMINAL`/`ISNONTERMINAL`
-- **`BOM_UTF8`** — `b'\xef\xbb\xbf'`
-- **`tabsize`** — `8`
-- **Pattern strings** — `Whitespace`, `Comment`, `Name`, `Number`, `Funny`, and more (all `str` instances)
-- **`TokenInfo`** — namedtuple-style class with fields `(type, string, start, end, line)` and `.exact_type` property: for `OP` tokens maps the string to its specific token constant; for all others returns `type` unchanged
-- **`TokenError`** — subclass of `Exception`
-- **`tokenize(readline)`** — takes a bytes readline callable, emits `ENCODING` token first, then all tokens from a Go-based Python lexer; handles names, numbers (int/float/hex/bin/oct), strings, operators, comments, and newlines
-- **`generate_tokens(readline)`** — takes a str readline callable; same tokenizer but no `ENCODING` token
-- **`detect_encoding(readline)`** — reads up to two lines, detects UTF-8 BOM (`utf-8-sig`) and `# coding:` / `# -*- coding:` declarations; defaults to `utf-8`
-- **`untokenize(iterable)`** — accepts 2-tuples `(type, string)` or full `TokenInfo` sequences; reconstructs source with position-aware spacing
-- **`Untokenizer`** — class with `untokenize()` and `compat()` methods
-- **`open(filename)`** — stub returning a file-like object
-
-Registered `"tokenize"` in `vm/asyncio.go`.
-
-## v0.0.308 - 2026-04-28
-
-`keyword` module — fixture 308 for https://docs.python.org/3/library/keyword.html. Complete CPython 3.14 hard-keyword and soft-keyword lists with predicate functions.
-
-**New `vm/stdlib_keyword.go` — `buildKeyword()`:**
-
-- **`kwlist`** — list of 35 Python hard keywords in alphabetical order (`False` … `yield`)
-- **`softkwlist`** — list of 4 soft keywords: `_`, `case`, `match`, `type`
-- **`iskeyword(s)`** → bool: membership test against `kwlist`
-- **`issoftkeyword(s)`** → bool: membership test against `softkwlist`
-
-Registered `"keyword"` in `vm/asyncio.go`.
-
-## v0.0.307 - 2026-04-28
-
-`token` module — fixture 307 for https://docs.python.org/3/library/token.html. All 70 CPython 3.14 token constants, `tok_name` dict, `EXACT_TOKEN_TYPES` dict, and `ISEOF`/`ISTERMINAL`/`ISNONTERMINAL` functions.
-
-**New `vm/stdlib_token.go` — `buildToken()`:**
-
-- **70 integer constants** — `ENDMARKER=0` through `ENCODING=68`, plus `N_TOKENS=69` and `NT_OFFSET=256`; covers all token types including Python 3.12+ `FSTRING_START/MIDDLE/END` and 3.14 `TSTRING_START/MIDDLE/END`, `SOFT_KEYWORD`, `EXCLAMATION`, `TYPE_COMMENT`, `TYPE_IGNORE`
-- **`tok_name`** — dict mapping token int → name string (71 entries: keys 0–69 plus 256)
-- **`EXACT_TOKEN_TYPES`** — dict mapping 48 operator/punctuation strings to their token ints (e.g. `'('→7`, `'=='→27`, `':='→53`, `'...'→52`, `'->'→51`)
-- **`ISEOF(x)`** → bool: `x == ENDMARKER`
-- **`ISTERMINAL(x)`** → bool: `x < NT_OFFSET`
-- **`ISNONTERMINAL(x)`** → bool: `x >= NT_OFFSET`
-
-Registered `"token"` in `vm/asyncio.go`.
-
-## v0.0.306 - 2026-04-28
-
-`symtable` module — fixture 306 for https://docs.python.org/3/library/symtable.html. Full Symbol class with flag-based predicate methods, SymbolTable/Function/Class hierarchy, SymbolTableType namespace, and `symtable()` stub.
-
-**New `vm/stdlib_symtable.go` — `buildSymtable()`:**
-
-- **Integer constants** — all 19 CPython 3.14 bit-flag constants: `CELL=5`, `FREE=4`, `LOCAL=1`, `GLOBAL_EXPLICIT=2`, `GLOBAL_IMPLICIT=3`, `SCOPE_MASK=15`, `SCOPE_OFF=12`, `USE=16`, `DEF_GLOBAL`, `DEF_LOCAL`, `DEF_PARAM`, `DEF_NONLOCAL`, `DEF_FREE_CLASS`, `DEF_IMPORT`, `DEF_BOUND`, `DEF_ANNOT`, `DEF_COMP_ITER`, `DEF_TYPE_PARAM`, `DEF_COMP_CELL`
-- **`SymbolTableType`** — namespace instance with `MODULE='module'`, `FUNCTION='function'`, `CLASS='class'`, `ANNOTATION='annotation'`, `TYPE_ALIAS`, `TYPE_PARAMETERS`, `TYPE_VARIABLE`
-- **`Symbol` class** — publicly constructable with `(name, flags, namespaces=None, *, module_scope=False)`. All 17 predicate methods implemented via scope-bit arithmetic:
-  - `is_referenced()` → `flags & USE`
-  - `is_assigned()` → `flags & DEF_LOCAL`
-  - `is_parameter()` → `flags & DEF_PARAM`
-  - `is_imported()` → `flags & DEF_IMPORT`
-  - `is_nonlocal()` → `flags & DEF_NONLOCAL`
-  - `is_free_class()` → `flags & DEF_FREE_CLASS`
-  - `is_annotated()` → `flags & DEF_ANNOT`
-  - `is_comp_iter()` → `flags & DEF_COMP_ITER`
-  - `is_comp_cell()` → `flags & DEF_COMP_CELL`
-  - `is_type_parameter()` → `flags & DEF_TYPE_PARAM`
-  - `is_global()` → scope ∈ {GLOBAL_EXPLICIT, GLOBAL_IMPLICIT}
-  - `is_declared_global()` → scope == GLOBAL_EXPLICIT
-  - `is_local()` → scope == LOCAL
-  - `is_free()` → scope == FREE
-  - `is_namespace()`, `get_namespaces()`, `get_namespace()`
-- **`SymbolTable` class** — `get_type()`, `get_name()`, `get_id()`, `get_lineno()`, `is_optimized()`, `is_nested()`, `has_children()`, `get_identifiers()`, `lookup()`, `get_symbols()`, `get_children()`
-- **`Function` class** (subclass of `SymbolTable`) — adds `get_parameters()`, `get_locals()`, `get_globals()`, `get_frees()`, `get_nonlocals()`
-- **`Class` class** (subclass of `SymbolTable`) — adds `get_methods()`
-- **`symtable()` function** — returns a stub module-level `SymbolTable` with `get_type()='module'`, `get_name()='top'`, `get_lineno()=0`, empty symbols and children
-
-Registered `"symtable"` in `vm/asyncio.go`.
-
-## v0.0.305 - 2026-04-28
-
-`ast` module — fixture 305 for https://docs.python.org/3/library/ast.html. Full AST node class hierarchy, `literal_eval`, utility functions, `NodeVisitor`, `NodeTransformer`.
-
-**New `vm/stdlib_ast.go` — `buildAst()`:**
-
-- **PyCF constants** — `PyCF_ONLY_AST=1024`, `PyCF_ALLOW_TOP_LEVEL_AWAIT=8192`, `PyCF_TYPE_COMMENTS=4096`, `PyCF_OPTIMIZED_AST=33792`
-- **Complete AST node class hierarchy** — all CPython 3.14 node classes with correct `_fields` and `_attributes` tuples; `__init__` accepts both positional (by `_fields` order) and keyword arguments:
-  - `AST` base class
-  - Abstract categories: `mod`, `stmt`, `expr`, `expr_context`, `boolop`, `operator`, `unaryop`, `cmpop`, `pattern`, `excepthandler`, `type_ignore`
-  - `mod` subclasses: `Module`, `Interactive`, `Expression`, `FunctionType`
-  - 26 `stmt` subclasses: `FunctionDef`, `AsyncFunctionDef`, `ClassDef`, `Return`, `Delete`, `Assign`, `AugAssign`, `AnnAssign`, `For`, `AsyncFor`, `While`, `If`, `With`, `AsyncWith`, `Match`, `Raise`, `Try`, `TryStar`, `Assert`, `Import`, `ImportFrom`, `Global`, `Nonlocal`, `Expr`, `Pass`, `Break`, `Continue`
-  - 26 `expr` subclasses: `BoolOp`, `NamedExpr`, `BinOp`, `UnaryOp`, `Lambda`, `IfExp`, `Dict`, `Set`, `ListComp`, `SetComp`, `DictComp`, `GeneratorExp`, `Await`, `Yield`, `YieldFrom`, `Compare`, `Call`, `FormattedValue`, `JoinedStr`, `Constant`, `Attribute`, `Subscript`, `Starred`, `Name`, `List`, `Tuple`, `Slice`
-  - `expr_context` singletons: `Load`, `Store`, `Del`
-  - `boolop` singletons: `And`, `Or`
-  - `operator` singletons: `Add`, `Sub`, `Mult`, `MatMult`, `Div`, `Mod`, `Pow`, `LShift`, `RShift`, `BitOr`, `BitXor`, `BitAnd`, `FloorDiv`
-  - `unaryop` singletons: `Invert`, `Not`, `UAdd`, `USub`
-  - `cmpop` singletons: `Eq`, `NotEq`, `Lt`, `LtE`, `Gt`, `GtE`, `Is`, `IsNot`, `In`, `NotIn`
-  - misc: `comprehension`, `ExceptHandler`, `arguments`, `arg`, `keyword`, `alias`, `withitem`, `match_case`, `TypeIgnore`
-  - `pattern` subclasses: `MatchValue`, `MatchSingleton`, `MatchSequence`, `MatchMapping`, `MatchClass`, `MatchStar`, `MatchAs`, `MatchOr`
-- **`ast.literal_eval(s)`** — full recursive-descent Go parser for Python literals: `int`, `float`, `str` (with escape sequences), `bool`, `None`, `list`, `tuple`, `dict`, `set`
-- **`ast.parse(source)`** — returns a stub `Module` node (no real parsing; goipy has no embedded Python parser)
-- **`ast.dump(node)`** — produces `ClassName(field=val, ...)` representation
-- **`ast.unparse(node)`** — simplified source reconstruction for `Module`, `Assign`, `Expr`, `Name`, `Constant`
-- **`ast.get_docstring(node)`** — extracts docstring from a `FunctionDef`/`Module` body's first `Expr(Constant(str))` node
-- **`ast.fix_missing_locations(node)`** — walks tree and sets missing `lineno`/`col_offset` to 1
-- **`ast.copy_location(new, old)`** — copies `lineno`, `col_offset`, `end_lineno`, `end_col_offset`
-- **`ast.increment_lineno(node, n=1)`** — increments `lineno`/`end_lineno` on all nodes in tree
-- **`ast.iter_fields(node)`** — iterator of `(fieldname, value)` for fields present on the instance
-- **`ast.iter_child_nodes(node)`** — iterator of direct child AST nodes from fields
-- **`ast.walk(node)`** — BFS iterator of all nodes in tree
-- **`NodeVisitor`** — base class with `visit()` (dispatches to `visit_<TypeName>` or `generic_visit`) and `generic_visit()` (visits all child nodes)
-- **`NodeTransformer`** — subclass of `NodeVisitor` with `generic_visit()` returning the node
-
-Registered `"ast"` in `vm/asyncio.go`.
-
-## v0.0.304 - 2026-04-28
-
-`sys` path initialization attributes — fixture 304 for https://docs.python.org/3/library/sys_path_init.html. Covers all `sys` attributes related to path initialization and interpreter metadata.
-
-**Extended `vm/stdlib_sys.go` — `buildSys()`:**
-
-- **`sys.path_hooks`** — empty list (goipy uses built-in module registry, no path-based finders)
-- **`sys.path_importer_cache`** — empty dict
-- **`sys.meta_path`** — empty list
-- **`sys.prefix`**, **`sys.exec_prefix`**, **`sys.base_prefix`**, **`sys.base_exec_prefix`** — empty strings (no system install for goipy)
-- **`sys.platlibdir`** — `"lib"` (platform library directory name)
-- **`sys.stdlib_module_names`** — `frozenset` of ~160 CPython 3.14 standard library module names; allows `'os' in sys.stdlib_module_names` etc.
-- **`sys.abiflags`** — `""` (Unix ABI flags)
-- **`sys.float_repr_style`** — `"short"`
-- **`sys.hexversion`** — `0x030e00f0` (3.14.0 final packed as int)
-- **`sys.int_info`** — struct with `bits_per_digit=30`, `sizeof_digit=4`, `default_max_str_digits=4300`, `str_digits_check_threshold=640`
-- **`sys.float_info`** — struct with all IEEE 754 double constants (`max`, `min`, `epsilon`, `radix=2`, `mant_dig=53`, `rounds=1`, …)
-- **`sys.hash_info`** — struct with `width=64`, `modulus`, `inf`, `nan`, `imag`, `algorithm="siphash13"`, `hash_bits=64`, `seed_bits=128`
-- **`sys.thread_info`** — struct with `name="pthread"`, `lock="mutex+cond"`, `version=None`
-
-## v0.0.303 - 2026-04-28
-
-`importlib.metadata` comprehensive — fixture 303 for https://docs.python.org/3/library/importlib.metadata.html. Real dist-info parsing replacing the previous stubs.
-
-**New `vm/stdlib_importlib_metadata.go`** (replaces stub in `stdlib_importlib_ext.go`):
-
-- **`findDistInfoPath(name)`** probes `i.SearchPath` before hardcoded system site-packages paths, enabling test fixtures to ship fake `.dist-info` directories in `internal/testdata/`
-- **`parseRFC822Headers(path)`** reads a METADATA file and returns a `map[string][]string` header map plus an ordered key slice
-- **`parseEntryPointsTxt(text, makeEP)`** parses ini-style `entry_points.txt` into `EntryPoint` instances
-- **`PackageMetadata`** class with `__getitem__`, `__contains__`, `get`, `get_all`, `keys`, `items`
-- **`PackagePath`** class with `name`, `__str__`, `read_text`, `read_bytes`
-- **`EntryPoint(name, group, value)`** constructor (positional or keyword); `name`, `group`, `value` attrs; `load()` stub
-- **`EntryPoints(iterable)`** class with `__len__`, `__getitem__`, `__iter__`, `select(**kwargs)` filtering by any combination of name/group/value
-- **`PathDistribution(Distribution)`** with `name`, `version`, `metadata`, `requires`, `files`, `entry_points`, `read_text(filename)`, `locate_file(path)` — all populated from `METADATA`, `RECORD`, `entry_points.txt`
-- **`Distribution.from_name(name)`** classmethod → `PathDistribution`
-- All module-level functions now read real dist-info: `version`, `metadata`, `requires`, `files`, `distribution`, `distributions`, `packages_distributions`, `entry_points(**kwargs)`
-
-**New `internal/testdata/testpkgmeta-1.2.3.dist-info/`**: `METADATA`, `RECORD`, `entry_points.txt` (console_scripts + plugins groups), `top_level.txt`
-
-**Updated `internal/testdata/300_importlib_deep.expected.txt`**: `entry_points()` now returns `EntryPoints` (was `list`).
-
-## v0.0.302 - 2026-04-28
-
-`importlib.resources.abc` comprehensive — fixture 302 for https://docs.python.org/3/library/importlib.resources.abc.html. Full ABC hierarchy with working concrete default methods.
-
-**Extended `vm/stdlib_importlib_resources.go` — `buildImportlibResourcesAbc()`** now has a real implementation replacing the earlier stubs:
-
-- **`Traversable`** class with concrete default methods that dispatch to abstract `open()`:
-  - `read_bytes()` → calls `self.open('rb').read()` via `ii.getAttr` + `ii.callObject`
-  - `read_text(encoding='utf-8')` → calls `self.open(encoding=encoding).read()`
-  - `joinpath(*descendants)` → chains `self / child` for each descendant via `__truediv__`
-  - `__truediv__(child)` → calls `self.joinpath(child)`
-- **`ResourceReader`** class — abstract base; concrete subclasses define `open_resource`, `resource_path`, `is_resource`, `contents`
-- **`TraversableResources(ResourceReader)`** class with concrete implementations of all `ResourceReader` methods using `self.files()`:
-  - `open_resource(resource)` → `self.files().joinpath(resource).open('rb')`
-  - `resource_path(resource)` → always raises `FileNotFoundError`
-  - `is_resource(path)` → `self.files().joinpath(path).is_file()`
-  - `contents()` → `[x.name for x in self.files().iterdir()]` using `iterate()` helper
-- **`TraversalError`** — subclass of `Exception`, raise/catch works
-
-**Extended `vm/stdlib_io.go`:** added `__enter__`/`__exit__` context manager support to both `stringIOAttr` (`*object.StringIO`) and `bytesIOAttr` (`*object.BytesIO`), enabling `with io.BytesIO(...) as fp:` and `with io.StringIO(...) as fp:`.
-
-## v0.0.301 - 2026-04-28
-
-`importlib.resources` comprehensive — fixture 301 for https://docs.python.org/3/library/importlib.resources.html. Real filesystem-backed implementation covering the full modern and legacy APIs.
-
-**New `vm/stdlib_importlib_resources.go`** replaces the previous stub with a working implementation:
-
-- **`files(anchor)`** accepts a module object or string name, resolves the package directory via `i.loadModule`, and returns a `Traversable` instance backed by the real filesystem. Traversable exposes `name`, `is_dir()`, `is_file()`, `iterdir()`, `joinpath(*parts)`, `open(mode='r', ...)`, `read_bytes()`, `read_text(encoding=...)`. `joinpath` handles the method-dispatch self-skipping. `iterdir()` yields child Traversables.
-- **`as_file(traversable)`** context manager: extracts `_path` from the Traversable and yields a `Path`-like instance. Does not use `mpArgs` (first arg is `*object.Instance`).
-- **`path(anchor, *names)`** context manager yielding a `Path` instance for `pkgDir(anchor)/names...`.
-- **`read_binary`**, **`read_text`**, **`open_binary`**, **`open_text`**, **`is_resource`**, **`contents`** — all real filesystem I/O via `os.ReadFile`/`os.ReadDir`.
-- **`makeBytesCM`** / **`makeTextCM`**: file-like context managers with `read`, `readline`, `readlines`, `close`, `__enter__`, `__exit__`.
-- **`buildImportlibResourcesAbc()`**: `importlib.resources.abc` module with `Traversable`, `TraversableResources`, `ResourceReader` classes and `TraversalError` exception.
-
-**New test package `internal/testdata/testpkgres/`**: `__init__.py` + compiled `__init__.pyc` + `greeting.txt` ("Hello, resource!") used as real filesystem resources by the fixture.
-
-**`vm/asyncio.go`**: registered `"importlib.resources.abc"` → `buildImportlibResourcesAbc()`.
-
-## v0.0.300 - 2026-04-28
-
-`importlib` family — first comprehensive fixture (300) for https://docs.python.org/3/library/importlib.html. Full coverage of `importlib`, `importlib.util`, `importlib.abc`, `importlib.machinery`, `importlib.resources`, and `importlib.metadata`.
-
-**Extended `vm/imports.go`:** added `invalidate_caches()` (returns None) to the existing `importlib` module; fixed `reload()` to gracefully handle builtin modules with no `.pyc` path by re-registering from the builtin registry instead of raising `ImportError`.
-
-**New `vm/stdlib_importlib_ext.go`** with five new submodules:
-
-- **`importlib.util`**: `MAGIC_NUMBER` (4-byte Python 3.14 magic `0x0a0d0e2b`); `cache_from_source(path, *, optimization=None)` producing `dir/__pycache__/stem.cpython-314[.opt-N].pyc`; `source_from_cache(path)` with `ValueError` for non-`__pycache__` paths; `resolve_name(name, package)` with leading-dot relative resolution and `ImportError` for missing package; `find_spec(name)` returning a live `ModuleSpec` for known modules or `None`; `source_hash(source_bytes)` → 8 deterministic bytes; `decode_source(source_bytes)` → UTF-8 string with BOM stripping; `spec_from_file_location(name, location, ...)` and `spec_from_loader(name, loader, ...)` returning `ModuleSpec` instances; `module_from_spec(spec)` creating a `*object.Module` with `__name__`/`__spec__`/`__loader__`/`__package__`/`__file__`; `Loader` abstract class; `LazyLoader(loader)` wrapper class.
-
-- **`importlib.machinery`**: `ModuleSpec(name, loader, *, origin=None, is_package=None)` class with `name`, `loader`, `origin`, `submodule_search_locations`, `has_location`, `cached`, `parent` attributes and `__repr__`; `SOURCE_SUFFIXES=['.py']`, `BYTECODE_SUFFIXES=['.pyc']`, `EXTENSION_SUFFIXES=['.so']`; `all_suffixes()` returning combined list; `BuiltinImporter` and `FrozenImporter` with `find_spec` stubs (return None); `PathFinder` with `find_spec` looking up known modules; stub classes for `FileFinder`, `SourceFileLoader`, `SourcelessFileLoader`, `ExtensionFileLoader`, `NamespaceLoader`, `AppleFrameworkLoader`, `WindowsRegistryFinder`.
-
-- **`importlib.abc`**: stub abstract base classes `Loader`, `MetaPathFinder`, `PathEntryFinder`, `InspectLoader`, `ExecutionLoader`, `FileLoader`, `SourceLoader`, `ResourceLoader`.
-
-- **`importlib.resources`**: `files(package)` returning a `Traversable`-like stub instance with `joinpath`, `iterdir`, `is_dir`, `is_file`, `open`, `read_bytes`, `read_text`; `as_file(path)` context manager; `path` context manager; stub functions `contents`, `is_resource`, `open_binary`, `open_text`, `read_binary`, `read_text`; `Package` and `Anchor` stubs.
-
-- **`importlib.metadata`**: `PackageNotFoundError` (subclass of `ImportError`); `version(name)` probing real disk `.dist-info` dirs or raising `PackageNotFoundError`; `distribution`, `metadata`, `requires`, `files` all raising `PackageNotFoundError`; `distributions()` empty iterator; `packages_distributions()` empty dict; `entry_points()` empty list; stub classes `Distribution`, `PathDistribution`, `EntryPoint`, `EntryPoints`, `PackagePath`, `PackageMetadata`.
-
-## v0.0.299 - 2026-04-28
-
-`runpy` — first fixture (299) for https://docs.python.org/3/library/runpy.html. Full coverage of Python 3.14 `runpy` module public API.
-
-**New module `vm/stdlib_runpy.go`:** `run_module(mod_name, init_globals=None, run_name=None, alter_sys=False)` loads a module via goipy's module loader, snapshots its dict into a fresh result dict, overrides `__name__` with `run_name` (defaults to `mod_name`), injects `init_globals` on top, and raises `ImportError` for unknown modules; `run_path(path_name, init_globals=None, run_name=None)` verifies the path exists (raises `FileNotFoundError` otherwise), locates the sibling `.pyc` file, executes it in a fresh globals frame (with `__name__` set to `run_name` defaulting to `"<run_path>"`), injects `init_globals` before execution, and returns the resulting namespace dict.
-
-## v0.0.298 - 2026-04-28
-
-`modulefinder` — first fixture (298) for https://docs.python.org/3/library/modulefinder.html. Full coverage of Python 3.14 `modulefinder` module public API.
-
-**New module `vm/stdlib_modulefinder.go`:** module-level state `packagePathMap` and `replacePackageMap` (dicts); `AddPackagePath(pkg_name, path)` appends to the package path list; `ReplacePackage(oldname, newname)` registers a name alias; `Module(name, file=None, path=None)` class with `__name__`, `__file__`, `__path__`, `globalnames` and `starimports` attributes and a Python-style `__repr__`; `ModuleFinder(path, debug, excludes, replace_paths)` class with `modules` and `badmodules` dicts, `add_module(fqname)` (creates and caches a Module entry), `any_missing()` (sorted list of unresolved bad-module names), `any_missing_maybe()` (tuple of missing/maybe lists using CPython dot-name resolution logic), `report()` (prints formatted module table to stdout), and stubs for `find_module`, `run_script`, `msg`, `msgin`, `msgout`.
-
-## v0.0.297 - 2026-04-28
-
-`pkgutil` — first fixture (297) for https://docs.python.org/3/library/pkgutil.html. Full coverage of Python 3.14 `pkgutil` module public API.
-
-**New module `vm/stdlib_pkgutil.go`:** `ModuleInfo(module_finder, name, ispkg)` namedtuple-like class with `_fields`, index access, and iteration; `simplegeneric(func)` callable wrapper with `.register(type)` type-dispatch supporting both user-defined classes and built-in types (`int`, `str`, etc.); `extend_path`; `get_data` (returns None); `read_code` (returns None); `iter_importers` (empty iterator); `iter_modules(path, prefix)` with real `archive/zip`-backed zip support and filesystem `os.ReadDir`; `iter_importer_modules` / `iter_zipimport_modules` reading from zipimporter; `walk_packages`; `get_importer` (returns `zipimporter` for zip paths); `resolve_name` (imports module and walks attribute chain, handles `:` separator, raises `ValueError` for empty module name and `ModuleNotFoundError` for unknown modules).
-
-**Fixed `isinstance(o, tuple)`:** now returns True for namedtuple-like instances whose class has `__namedtuple__ = True` in its dict (in `ops.go`).
-
-## v0.0.296 - 2026-04-28
-
-`zipimport` — first fixture (296) for https://docs.python.org/3/library/zipimport.html. Full coverage of Python 3.14 `zipimport` module public API.
-
-**New module `vm/stdlib_zipimport.go`:** all 12 module-level constants (`path_sep`, `alt_path_sep`, `END_CENTRAL_DIR_SIZE`, `END_CENTRAL_DIR_SIZE_64`, `END_CENTRAL_DIR_LOCATOR_SIZE_64`, `MAX_COMMENT_LEN`, `MAX_UINT32`, `ZIP64_EXTRA_TAG`, `STRING_END_ARCHIVE`, `STRING_END_LOCATOR_64`, `STRING_END_ZIP_64`, `cp437_table`); `ZipImportError` (subclass of `ImportError`); `zipimporter` class with real `archive/zip` backed implementation: constructor parses path to find zip boundary and set `archive`/`prefix` attrs; `find_spec` (returns ModuleSpec-like instance or None), `is_package`, `get_filename`, `get_source`, `get_data` (reads bytes from zip entry), `get_code` (returns mock code object), `get_resource_reader`, `invalidate_caches`, `_get_files` (returns dict of all entries), `load_module`/`create_module`/`exec_module` stubs.
-
-## v0.0.295 - 2026-04-28
-
-`codeop` — first fixture (295) for https://docs.python.org/3/library/codeop.html. Full coverage of Python 3.14 `codeop` module public API.
-
-**New module `vm/stdlib_codeop.go`:** constants `PyCF_DONT_IMPLY_DEDENT=512`, `PyCF_ALLOW_INCOMPLETE_INPUT=16384`, `PyCF_ONLY_AST=1024`; `compile_command(source, filename, symbol, flags)` (returns code object or None using incompleteness heuristic shared with `code` module); `Compile` class (callable, `flags` attr initialised to `PyCF_DONT_IMPLY_DEDENT|PyCF_ALLOW_INCOMPLETE_INPUT=16896`, raises `SyntaxError` for incomplete input); `CommandCompiler` class (callable, `compiler` attr holds a `Compile` instance, returns None for incomplete input).
-
-## v0.0.294 - 2026-04-28
-
-`code` — first fixture (294) for https://docs.python.org/3/library/code.html. Full coverage of Python 3.14 `code` module public API.
-
-**New module `vm/stdlib_code.go`:** `compile_command(source, filename, symbol, flags)` (returns code object or None using incompleteness heuristic); `interact()` (no-op); `CommandCompiler` class (callable, delegates to compile_command logic); `Quitter(name)` class (repr shows exit hint, calling raises SystemExit); `InteractiveInterpreter(locals)` class (runsource returns True/False based on incompleteness, runcode/showsyntaxerror/showtraceback/write stubs); `InteractiveConsole(locals, filename, local_exit)` class (extends InteractiveInterpreter with buffer/push/resetbuffer/raw_input/interact).
-
-**Fixed `callable()` builtin:** now returns True for `*object.Instance` when the class has `__call__` defined (previously only checked BuiltinFunc/Function/BoundMethod/Class).
-
-## v0.0.293 - 2026-04-28
-
-`site` — comprehensive deep-coverage fixture (293) for https://docs.python.org/3/library/site.html. Extends the basic fixture 279.
-
-**New functions:** `addusersitepackages(known_paths)` (returns set); `enablerlcompleter()` (no-op); `gethistoryfile()` (returns `~/.python_history`); `makepath(*paths)` (returns `(joined, joined)` 2-tuple); `register_readline()` (no-op); `venv(known_paths)` (returns set).
-
-**Fixed return types:** `addsitepackages` and `addusersitepackages` now return the `known_paths` set (matching CPython); `removeduppaths` returns a set; `venv` returns a set.
-
-**New classes:** `Quitter` (installed by `setquit` as `builtins.quit`/`builtins.exit`; repr shows usage hint; calling raises `SystemExit`); `_Printer` (installed by `setcopyright` as `builtins.copyright`/`.credits`/`.license`); `_Helper` (installed by `sethelper` as `builtins.help`).
-
-**Updated `setquit`/`setcopyright`/`sethelper`:** now install the appropriate objects into `builtins` (previously no-ops).
-
-**Fixed macOS paths:** `USER_BASE` and `USER_SITE` now use `~/Library/Python/3.14/...` matching CPython 3.14 on macOS.
-
-## v0.0.292 - 2026-04-28
-
-`annotationlib` — comprehensive deep-coverage fixture (292) for https://docs.python.org/3/library/annotationlib.html. Extends the basic fixture 278.
-
-**Updated Format enum:** members are now `*object.Instance` with `.value` (int) and `.name` (str) attributes, matching Python 3.14 `IntEnum` semantics. Added `__eq__` comparing `.value` to int or another Format member. New member: `VALUE_WITH_FAKE_GLOBALS=2`; `FORWARDREF` updated to 3, `STRING` to 4.
-
-**Updated ForwardRef:** added Python 3.14 attributes `__forward_module__`, `__forward_is_argument__`, `__forward_is_class__`, `__forward_code__`; kept legacy `__forward_evaluated__`/`__forward_value__` for compat. Added `evaluate()` (raises `NameError`), `__eq__` (compares `__forward_arg__`), `__hash__` (hash of `__forward_arg__` string).
-
-**Updated `get_annotations`:** handles Python 3.14's `__annotate_func__` lazy evaluation for classes; accepts `format=` keyword arg; `Format.STRING` converts annotation values to string repr via `type_repr`.
-
-**New functions:** `annotations_to_string(d)` converts annotation dict values to string repr; `call_evaluate_function(fn, format)` calls the given function; `get_annotate_from_class_namespace(ns)` returns `__annotate__` from a dict or class namespace.
-
-## v0.0.291 - 2026-04-28
-
-`inspect` — comprehensive deep-coverage fixture (291) for https://docs.python.org/3/library/inspect.html. Extends the basic fixture 277.
-
-**New functions:** `getcomments(obj)` (returns None — no source in .pyc env); `ispackage(path)` (returns False); `walktree(classes, children, parent)` (callable stub); `isasyncgen(obj)` (returns False).
-
-**Fixed predicates:** `isasyncgenfunction` now checks `CO_ASYNC_GENERATOR` flag (0x200); `iscoroutinefunction` corrected to `CO_COROUTINE` flag (0x80, was 0x100); `isgeneratorfunction` checks 0x20.
-
-**Fixed `getmro`:** now performs full depth-first MRO traversal instead of only returning direct bases.
-
-**New classes:** `BoundArguments` with `args`/`kwargs`/`arguments` attrs; `Signature.bind` and `Signature.bind_partial` methods returning `BoundArguments`.
-
-**Fixed `getmembers_static`:** now returns the object's dict items (previously returned empty list).
-
-**Fixed `classify_class_attrs`:** returns a list of `Attribute` instances with `name`, `kind`, `defining_class`, `object` fields (previously always empty).
-
-**Fixed `indentsize`:** counts leading whitespace after tab expansion (tab → 8 spaces), matching Python's `str.expandtabs(8)` semantics.
-
-**Fixed `formatannotation`:** string annotations now return their `repr()` (quoted form), matching CPython.
-
-**`FrameInfo._fields`:** `('frame', 'filename', 'lineno', 'function', 'code_context', 'index')`.
-
-**`Attribute._fields`:** `('name', 'kind', 'defining_class', 'object')`.
-
-**CO_* constants:** all 12 — `CO_OPTIMIZED=1`, `CO_NEWLOCALS=2`, `CO_VARARGS=4`, `CO_VARKEYWORDS=8`, `CO_NESTED=16`, `CO_GENERATOR=32`, `CO_NOFREE=64`, `CO_COROUTINE=128`, `CO_ITERABLE_COROUTINE=256`, `CO_ASYNC_GENERATOR=512`, `CO_HAS_DOCSTRING=67108864`, `CO_METHOD=134217728`.
-
-**`TPFLAGS_IS_ABSTRACT = 1048576`**.
-
-## v0.0.290 - 2026-04-28
-
-`gc` — comprehensive deep-coverage fixture (290) for https://docs.python.org/3/library/gc.html. Extends the partial implementation in `vm/stdlib_gc.go`.
-
-**New functions:** `get_stats()` returns a list of 3 per-generation dicts, each with keys `collections`, `collected`, `uncollectable` (all zero — goipy defers to the Go runtime GC).
-
-**Fixed `set_debug` / `get_debug`:** `set_debug(flags)` now stores the flags value; `get_debug()` returns the stored value instead of always returning 0.
-
-**New attribute:** `gc.garbage` — empty list (no finalizer-resurrection in goipy).
-
-**Updated defaults:** `get_threshold()` now returns `(2000, 10, 0)` matching CPython 3.14's incremental GC defaults; `set_threshold` always stores 0 for the third slot.
-
-**`isenabled()`:** now uses `object.BoolOf` so the return type is a proper Python `bool`.
-
-## v0.0.289 - 2026-04-28
-
-`__future__` — full coverage of https://docs.python.org/3/library/__future__.html. New module in `vm/stdlib_future.go`; registered as `"__future__"` in the module switch.
-
-**`_Feature` class:** constructor `_Feature(optionalRelease, mandatoryRelease, compiler_flag)`; `getOptionalRelease()` and `getMandatoryRelease()` return the stored 5-tuple or `None`.
-
-**Feature instances** (all `_Feature` objects, matching CPython values): `nested_scopes`, `generators`, `division`, `absolute_import`, `with_statement`, `print_function`, `unicode_literals`, `barry_as_FLUFL`, `generator_stop`, `annotations`.
-
-**`all_feature_names`:** list of the 10 feature name strings in definition order.
-
-**CO_* constants:** `CO_NESTED=16`, `CO_GENERATOR_ALLOWED=0`, `CO_FUTURE_DIVISION=131072`, `CO_FUTURE_ABSOLUTE_IMPORT=262144`, `CO_FUTURE_WITH_STATEMENT=524288`, `CO_FUTURE_PRINT_FUNCTION=1048576`, `CO_FUTURE_UNICODE_LITERALS=2097152`, `CO_FUTURE_BARRY_AS_BDFL=4194304`, `CO_FUTURE_GENERATOR_STOP=8388608`, `CO_FUTURE_ANNOTATIONS=16777216`.
-
-## v0.0.288 - 2026-04-28
-
-`traceback` — comprehensive deep-coverage fixture (288) for https://docs.python.org/3/library/traceback.html. Extends the basic implementation from fixture 274.
-
-**`FrameSummary`:** added `__iter__` (yields 4-tuple: filename, lineno, name, line — supports unpacking), `__getitem__` (index 0–3 access), and `line` now defaults to empty string `""` (matching linecache behaviour for missing files).
-
-**`StackSummary`:** added `__iter__`, `__len__`, `__getitem__` (list-like iteration and indexing); `from_list` now converts raw tuples to `FrameSummary` instances; `format_frame_summary(frame_summary)` method for single-frame formatting. Format output now uses quoted filenames (`File "name"`) matching Python's `traceback.py`.
-
-**`formatFrameEntry`:** uses `object.Str_()` for proper string extraction; uses `%q` (quoted) filename format.
-
-**`TracebackException`:** `from_exception` now populates `exc_type_str` from the exception class name, `__cause__` (nested TBE for explicit chain), `__context__` (nested TBE for implicit context), and `__suppress_context__` correctly; `print(file=buf)` honours the `file` keyword argument.
-
-**`format_exception_only` / `format_exception`:** one-arg form (Python 3.10+) — single exception value is accepted directly.
-
-**`print_list(list, file=buf)`:** now writes to `file` kwarg; uses `formatFrameEntry` for proper frame formatting.
-
-**`print_exception(exc, file=buf)`:** honours `file` keyword argument.
-
-**`tracebackWriteToFile` helper:** writes to `*object.StringIO` when `file` kwarg is provided, otherwise falls back to `Interp.Stderr`.
-
-## v0.0.287 - 2026-04-28
-
-`atexit` — comprehensive deep-coverage fixture (287) for https://docs.python.org/3/library/atexit.html. Builds on the basic implementation from fixture 273.
-
-**`register(func, *args, **kwargs)`:** returns `func` unchanged, so it works as a plain decorator (`@atexit.register`). Accepts positional and keyword arguments that are forwarded on exit.
-
-**`unregister(func)`:** removes **all** instances of `func` from the handler list (silent no-op if not registered).
-
-**LIFO order:** handlers are called last-registered-first.
-
-**Multiple registrations:** the same function can be registered multiple times (with different args); `unregister` removes every occurrence.
-
-**Exception suppression:** if a handler raises, the exception is suppressed and remaining handlers continue to run (matching CPython behaviour).
-
-**`_run_exitfuncs` semantics fix:** after running the snapshot of handlers in LIFO order, the entire handler list is cleared — including any handlers registered *during* the run. This matches CPython's `atexitmodule.c` behaviour.
-
-## v0.0.286 - 2026-04-28
-
-`abc` — full coverage of https://docs.python.org/3/library/abc.html. New module `vm/stdlib_abc_module.go`; registered as `"abc"` in the module switch.
-
-**`@abstractmethod`:** sets `__isabstractmethod__ = True` on the decorated callable (`Function.Dict` / `BuiltinFunc.Attrs`).
-
-**Abstract class enforcement:** `call.go` now checks `checkAbstractMethods(cls)` before creating any `*object.Instance`. If any method in the class/MRO has `__isabstractmethod__ = True` and is not overridden by a concrete implementation, a `TypeError` is raised: `"Can't instantiate abstract class X without an implementation for abstract method(s) 'name'"`.
-
-**`__abstractmethods__` frozenset:** respected as the canonical source of abstract method names when present on a class (Python's ABC machinery sets it via `ABCMeta`).
-
-**`ABC` base class:** inheritable base; provides `register()` and `__subclasshook__()` as classmethods.
-
-**`ABCMeta`:** class with `register()`, `__subclasshook__()`, `__instancecheck__()`, `__subclasscheck__()`, `_dump_registry()`.
-
-**`ABC.register(subclass)` / `ABCMeta.register(subclass)`:** registers a virtual subclass; increments `get_cache_token()`; wires `ABCCheck` so `isinstance` works for registered classes.
-
-**`issubclass` enhanced:** now calls `__subclasshook__` classmethod on the parent class and checks ABC virtual subclass registry; also handles tuple second argument.
-
-**`get_cache_token()`:** returns a global int counter that increments on each `register()` call.
-
-**Deprecated stubs:** `abstractclassmethod`, `abstractstaticmethod`, `abstractproperty` — each marks the decorated callable as abstract.
-
-## v0.0.285 - 2026-04-28
-
-`warnings` — comprehensive coverage of https://docs.python.org/3/library/warnings.html. Replaces the minimal stub (in `stdlib_sys.go`) with a full implementation in a dedicated `vm/stdlib_warnings.go`.
-
-**Warning categories:** All 12 warning classes (`Warning`, `UserWarning`, `DeprecationWarning`, `PendingDeprecationWarning`, `RuntimeWarning`, `SyntaxWarning`, `ResourceWarning`, `FutureWarning`, `ImportWarning`, `UnicodeWarning`, `BytesWarning`, `EncodingWarning`) exposed directly in `warnings` module dict (already existed as builtins).
-
-**Filter engine:** `warn()` checks a per-Interp filter list (FIFO, first match wins). Actions: `"default"` (once per category+lineno), `"always"`, `"error"` (raises), `"ignore"`, `"once"` (once per message+category), `"module"` (once per message+category+file).
-
-**Functions:** `warn()`, `warn_explicit()`, `showwarning()`, `formatwarning()`, `filterwarnings()` (with `message`/`category`/`module`/`lineno`/`append` args), `simplefilter()`, `resetwarnings()`, `_filters_mutated()`.
-
-**`catch_warnings(record=False)`:** context manager that saves and restores filter state on exit. `record=True` intercepts `showwarning` and collects `WarningMessage` objects into a list returned by `__enter__`.
-
-**`WarningMessage`:** attributes `message`, `category`, `filename`, `lineno`, `file`, `line`, `source`.
-
-**`warnings.filters`:** Python-visible list of 5-tuples kept in sync with internal state.
-
-## v0.0.284 - 2026-04-28
-
-`contextlib` — comprehensive coverage of https://docs.python.org/3/library/contextlib.html. Extends the initial implementation (v0.0.258) with async support, decorator protocol, and advanced stack utilities.
-
-**`@asynccontextmanager`:** async generator functions (`async def ... yield`) now work as async context managers. Requires two new VM fixes: `CO_ASYNC_GENERATOR` functions now return a `Generator` instead of running the body immediately; `INTRINSIC_ASYNC_GEN_WRAP` is now implemented (pass-through).
-
-**`aclosing(athing)`:** async context manager that calls `aclose()` (falling back to `close()`) on exit. `__aenter__`/`__aexit__` return proper awaitables.
-
-**`_GeneratorContextManager.__aenter__`/`__aexit__`:** `@contextmanager` decorated functions can now be used in `async with` blocks.
-
-**`ExitStack.pop_all()`:** correctly transfers all registered callbacks to a new stack rather than discarding them.
-
-**`AsyncExitStack`:** now has proper `__aenter__`/`__aexit__` returning awaitables; `enter_async_context` added; callback/push/pop_all work identically to `ExitStack`.
-
-**`ContextDecorator` / `AsyncContextDecorator`:** `__call__` now correctly wraps the decorated function inside `__enter__`/`__exit__` on each invocation.
-
-**`AbstractContextManager` / `AbstractAsyncContextManager`:** `__class_getitem__` added for generic type alias support.
-
-## v0.0.283 - 2026-04-28
-
-`dataclasses` — comprehensive coverage of https://docs.python.org/3/library/dataclasses.html. Extends the initial implementation (v0.0.259) with all missing features.
-
-**Inheritance:** `@dataclass` child classes now inherit fields from dataclass base classes in correct MRO order. Child fields override same-named base fields.
-
-**`match_args=True` (default):** generates `__match_args__` tuple from all non-kw_only fields. `match_args=False` suppresses it.
-
-**`kw_only=True` at class level:** marks all fields as keyword-only; `__init__` skips positional fallback for those fields.
-
-**`KW_ONLY` sentinel:** `_: KW_ONLY` in annotations marks all following fields as keyword-only. These fields are excluded from `__match_args__`.
-
-**`unsafe_hash=True`:** generates `__hash__` (same logic as `frozen=True`) even when the class is mutable.
-
-**`field()` validation:** raises `ValueError` when both `default` and `default_factory` are provided.
-
-**`__dataclass_params__` enriched:** now includes `match_args`, `kw_only`, `unsafe_hash` attributes.
-
-**`make_dataclass()` kwargs:** now forwards `frozen`, `eq`, `order`, `repr`, `init`, `match_args`, `kw_only`, `unsafe_hash` to the decorator.
-
-**Field attributes `type`, `name`, `metadata`, `compare`, `repr`, `hash`, `init`, `kw_only`:** all accessible on Field instances returned by `fields()`.
-
-**`fields()` on instances:** `fields(instance)` works the same as `fields(Class)`.
-
-**`@dataclass(eq=False)` / `(repr=False)` / `(init=False)`:** each decorator flag correctly suppresses the corresponding generated method.
-
-## v0.0.282 - 2026-04-28
-
-`__main__` — implements `import __main__` from https://docs.python.org/3/library/__main__.html. The module's dict is the live top-level execution namespace, so variables defined in the running script are accessible via `__main__` attributes.
-
-**`Run()` enriched:** `__doc__`, `__annotations__`, `__spec__`, `__loader__`, `__package__` are now set on the main globals dict in addition to the existing `__name__` and `__builtins__`. The module is registered in `i.modules["__main__"]` so `import __main__` returns the live namespace.
-
-**`buildMain()` fallback:** provides a well-formed `__main__` module for contexts where `Run()` has not yet been called (e.g. subinterpreter imports).
-
-**Shared namespace:** `import __main__; __main__.x` reflects variables defined in the running script because the module dict IS the script globals.
-
-**`if __name__ == '__main__':` pattern** works correctly (was already the case; now the module is also importable).
-
-## v0.0.281 - 2026-04-28
-
-`builtins` — implements `import builtins` from https://docs.python.org/3/library/builtins.html. The module's `__dict__` is the live built-in namespace, so mutations like `builtins.len = ...` take effect interpreter-wide.
-
-**Module identity:** `__name__`, `__doc__`, `__package__`, `__loader__`, `__spec__`.
-
-**`__import__(name, globals, locals, fromlist, level)`:** thin wrapper around the interpreter's existing import machinery.
-
-**`exec(code, globals, locals)`:** executes a pre-compiled `*object.Code` object. String source not supported (no Go-side Python compiler).
-
-**`eval(expr, globals, locals)`:** evaluates a pre-compiled `*object.Code` object and returns the result.
-
-**`compile(...)`:** always raises `NotImplementedError` (no Go-side compiler).
-
-**Namespace aliasing:** all other built-in names (print, len, int, str, list, range, etc.) are accessible as attributes because the module dict is the same `object.Dict` as `Interp.Builtins`.
-
-## v0.0.280 - 2026-04-27
-
-`sys.monitoring` — implements the Python 3.12+ monitoring API from https://docs.python.org/3/library/sys.monitoring.html. No real instrumentation hooks (goipy runs Go, not CPython bytecode), but the full API surface is present.
-
-**Tool IDs:** `DEBUGGER_ID=0`, `COVERAGE_ID=1`, `PROFILER_ID=2`, `OPTIMIZER_ID=5`, `MISSING` sentinel.
-
-**`events` namespace:** all 17 event constants (`NO_EVENTS`, `BRANCH`, `CALL`, `LINE`, `PY_RETURN`, etc.) with correct bitmask values.
-
-**`use_tool_id(id, name)` / `free_tool_id(id)`:** register/release a monitoring tool slot.
-
-**`set_events(id, event_set)` / `get_events(id)`:** per-tool event bitmask stored in module closure.
-
-**`register_callback(id, event, func)`:** stores callback per tool+event; returns old callback.
-
-**`set_local_events` / `get_local_events`:** no-ops (no per-code tracking); `_all_events()` → `{}`.
-
-## v0.0.279 - 2026-04-27
-
-`site` — implements the site-customization module from https://docs.python.org/3/library/site.html. No site packages are physically installed; paths are computed from OS home directory.
-
-**`USER_BASE` / `USER_SITE`:** platform-aware defaults (`~/.local` on Unix, `%APPDATA%\Python` on Windows).
-
-**`getsitepackages(prefixes=None)`:** returns list of `lib/python3.14/site-packages` paths under each prefix.
-
-**`getusersitepackages()` / `getuserbase()`:** return `USER_SITE` / `USER_BASE` strings.
-
-**`addsitedir` / `addpackage` / `addsitepackages` / `main` / `setquit` / `setcopyright` / `sethelper` / `execsitecustomize` / `execusercustomize` / `removeduppaths` / `abs_paths` / `check_enableusersite`:** all no-op stubs.
-
-## v0.0.278 - 2026-04-27
-
-`annotationlib` — implements the Python 3.14 annotation utilities from https://docs.python.org/3/library/annotationlib.html.
-
-**`Format` enum:** `VALUE=1`, `FORWARDREF=2`, `STRING=3`.
-
-**`ForwardRef(arg)`:** stores `__forward_arg__`, `__forward_evaluated__=False`; `repr` → `ForwardRef('arg')`.
-
-**`get_annotations(obj)`:** extracts `__annotations__` dict from Class/Instance/Module/Function; falls back to `{}`.
-
-**`get_annotate_function(obj)`:** returns `__annotate__` attribute if present, else `None`.
-
-**`call_annotate_function(annotate, format)`:** calls the annotate function with the format arg via `ii.(*Interp)`.
-
-**`type_repr(annotation)`:** returns `.Name` for `*object.Class` and `*object.BuiltinFunc` (goipy stores built-in types as BuiltinFunc).
-
-## v0.0.277 - 2026-04-27
-
-`inspect` — implements the inspection module from https://docs.python.org/3/library/inspect.html.
-
-**Type predicates:** `ismodule`, `isclass`, `isfunction`, `isbuiltin`, `ismethod`, `isroutine`, `iscode`, `isgenerator`, `isgeneratorfunction`, `iscoroutinefunction`, `isframe`, and 10 others. `isgeneratorfunction` checks `Code.Flags & 0x20`; goipy has no Coroutine type so `iscoroutine`/`isawaitable` always return False.
-
-**`getmembers(obj, predicate=None)`:** returns `(name, value)` pairs from obj's dict.
-
-**`getmro(cls)`:** returns `(cls, *cls.Bases)` tuple.
-
-**`getdoc` / `getfile` / `getsourcefile` / `getmodulename` / `cleandoc`:** string-based helpers.
-
-**`signature(fn)`:** returns `Signature` instance; `Parameter` class with five kind constants and `empty` sentinel.
-
-**`getfullargspec` / `getargvalues` / `getframeinfo`:** stub NamedTuple-like instances.
-
-**`getattr_static(obj, name, default=)`:** non-descriptor attribute lookup across Instance/Class/Module.
-
-**`classify_class_attrs` / `stack` / `trace` / `currentframe` / `getouterframes` / `getinnerframes`:** stub implementations.
-
-## v0.0.276 - 2026-04-27
-
-`sysconfig` — implements the build configuration module from https://docs.python.org/3/library/sysconfig.html.
-
-**`get_python_version()`** → `"3.14"`.
-
-**`get_platform()`:** returns platform string based on `runtime.GOOS`/`GOARCH` (e.g. `"linux-amd64"`, `"macosx-14.0-arm64"`).
-
-**`get_scheme_names()`** → tuple of 6 install scheme names.
-
-**`get_paths(scheme=None)`:** dict with `stdlib`, `platstdlib`, `platlib`, `purelib`, `include`, `scripts`, `data` keys, all under `/usr`.
-
-**`get_config_vars(*args)`:** returns dict of ~20 build variables (no args) or list of values for named keys.
-
-**`get_config_var(name)`:** single-key lookup; returns `None` for unknown keys.
-
-**`get_default_scheme` / `get_path` / `get_path_names` / `get_makefile_filename` / `get_config_h_filename` / `is_python_build` / `parse_config_h`:** all implemented.
-
-## v0.0.275 - 2026-04-27
-
-`gc` — implements the garbage collector interface from https://docs.python.org/3/library/gc.html. Go has its own GC; this module exposes the CPython API surface as stubs backed by `runtime.GC()`.
-
-**`enable()` / `disable()` / `isenabled()`:** in-memory flag (no effect on Go GC).
-
-**`collect(generation=2)`:** calls `runtime.GC()`, returns 0.
-
-**`get_count()`** → `(0, 0, 0)`; **`get_threshold()` / `set_threshold(t0, t1, t2)`:** in-memory state, defaults `(700, 10, 10)`.
-
-**`get_objects()` / `get_referents()` / `get_referrers()`** → `[]`; **`is_tracked()` / `is_finalized()`** → `False`.
-
-**`freeze()` / `unfreeze()` / `get_freeze_count()`** → `0`; **`set_debug()` / `get_debug()`** → `0`.
-
-**Debug constants:** `DEBUG_STATS=1`, `DEBUG_COLLECTABLE=2`, `DEBUG_UNCOLLECTABLE=4`, `DEBUG_SAVEALL=32`, `DEBUG_LEAK=38`.
-
-**`callbacks`:** mutable list attribute.
-
-## v0.0.274 - 2026-04-27
-
-`traceback` — implements the traceback utilities from https://docs.python.org/3/library/traceback.html.
-
-**`FrameSummary(filename, lineno, name)`:** stores frame info; attrs `filename`, `lineno`, `name`, `line`, `end_lineno`, `colno`, `end_colno`.
-
-**`StackSummary`:** `from_list(entries)` accepts both `FrameSummary` instances and raw `(filename, lineno, name, text)` tuples; `format()` → list of formatted frame strings; `extract()` classmethod stub.
-
-**`extract_stack()`:** walks `i.curFrame → .Back` chain to build a live `StackSummary`.
-
-**`format_list(entries)`:** accepts both a raw list of tuples and a `StackSummary`; formats each as `'  File ..., line N, in func\n    source\n'`.
-
-**`format_exception_only(exc_type, exc_value)`:** formats exception class name + message.
-
-**`format_exc()` / `print_exc()`:** capture and format the current exception from `f.ExcInfo`.
-
-**`format_exception` / `print_exception` / `print_last` / `print_tb` / `format_tb` / `print_stack` / `format_stack` / `print_list` / `clear_frames` / `walk_stack` / `walk_tb`:** full set of module-level helpers.
-
-**`TracebackException`:** `from_exception(e)` classmethod; `format_exception_only()` iterator; `format()` iterator; `print()` writes to stderr.
-
-## v0.0.273 - 2026-04-27
-
-`atexit` — implements the exit handler registration module from https://docs.python.org/3/library/atexit.html.
-
-**`register(func, *args, **kwargs)`:** registers a callable to be called at interpreter shutdown; returns the callable.
-
-**`unregister(func)`:** removes all registrations for the given callable (compares via `objectEqual`).
-
-**`_run_exitfuncs()`:** calls all registered handlers in LIFO order via `ii.(*Interp)` (thread-safe).
-
-**`_clear()`:** removes all registered handlers.
-
-**`_ncallbacks()`:** returns the number of currently registered handlers.
-
-## v0.0.272 - 2026-04-28
-
-`zipapp` — implements the Python executable zip archive module from https://docs.python.org/3/library/zipapp.html. Unlike most stub modules, this is a genuine implementation that creates and reads real zip files.
-
-**`zipapp.create_archive(source, target=None, interpreter=None, main=None, filter=None, compressed=False)`:**
-- **Directory source:** walks directory with `filepath.Walk`, adds every file to a new zip using `archive/zip`; if `main=` is given (format `"module:callable"`), synthesises and adds `__main__.py` with the correct import and `sys.exit()` call; if `target` is omitted, writes to `source + ".pyz"`; if `interpreter` is set, prepends `#!/path\n` shebang and sets mode `0755`
-- **Existing archive source:** reads raw zip bytes (stripping any existing shebang), then writes to `target` with the new interpreter prefix; `target` is required when source is an archive
-- `compressed=True` uses `zip.Deflate`; default is `zip.Store`
-- `filter=` is accepted but ignored (goipy cannot call Python callables during directory walk)
-
-**`zipapp.get_interpreter(archive)`:** opens the archive in binary mode; if the first two bytes are `#!`, reads the first line and returns the interpreter string; otherwise returns `None`.
-
-## v0.0.271 - 2026-04-27
-
-`venv` — implements the Python virtual environment creation module from https://docs.python.org/3/library/venv.html. goipy cannot set up a real Python interpreter, so all creation methods are stubs, but the full interface is exposed.
-
-**`venv.EnvBuilder(system_site_packages, clear, symlinks, upgrade, with_pip, prompt, upgrade_deps, scm_ignore_files)`:** all constructor kwargs stored as instance attributes with correct defaults.
-
-**`EnvBuilder.ensure_directories(env_dir)`:** returns a context object (`SimpleNamespace`-like Instance) with all standard attributes: `env_dir`, `env_name`, `prompt`, `executable`, `inc_path`, `lib_path`, `bin_path`, `bin_name`, `env_exe`, `env_exec_cmd`.
-
-**`EnvBuilder.create(env_dir)`:** no-op stub (goipy cannot create real Python environments).
-
-**`EnvBuilder.create_configuration(context)` / `setup_python(context)` / `setup_scripts(context)` / `post_setup(context)` / `upgrade_dependencies(context)` / `install_scripts(context, path)` / `create_git_ignore_file(context)`:** all no-op stubs.
-
-**`venv.create(env_dir, **kwargs)`:** module-level shortcut; no-op stub.
-
-## v0.0.270 - 2026-04-27
-
-`ensurepip` — implements the pip bootstrap module from https://docs.python.org/3/library/ensurepip.html. goipy cannot install packages, so bootstrap is a no-op, but the full interface is exposed.
-
-**`ensurepip.version()`:** returns `"24.0"` (representative bundled pip version).
-
-**`ensurepip.bootstrap(root, upgrade, user, altinstall, default_pip, verbosity)`:** no-op stub; raises `ValueError` when both `altinstall=True` and `default_pip=True` (mutually exclusive, matching CPython behaviour).
-
-**`ensurepip._bundled_packages()`:** returns `{"pip": "24.0"}`.
-
-## v0.0.269 - 2026-04-27
-
-`tracemalloc` — implements the Python memory allocation tracer module from https://docs.python.org/3/library/tracemalloc.html. goipy has no malloc hooking, so all tracing is a no-op, but every class and function exposes the correct interface.
-
-**Module-level functions:** `start(nframe=1)` / `stop()` / `is_tracing()` track a tracing flag; `get_traceback_limit()` returns the configured nframe; `get_traced_memory()` returns `(0, 0)`; `get_tracemalloc_memory()` returns `0`; `reset_peak()` / `clear_traces()` are no-ops; `get_object_traceback(obj)` returns `None`; `take_snapshot()` returns an empty `Snapshot`.
-
-**`Frame(filename, lineno)`:** read-only `.filename` (str) and `.lineno` (int).
-
-**`Traceback(frames)`:** sequence of `Frame`; `.total_nframe` → `None`; `.format(limit, most_recent_first)` → list of `"  File ..., line N"` strings.
-
-**`Trace(traceback, size, domain)`:** `.size` int, `.traceback` Traceback, `.domain` int (always 0).
-
-**`Statistic(traceback, count, size)`:** `.count`, `.size`, `.traceback`; `str()` → `"<traceback>: size=N, count=N"`.
-
-**`StatisticDiff(traceback, count, size, count_diff, size_diff)`:** same attrs plus `.count_diff` and `.size_diff`; `str()` includes diff values.
-
-**`Snapshot`:** `.traces` (empty tuple), `.traceback_limit` (int); `statistics(key_type, cumulative)` → empty list; `compare_to(old, key_type, cumulative)` → empty list; `filter_traces(filters)` → new empty Snapshot; `dump(filename)` → writes `{}`; `load(filename)` → classmethod returning empty Snapshot.
-
-**`Filter(inclusive, filename_pattern, lineno, all_frames, domain)`:** all five attrs stored read-only.
-
-**`DomainFilter(inclusive, domain)`:** both attrs stored read-only.
-
-## v0.0.268 - 2026-04-27
-
-`trace` — implements the Python execution tracing and coverage module from https://docs.python.org/3/library/trace.html.
-
-**`trace.Trace(count, trace, countfuncs, countcallers, ignoremods, ignoredirs, infile, outfile, timing)`:** all constructor parameters accepted and stored; `infile` is read at construction (JSON); `outfile` is written when `results()` is called.
-
-**`Trace.runfunc(func, *args, **kwds)`:** calls `func(*args, **kwds)` directly via `callObject`; if `countfuncs=1`, records `(filename, module, funcname)` in the accumulated `calledfuncs` data; returns the function's return value; propagates exceptions unchanged.
-
-**`Trace.run(cmd)`** / **`Trace.runctx(cmd, globals, locals)`:** no-op stubs (goipy has no `sys.settrace`).
-
-**`Trace.results() → CoverageResults`:** returns a `CoverageResults` instance populated with accumulated data; writes `outfile` if configured.
-
-**`trace.CoverageResults`:**
-- `counts` — empty dict (no line-level tracing in goipy)
-- `calledfuncs` — dict of `(filename, module, funcname)` 3-tuples → `1`, populated by `runfunc` when `countfuncs=1`
-- `callers` — empty dict
-- `update(other)` — merges `other.calledfuncs` into self (deduplicates keys)
-- `write_results(show_missing, summary, coverdir, ignore_missing_files)` — no-op stub
-
-## v0.0.267 - 2026-04-27
-
-`timeit` — implements the Python micro-benchmarking module from https://docs.python.org/3/library/timeit.html.
-
-**`timeit.Timer(stmt='pass', setup='pass', timer=default_timer, globals=None)`:** micro-benchmark timer class.
-- `timeit(number=1000000)` — runs `setup` once then `stmt` `number` times; returns total elapsed seconds as `float`; callable stmts invoked via `callObject`; string stmts treated as no-ops (goipy has no exec builtin)
-- `repeat(repeat=5, number=1000000)` — calls `timeit(number)` `repeat` times; returns list of floats
-- `autorange(callback=None)` — finds a `number` such that one run takes ≥ 0.2 s; tries the CPython sequence 1→2→5→10→20→50→…; returns `(number, time_taken)` tuple; calls `callback(number, time_taken)` after each trial if provided
-- `print_exc(file=None)` — no-op stub
-
-**`timeit.default_timer`:** callable returning elapsed seconds (monotonic wall clock via `time.Since`).
-
-**`timeit.timeit(stmt, setup, timer, number, globals)`:** module-level shortcut; creates a `Timer` and calls `.timeit(number)`.
-
-**`timeit.repeat(stmt, setup, timer, repeat, number, globals)`:** module-level shortcut; creates a `Timer` and calls `.repeat(repeat, number)`.
-
-## v0.0.266 - 2026-04-27
-
-`profile` / `cProfile` / `pstats` — implements the Python profiler suite from https://docs.python.org/3/library/profile.html.
-
-**`profile.Profile` / `cProfile.Profile`** share the same Go-backed class with identical APIs:
-- `__init__(timer, timeunit, subcalls, builtins)` — all kwargs accepted, timer is noted but no instrumentation (goipy has no sys.settrace)
-- `enable()` / `disable()` — mark profiling window, accumulate wall-clock elapsed time
-- `runcall(func, *args, **kwds)` — times the call with `time.Now()`, records a `profileEntry` (filename/lineno/funcname/ncalls/tottime/cumtime), returns the function's result
-- `create_stats()` — no-op (stats already collected)
-- `print_stats(sort=-1)` — writes formatted table to stderr
-- `dump_stats(filename)` — writes stats as JSON (goipy-internal format)
-- `calibrate(m)` — returns `0.0` stub
-- `__enter__` / `__exit__` — context manager: enable on enter, disable on exit
-
-**Module-level `run(cmd, ...)` / `runctx(...)` / `runcall(fn, *args)`** — `run`/`runctx` are stubs; `runcall` creates a fresh Profile and delegates.
-
-**`pstats.Stats(*filenames_or_profile, stream=sys.stdout)`:** accepts Profile objects and/or filenames; merges stats from all sources; reads JSON files written by `dump_stats`.
-- `add(*profiles)` → self — merge more stats
-- `strip_dirs()` → self — strip leading path components from filenames
-- `sort_stats(*keys)` → self — sort by `'calls'`, `'cumulative'`, `'time'`, `'filename'`, `'name'`, `'line'`, `'stdname'`, or integer 0/1/2; applies in-place
-- `reverse_order()` → self — reverse current order
-- `print_stats(*restrictions)` → self — write table to `stream`
-- `print_callers(*restrictions)` → self — stub header
-- `print_callees(*restrictions)` → self — stub header
-- `dump_stats(filename)` — write JSON stats file
-- `get_stats_profile()` — returns a `StatsProfile` object with `total_tt`, `total_calls`, `prim_calls`
-
-**`pstats.SortKey`:** enum class with constants `CALLS`, `CUMULATIVE`, `FILENAME`, `LINE`, `NAME`, `NFL`, `PCALLS`, `STDNAME`, `TIME`; each is a string value; usable directly in `sort_stats()`.
-
-## v0.0.265 - 2026-04-27
-
-`pdb` — implements the Python interactive debugger module from https://docs.python.org/3/library/pdb.html.
-
-**`Pdb(completekey, stdin, stdout, skip, nosigint, readrc, mode, backend, colorize)`:** class inheriting from `bdb.Bdb`; `__init__` delegates to `Bdb.__init__` for core state (`breaks`, `quitting`, `_fncache`, `_skip`) then sets `nosigint`, `readrc`, `colorize`, `mode`, `stdin`, `stdout`; module is loaded via `loadModule("bdb")` so `isinstance(p, Bdb)` returns `True`.
-
-**Inherited from `Bdb`:** `canonic`, `is_skipped_module`, `set_break`, `clear_break`, `clear_all_breaks`, `clear_bpbynumber`, `get_breaks`, `get_file_breaks`, `get_all_breaks`, `set_quit`, `reset`, `runcall` — all fully functional.
-
-**`Pdb.set_trace()`:** no-op stub (goipy has no `sys.settrace`).
-
-**Module-level `runcall(function, *args, **kwds)`:** creates a `Pdb()` instance and delegates to the inherited `Bdb.runcall`; `BdbQuit` is swallowed and returns `None`.
-
-**Module-level `set_trace(*, header, commands)`:** no-op stub.
-
-**Module-level `set_trace_async(...)`:** no-op stub.
-
-**Module-level `run(statement, ...)`:** no-op stub (string execution not yet wired).
-
-**Module-level `runeval(expression, ...)`:** no-op stub.
-
-**Module-level `post_mortem(t=None)`:** no-op stub.
-
-**Module-level `pm()`:** no-op stub.
-
-**`get_default_backend()`** / **`set_default_backend(backend)`:** manage the default backend string (`'settrace'` or `'monitoring'`); defaults to `'monitoring'`.
-
-**`Restart`:** exception class (subclass of `Exception`) raised to restart a pdb session.
-
-## v0.0.264 - 2026-04-27
-
-`faulthandler` — implements the Python fault handler module from https://docs.python.org/3/library/faulthandler.html. Moved from a minimal stub in `stdlib_sys.go` to full platform-specific files (`stdlib_faulthandler_unix.go` / `_windows.go`).
-
-**`enable(file=sys.stderr, all_threads=True)`:** installs signal handlers for `SIGSEGV`, `SIGFPE`, `SIGABRT`, `SIGBUS`, `SIGILL` (Unix); sets `is_enabled()` to `True`; idempotent (second call is a no-op).
-
-**`disable()`:** stops signal notification and sets `is_enabled()` to `False`; safe to call when already disabled.
-
-**`is_enabled()`:** returns `True` if signal handlers are installed.
-
-**`dump_traceback(file=sys.stderr, all_threads=True)`:** walks the interpreter's current frame chain and writes `"Current thread 0x... (most recent call first):\n"` followed by `"  File ..., line N, in funcname\n"` for each frame; writes to `file` (Python file object or `TextStream`); all_threads is accepted but only the executing thread's frames are shown (goipy has no goroutine enumeration).
-
-**`dump_c_stack(file=sys.stderr)`:** no-op (Go has no C stack to display).
-
-**`dump_traceback_later(timeout, repeat=False, file=sys.stderr, exit=False)`:** starts a background goroutine that fires after `timeout` seconds; `repeat=True` re-arms after each dump; `exit=True` calls `os.Exit(1)` after the dump; calling a second time cancels the previous timer.
-
-**`cancel_dump_traceback_later()`:** cancels the pending timer goroutine; safe to call with no timer running.
-
-**`register(signum, file=sys.stderr, all_threads=True, chain=False)`:** Unix only; registers a signal handler that dumps tracebacks on delivery; `chain` and `all_threads` are accepted but are no-ops in goipy.
-
-**`unregister(signum)`:** Unix only; removes a registered handler; returns `True` if a handler was removed, `False` if none was registered.
-
-## v0.0.263 - 2026-04-27
-
-`bdb` — implements the Python debugger base infrastructure from https://docs.python.org/3/library/bdb.html.
-
-**`BdbQuit`:** exception class (subclass of `Exception`) raised when the debugger is told to quit.
-
-**`Breakpoint(file, line, temporary=False, cond=None, funcname=None)`:** represents a breakpoint location; tracks `enabled`, `hits`, `ignore`, `number`; class-level `bpbynumber` list for lookup by number; `enable()`/`disable()` toggle the enabled state; `deleteMe()` removes from class-level tracking and sets `bpbynumber[num] = None`; `bpformat()` returns a formatted string (number, keep/del, yes/no, file:line, optional condition); `bpprint(out=None)` writes to stdout or an `out` file-like object.
-
-**`Bdb(skip=None)`:** base debugger class; `canonic(filename)` returns absolute path (returns special names like `<string>` unchanged, caches results); `is_skipped_module(name)` checks the skip list; `set_break(filename, lineno, temporary=False, cond=None, funcname=None)` → `None` on success; `clear_break`, `clear_bpbynumber`, `clear_all_file_breaks`, `clear_all_breaks` → `None` or error string; `get_breaks(filename, lineno)` → list; `get_file_breaks(filename)` → list; `get_all_breaks()` → dict; `set_quit()` sets `quitting = True`; `reset()` resets `quitting` and frame state; `runcall(func, *args, **kwds)` calls the function catching `BdbQuit`; `set_step/set_next/set_return/set_until/set_continue/set_trace` are stubs (no `sys.settrace` in goipy); trace dispatch methods are stubs.
-
-## v0.0.262 - 2026-04-27
-
-`sys` audit events — implements the audit hook mechanism from https://docs.python.org/3/library/audit_events.html.
-
-**`sys.addaudithook(hook)`:** registers a permanent audit hook (cannot be removed); fires the `sys.addaudithook` event to all existing hooks before adding the new one; uses the executing interpreter (`ii.(*Interp)`) so hooks accumulate on the correct per-goroutine copy.
-
-**`sys.audit(event, *args)`:** calls every registered hook with `(event: str, args: tuple)`; `RuntimeError` raised by a hook is suppressed and the remaining hooks continue; any other exception propagates immediately, aborting remaining hooks.
-
-**`open` event:** `builtins.open()` now fires `open(path, mode, flags)` before opening the file, matching CPython audit event semantics (`flags` is always `0` in goipy's pure-Go implementation).
-
-**`Interp.fireAudit`:** new internal helper used by both `sys.audit` and `builtins.open`; `threadCopy` gives each goroutine a snapshot of hooks at spawn time.
-
-## v0.0.261 - 2026-04-27
-
-`unittest.mock` extended — fixture 261 covers the advanced APIs from the official unittest.mock-examples page.
-
-**`mock_open`:** creates a Mock suitable as a drop-in for `open()`; supports `read_data=` parameter; handle exposes `read()`, `readline()`, `readlines()`, iteration (`__iter__`), and `write()`; `write` is a tracked Mock instance so `handle.write.assert_called_once_with(...)` works; `__enter__` and `__exit__` are also Mock instances (with `return_value=handle` / `return_value=False`) so `handle.__enter__.assert_called_once()` works; works with `patch("builtins.open", m)`.
-
-**`wraps=` parameter:** when set on a Mock and `return_value` has not been explicitly set, calls are forwarded to the wrapped callable; if `return_value` is also provided, `wraps` is ignored.
-
-**`spec_set=` parameter:** like `spec=` but also blocks setting attributes not present on the spec (raises `AttributeError` on `__setattr__` for unknown names).
-
-**`attach_mock(mock, name)`:** attaches a child mock to the parent under the given name; `parent.name is child` after attachment.
-
-**`patcher.start()` / `patcher.stop()`:** manual start/stop of a patch without using the context manager form; allows patching across test setup/teardown boundaries.
-
-**Auto `return_value`:** calling a Mock whose `return_value` was never explicitly set now returns a lazily-created child Mock (cached as `_auto_rv`) rather than `None`, enabling chained calls like `m.connection.cursor().execute(...)`.
-
-## v0.0.260 - 2026-04-27
-
-`unittest.mock` — implements the standard library unittest.mock module.
-
-**`Mock` class:** tracks calls (`called`, `call_count`, `call_args`, `call_args_list`, `mock_calls`); configurable `return_value` and `side_effect`; child mock auto-creation on attribute access; `spec=` parameter restricts attributes; `name=` parameter for repr; `reset_mock()`; `configure_mock(**kwargs)`.
-
-**`side_effect` variants:** callable (invoked on each call), exception instance/class (raised on call), list/tuple (consumed in order, raises `StopIteration` when exhausted).
-
-**Assertion helpers:** `assert_called()`, `assert_not_called()`, `assert_called_once()`, `assert_called_with(*a, **kw)`, `assert_called_once_with(*a, **kw)`, `assert_any_call(*a, **kw)`, `assert_has_calls(calls)`.
-
-**`MagicMock`:** subclass of `Mock` with `__str__`, `__bool__` auto-configured; `__len__`, `__iter__`, `__enter__`/`__exit__`, `__contains__` overridable via assignment.
-
-**`NonCallableMock`:** raises `TypeError` on call; child mocks are also `NonCallableMock`.
-
-**`call` object:** `call(*a, **kw)` creates a call record; supports `==` comparison for assertion helpers; `repr()` shows `call(arg, kwarg=val)` form.
-
-**`patch(target, return_value=...)` context manager + decorator:** imports `target` module, replaces the named attribute with a fresh `Mock`, restores on exit; when used as a `@patch(...)` decorator, injects the mock as the last argument to the wrapped function.
-
-**`patch.object(obj, attr, return_value=...)`:** patches an attribute on any object/class/module.
-
-**`patch.dict(d, values, clear=False)`:** snapshots the dict, applies values, restores on exit; `clear=True` empties dict before applying.
-
-**`sentinel`:** factory for unique singleton objects; `sentinel.NAME` always returns the same object; `repr` shows `sentinel.NAME`.
-
-**`ANY`:** equality wildcard — `ANY == x` is `True` for any `x`.
-
-**`DEFAULT`:** sentinel value for "no explicit return_value set".
-
-**`create_autospec(spec, return_value=...)`:** creates a `Mock` bound to a spec object for attribute validation.
-
-**`PropertyMock`:** callable mock suitable for property descriptors.
-
-**VM fix:** `callObject` for `*object.Instance` now forwards `kwargs` when dispatching through `__call__`, fixing silent kwargs loss for all callable-instance patterns.
-
-## v0.0.259 - 2026-04-27
-
-`dataclasses` — implements the standard library dataclasses module.
-
-**`@dataclass` decorator:** processes class `__annotate_func__` (Python 3.14 lazy annotations) and `__annotations__`; generates `__init__`, `__repr__`, `__eq__`; supports `init=`, `repr=`, `eq=`, `order=`, `frozen=`, `unsafe_hash=`, `slots=` keyword arguments.
-
-**`field(...)` constructor:** `default`, `default_factory`, `repr`, `hash`, `init`, `compare`, `metadata`, `kw_only` kwargs; used as class-level attribute to configure individual fields. `field(init=False)` excludes the field from `__init__` (value set by `__post_init__`).
-
-**`fields(obj)`:** returns a tuple of `Field` instances in declaration order, works on both class and instance.
-
-**`asdict(obj)` / `astuple(obj)`:** recursive conversion; nested dataclass instances converted to `dict` / `tuple`; lists, tuples, and dicts traversed recursively.
-
-**`replace(obj, **changes)`:** creates a shallow copy of the dataclass instance with the specified field values replaced.
-
-**`is_dataclass(obj)`:** returns `True` for both dataclass instances and dataclass classes.
-
-**`make_dataclass(cls_name, fields, ...)`:** creates a new dataclass class from a list of `(name,)` / `(name, type)` / `(name, type, default)` tuples.
-
-**Frozen dataclasses:** `@dataclass(frozen=True)` installs `__setattr__`/`__delattr__` that raise `FrozenInstanceError`; `__hash__` derived from field values.
-
-**Ordering:** `@dataclass(order=True)` generates `__lt__`, `__le__`, `__gt__`, `__ge__` comparing fields in declaration order.
-
-**`__post_init__`:** called by generated `__init__` after all fields are set.
-
-**`repr()` builtin fix:** `repr()` now calls `__repr__` on regular instances (not only exceptions), enabling all class-level custom `__repr__` methods to work.
-
-**`Field` class, `MISSING` sentinel, `KW_ONLY` sentinel, `FrozenInstanceError`, `InitVar` class** all exported.
-
-14 test functions verified against CPython 3.14 (fixture 259).
-
-## v0.0.258 - 2026-04-27
-
-`contextlib` — implements the standard library context management utilities.
-
-**Generator throw support:** added `PendingThrow`/`YieldIP` fields to `Frame`; `throwGenerator` injects exceptions at the last yield point so `try/except` around `yield` catches them; `gen.throw(exc)` method now available on generators.
-
-**`AbstractContextManager` / `AbstractAsyncContextManager`:** base classes with default `__enter__`/`__exit__` (`__aenter__`/`__aexit__`) implementations.
-
-**`suppress(*exceptions)`:** context manager that silently suppresses matching exception types; `__exit__` returns `True` when the exception matches, `False` otherwise.
-
-**`closing(thing)`:** calls `thing.close()` on context exit.
-
-**`nullcontext(enter_result=None)`:** no-op context manager returning `enter_result` as the `as` value.
-
-**`@contextmanager`:** wraps a generator function as a `_GeneratorContextManager`; `__enter__` drives the generator to the first `yield`; `__exit__` on clean path calls `next(gen)` (expects `StopIteration`); on exception path calls `gen.throw(exc)` and suppresses if the generator swallows it.
-
-**`@asynccontextmanager`:** same as `contextmanager` but named for async use.
-
-**`redirect_stdout(new_target)` / `redirect_stderr(new_target)`:** replaces `Interp.Stdout`/`Interp.Stderr` with an adapter writing to the Python `StringIO` target; also updates `sys.stdout`/`sys.stderr` for Python-level reads.
-
-**`chdir(path)`:** saves the current directory on enter, changes to `path`, restores on exit.
-
-**`ExitStack` / `AsyncExitStack`:** LIFO stack of exit callbacks; `enter_context(cm)` pushes `cm.__exit__`; `callback(fn, *args)` pushes a plain cleanup thunk; `push(fn)` pushes an exit function called with `(exc_type, exc_val, tb)`; `close()` flushes all callbacks; `pop_all()` transfers callbacks to a new stack.
-
-**`ContextDecorator`:** base class for context managers usable as decorators.
-
-**`SUPPRESS` sentinel:** exported as `'<no value>'` string.
-
-14 test functions verified against CPython 3.14 (fixture 258).
-
-## v0.0.257 - 2026-04-27
-
-`unittest` — implements the standard library unittest framework.
-
-**Exception:** `SkipTest(reason)` — raises to signal a skipped test.
-
-**`TestCase(methodName='runTest')`:** full constructor storing `_testMethodName`; `run(result)` calls `setUp`, the test method, and `tearDown`, recording skips/failures/errors/success in the result; `debug()` runs without result capture; `skipTest(reason)`, `fail(msg)`, `countTestCases()`, `id()`, `shortDescription()`, `addCleanup()`, `doCleanups()`, `subTest()`.
-
-**Assertions (35 methods):** `assertEqual`, `assertNotEqual`, `assertTrue`, `assertFalse`, `assertIs`, `assertIsNot`, `assertIsNone`, `assertIsNotNone`, `assertIn`, `assertNotIn`, `assertIsInstance`, `assertNotIsInstance`, `assertGreater`, `assertGreaterEqual`, `assertLess`, `assertLessEqual`, `assertAlmostEqual` / `assertNotAlmostEqual` (places kwarg), `assertRegex`, `assertNotRegex`, `assertCountEqual`, `assertMultiLineEqual`, `assertSequenceEqual`, `assertListEqual`, `assertTupleEqual`, `assertSetEqual`, `assertDictEqual`, `assertRaises` (context manager and direct-call form), `assertRaisesRegex`, `assertWarns`, `assertWarnsRegex`, `assertLogs`, `assertNoLogs`, `addTypeEqualityFunc`.
-
-**`TestResult`:** `errors`, `failures`, `skipped`, `expectedFailures`, `unexpectedSuccesses` lists; `testsRun`, `shouldStop`, `buffer`, `failfast`; `wasSuccessful()`, `stop()`, `startTest()`, `stopTest()`, `startTestRun()`, `stopTestRun()`, `addSuccess()`, `addError()`, `addFailure()`, `addSkip()`, `addExpectedFailure()`, `addUnexpectedSuccess()`, `addSubTest()`, `addDuration()`.
-
-**`TextTestResult(stream, descriptions, verbosity)`:** inherits TestResult; `printErrors()`, `getDescription()`.
-
-**`TextTestRunner(...)`:** `run(test)` creates a TextTestResult, runs the test/suite through it, returns the result.
-
-**`TestSuite(tests=())`:** `addTest()`, `addTests()`, `countTestCases()`, `run(result)`, `__iter__()`.
-
-**`TestLoader`:** `testMethodPrefix='test'`; `getTestCaseNames(cls)` → sorted list; `loadTestsFromTestCase(cls)` discovers and instantiates all `test*` methods; `loadTestsFromModule()`, `loadTestsFromName()`, `loadTestsFromNames()`, `discover()` return empty stubs.
-
-**`FunctionTestCase(testFunc, setUp=None, tearDown=None)`:** wraps a plain function as a test.
-
-**Skip decorators:** `@skip(reason)`, `@skipIf(condition, reason)`, `@skipUnless(condition, reason)` set `__unittest_skip__` / `__unittest_skip_why__` on the decorated function; `@expectedFailure` sets `__unittest_expecting_failure__`. Requires the `*object.Function` setAttr fix added to `vm/ops.go`.
-
-**Module attributes:** `defaultTestLoader` (shared `TestLoader` instance), `main()` stub.
-
-9 test functions verified against CPython 3.14 (fixture 257).
-
-## v0.0.256 - 2026-04-27
-
-`doctest` — implements the standard library `doctest` module.
-
-**Option flags:** `ELLIPSIS` (8), `NORMALIZE_WHITESPACE` (4), `IGNORE_EXCEPTION_DETAIL` (32), `DONT_ACCEPT_BLANKLINE` (2), `DONT_ACCEPT_TRUE_FOR_1` (1), `SKIP` (16), `FAIL_FAST` (1024), `REPORT_UDIFF` (64), `REPORT_CDIFF` (128), `REPORT_NDIFF` (256), `REPORT_ONLY_FIRST_FAILURE` (512), `BLANKLINE_MARKER`, `ELLIPSIS_MARKER`. `register_optionflag(name)` allocates new power-of-2 values with deduplication.
-
-**Data classes:** `Example(source, want, lineno=0, indent=0, options={})` with full attribute access; `DocTest(examples, globs, name, filename, lineno, docstring)` with `__repr__` showing `<DocTest name from file:line (N examples)>`; `TestResults` namedtuple with `failed` and `attempted` fields.
-
-**Parsing:** `DocTestParser` — `parse(text)` returns interleaved `str`/`Example` list; `get_examples(text)` returns `[Example, ...]`; `get_doctest(text, globs, name, filename, lineno)` returns `DocTest`. Parser recognises `>>> ` / `... ` interactive session format.
-
-**Output checking:** `OutputChecker` — `check_output(want, got, optionflags)` supports exact match, `ELLIPSIS` (`...` wildcard), `NORMALIZE_WHITESPACE`; `output_difference(example, got, optionflags)` returns a human-readable diff string.
-
-**Runner and finder:** `DocTestRunner(verbose=None, optionflags=0)` — `run(test)` returns `TestResults(0, N)` where N is the number of examples (execution is not possible in goipy); `summarize()` returns cumulative totals. `DocTestFinder` — `find(obj, name=None)` extracts docstrings from `*object.Function` (via `fn.Doc`), classes (`__doc__`), and modules (`__doc__`), parses them, and returns a one-element `[DocTest]` list. `DebugRunner` is an alias for `DocTestRunner`.
-
-**Exceptions:** `DocTestFailure(test, example, got)` and `UnexpectedException(test, example, exc_info)` — both are `Exception` subclasses; attributes are served via `__getattr__` from the positional Args since goipy exception subclasses bypass `__init__`.
-
-**Module functions:** `testmod()` → `TestResults(0, 0)`; `testfile()` → `TestResults(0, 0)`; `run_docstring_examples()` → None; `script_from_examples(docstring)` → Python script with `# Expected:` / `## line` comments; `debug()`, `debug_script()` → None stubs.
-
-14 test functions verified against CPython 3.14 (fixture 256).
-
-## v0.0.255 - 2026-04-27
-
-Python Development Mode (`devmode`) — adds `sys.flags`, missing `sys` functions, and the `faulthandler` module.
-
-**`sys.flags`:** sequence-like object with 18 named attributes matching CPython's layout: `debug`, `inspect`, `interactive`, `optimize`, `dont_write_bytecode`, `no_user_site`, `no_site`, `ignore_environment`, `verbose`, `bytes_warning`, `quiet`, `hash_randomization` (=1), `isolated`, `dev_mode` (=False), `utf8_mode`, `warn_default_encoding`, `safe_path`, `int_max_str_digits` (=4300). Supports attribute access, index access (`flags[0]`, `flags[-1]`), `len()` (18), and iteration.
-
-**New `sys` attributes:** `sys.warnoptions` (empty list), `sys._xoptions` (empty dict), `sys.maxunicode` (1114111), `sys.stdin` (None stub).
-
-**New `sys` functions:** `getdefaultencoding()` → `'utf-8'`; `getfilesystemencoding()` → `'utf-8'`; `getfilesystemencodeerrors()` → `'surrogateescape'`; `intern(s)` → same string; `addaudithook(hook)` → None (no-op); `audit(event, *args)` → None (no-op); `getsizeof(o)` → positive int; `is_finalizing()` → False.
-
-**`faulthandler` module:** `is_enabled()` → False; `enable()`, `disable()`, `dump_traceback()`, `cancel_dump_traceback_later()` → None stubs.
-
-13 test functions verified against CPython 3.14 (fixture 255).
-
-## v0.0.254 - 2026-04-27
-
-`pydoc` — runtime-sufficient implementation of the standard library pydoc module. Also fixes a pre-existing bug in `repr()` for control characters (was not zero-padding `\x` escapes).
-
-**Exception:** `pydoc.ErrorDuringImport(filename, exc_info)` — subclass of `Exception`; `str(e)` includes the filename.
-
-**Docstring utilities:** `getdoc(object)` returns the cleaned docstring (`__doc__` via `Function.Doc` for functions, `Class.Dict` for classes, `Module.Dict` for modules); `splitdoc(doc)` splits into `(synopsis, body)` tuple; `plain(text)` strips backspace-overprint formatting; `stripid(text)` strips memory addresses from object reprs; `replace(text, *pairs)` applies replacement pairs.
-
-**Object inspection:** `describe(thing)` returns a human-readable description (e.g. `"function myfunc"`, `"class MyClass"`, `"int"`); `isdata(object)` returns `True` for non-callable/non-class/non-module objects; `visiblename(name, all=None)` checks public visibility; `ispath(x)` checks for path separator; `cram(text, maxlen)` abbreviates long strings.
-
-**Documentation rendering:** `render_doc(thing)` returns a plain-text documentation string containing the object's name and cleaned docstring; `doc(thing, output=None)` writes the same to `output` or stdout.
-
-**Classes:** `Repr` with `repr(x)` method (truncates to `maxstring`/`maxother`); `Helper` (repr returns `'<pydoc.Helper instance>'`); `pydoc.help` is a `Helper` instance; `Doc`, `TextDoc`, `HTMLDoc`, `_PlainTextDoc` base classes and `text`/`html`/`plaintext` singleton instances.
-
-**Lookup:** `locate(path)` walks a dotted module path and returns the object or `None`; `safeimport(path)` imports a module and returns it or `None` on failure.
-
-**VM fix:** `MAKE_FUNCTION` now extracts `co_consts[0]` as the function's `__doc__` when it is a string; `getAttr` for `*object.Function` now serves `__doc__` from `fn.Doc`.
-
-**repr() fix:** `pyStrRepr` now zero-pads `\x` escapes for control characters (e.g. `\x08` instead of `\x8`).
-
-16 test functions verified against CPython 3.14 (fixture 254).
-
-## v0.0.253 - 2026-04-26
-
-`locale` — runtime-sufficient implementation of the standard library locale module.
-
-**Constants:** `LC_ALL` (0), `LC_COLLATE` (1), `LC_CTYPE` (2), `LC_MONETARY` (3), `LC_NUMERIC` (4), `LC_TIME` (5), `LC_MESSAGES` (6), `CHAR_MAX` (127).
-
-**Exception:** `locale.Error` (subclass of `Exception`) raised on unsupported locale settings.
-
-**Locale state:** `setlocale(category, locale=None)` queries (None) or sets the locale; supports `'C'`, `'POSIX'`, `'en_US.UTF-8'`, `'en_US.ISO8859-1'`; raises `locale.Error` for unknown locales. `getlocale(category=LC_CTYPE)` returns `(language_code, encoding)` tuple, or `(None, None)` for C/POSIX. `getdefaultlocale()` returns `(None, None)`.
-
-**Convention dict:** `localeconv()` returns the full 18-key convention dict based on the current `LC_NUMERIC` locale; C locale uses `decimal_point='.'`, empty `thousands_sep`, empty `grouping`, and `frac_digits=127`/`CHAR_MAX` for unset monetary fields.
-
-**Number conversion:** `atof(string)` → `float` (respects locale decimal point); `atoi(string)` → `int` (strips whitespace). `delocalize(string)` strips locale thousands separator and normalises decimal point. `localize(string)` replaces `.` with the locale decimal point.
-
-**Formatting:** `format_string(f, val, grouping=False, monetary=False)` applies Python `%`-style formatting supporting `%d`, `%i`, `%f`, `%e`, `%g`, `%s`, `%o`, `%x`, `%X` with optional width/precision flags, then injects locale thousands grouping when `grouping=True`. `currency(val, symbol=True, grouping=False, international=False)` formats a monetary value using the `LC_MONETARY` convention.
-
-**Collation:** `strcoll(s1, s2)` returns -1/0/1; `strxfrm(s)` returns `s` unchanged (C locale identity).
-
-**Utilities:** `normalize(name)` maps common locale aliases to POSIX form; `getencoding()` and `getpreferredencoding()` return `'UTF-8'`; `nl_langinfo` stub; `bindtextdomain`/`textdomain` stubs.
-
-11 test functions verified against CPython 3.14 (fixture 253).
-
-## v0.0.252 - 2026-04-26
-
-`gettext` — full implementation of the standard library internationalization module.
-
-**`NullTranslations`:** passthrough translation object with `gettext`, `ngettext`, `pgettext`, `npgettext`, `add_fallback` (chain support), `charset`, `info`, `install` (sets `_()` in builtins).
-
-**`GNUTranslations`:** reads GNU .mo binary format (both LE/BE magic); parses the string table, populates `_catalog`, extracts charset from the Content-Type metadata header, and parses the Plural-Forms header. Lookups use the parsed plural expression for `ngettext`; context keys (`\x04` EOT separator) are supported for `pgettext`; plural keys (`\x00` separator) are supported for `ngettext`. Falls through to the fallback chain when no translation is found.
-
-**Plural-form evaluator:** recursive-descent parser for C-like expressions (`!=`, `==`, `>`, `<`, `>=`, `<=`, `&&`, `||`, `!`, `+`, `-`, `*`, `/`, `%`, ternary `? :`, parentheses, variable `n`). Covers all common gettext plural-form expressions.
-
-**Module-level functions:** `gettext`, `ngettext`, `pgettext`, `npgettext` (passthrough when no domain loaded); `dgettext`, `dngettext`, `dpgettext`, `dnpgettext`; `textdomain` (get/set current domain); `bindtextdomain` (map domain to locale directory); `bind_textdomain_codeset`; `find` (returns None/[] — no filesystem); `translation` (fallback=True returns NullTranslations); `install`; `c2py` (compile plural expression to callable); `Catalog` (alias for GNUTranslations).
-
-8 test functions verified against CPython 3.14 (fixture 252).
-
-## v0.0.251 - 2026-04-26
-
-`typing` — runtime-sufficient subset of the standard library typing module.
-
-**Type variables:** `TypeVar(name, *constraints, bound=None)` with `__name__`, `__constraints__`, `__bound__`, `__covariant__`, `__contravariant__`. Also `ParamSpec`, `TypeVarTuple`, `AnyStr`.
-
-**Generic aliases:** `_GenericAlias` with `__origin__` and `__args__`; subscriptable forms for `List`, `Dict`, `Tuple`, `Set`, `FrozenSet`, `Sequence`, `Mapping`, `Iterable`, `Iterator`, `Callable`, `Type`, `ClassVar`, `Final`, `Literal`, `Annotated`, and all common `collections.abc` aliases.
-
-**Special forms:** `Union[X, Y]`, `Optional[X]` (= `Union[X, NoneType]`), `Generic[T]` (passes through as base class), `Protocol` (usable as base class). `get_origin(tp)` and `get_args(tp)` work on all parameterised aliases.
-
-**NamedTuple:** functional form `NamedTuple('Point', [('x', int), ('y', int)])` and class form `class Color(NamedTuple): r: int; g: int; b: int` via `__init_subclass__` (reads `__annotate_func__(1)` from the Python 3.14 deferred-annotation mechanism).
-
-**TypedDict:** class form `class Movie(TypedDict): name: str; year: int` via `__init_subclass__`; instances are plain `dict` objects created by a custom `__new__`. `is_typeddict(tp)` correctly identifies TypedDict classes.
-
-**Protocol + isinstance:** `@runtime_checkable` sets `ABCCheck` on the Protocol class to perform structural duck-typing checks for all non-dunder methods defined in the protocol body.
-
-**Decorators:** `cast`, `overload`, `final` (sets `__final__` attribute), `override`, `no_type_check`, `runtime_checkable`. Also `NewType`, `get_type_hints`, `assert_type`, `assert_never`, `reveal_type`, `get_overloads`, `clear_overloads`, `dataclass_transform`, `is_protocol`, `get_protocol_members`, `evaluate_forward_ref`.
-
-**Constants/singletons:** `TYPE_CHECKING = False`, `Any`, `NoReturn`, `Never`, `Self`, `LiteralString`, `NoDefault`.
-
-12 test functions verified against CPython 3.14 (fixture 251).
-
-## v0.0.250 - 2026-04-26
-
-`colorsys` — full implementation of the standard library color-space conversion module.
-
-**Functions:** `rgb_to_yiq`, `yiq_to_rgb`, `rgb_to_hls`, `hls_to_rgb`, `rgb_to_hsv`, `hsv_to_rgb`.
-
-All coordinates are `float` in [0.0, 1.0]. Implements CPython 3.14's FCC NTSC formulation: `rgb_to_yiq` uses `i = 0.74*(r-y) - 0.27*(b-y)`, `q = 0.48*(r-y) + 0.41*(b-y)`. HLS and HSV conversions use the standard piecewise algorithms with `math.Mod` for hue normalization.
-
-7 test functions (including roundtrip checks for all three color spaces) verified against CPython 3.14 (fixture 250).
-
-## v0.0.249 - 2026-04-26
-
-`wave` — full implementation of the standard library WAV audio module. Go has no built-in WAV codec, so the RIFF chunk parser and builder are implemented from scratch using `encoding/binary` and `bytes`.
-
-**`wave.open(file, mode)`:** accepts `*io.BytesIO`, `*os.File`, or a filename string; `mode` is `'r'`/`'rb'` or `'w'`/`'wb'`; auto-detects mode when omitted.
-
-**`Wave_read`:** `getnchannels()`, `getsampwidth()`, `getframerate()`, `getnframes()`, `getcomptype()` (always `'NONE'`), `getcompname()` (always `'not compressed'`), `getparams()` (returns `_wave_params` namedtuple-like object), `readframes(n)`, `tell()`, `rewind()`, `setpos(pos)`, `close()`, context-manager (`__enter__`/`__exit__`).
-
-**`Wave_write`:** `setnchannels()`, `setsampwidth()`, `setframerate()`, `setnframes()`, `setcomptype()`, `setparams(tuple)`, `writeframes(data)`, `writeframesraw(data)`, `tell()`, `close()`, context-manager. Buffers all frames in memory; writes the complete RIFF/WAV file to the underlying file object on `close()`.
-
-**`wave.Error(Exception)`:** raised on malformed RIFF/WAV input or API misuse.
-
-12 test cases verified against CPython 3.14 (fixture 249).
-
-## v0.0.248 - 2026-04-26
-
-`ipaddress` — full implementation of the standard library IP address module.
-
-**Constants:** `IPV4LENGTH = 32`, `IPV6LENGTH = 128`.
-
-**Exception classes:** `AddressValueError(ValueError)`, `NetmaskValueError(ValueError)`.
-
-**`IPv4Address`:** construction from dotted-decimal string, integer, or 4-byte `bytes`; attrs `packed`, `version`, `max_prefixlen`, `compressed`, `is_private`, `is_loopback`, `is_multicast`, `is_global`, `is_link_local`, `is_unspecified`, `is_reserved`; dunders `__repr__`, `__str__`, `__int__`, `__eq__`, `__lt__`, `__le__`, `__gt__`, `__ge__`, `__hash__`, `__add__`, `__sub__`.
-
-**`IPv4Network`:** construction from CIDR string or `(addr, prefix)` tuple with optional `strict=False`; attrs `network_address`, `broadcast_address`, `netmask`, `hostmask`, `prefixlen`, `num_addresses`, `with_prefixlen`, `with_netmask`, `with_hostmask`, `compressed`, `version`, `max_prefixlen`, and all `is_*` flags delegated to `network_address`; methods `hosts()`, `overlaps(other)`, `subnets(prefixlen_diff, new_prefix)`, `supernet(prefixlen_diff)`, `subnet_of(other)`, `supernet_of(other)`, `address_exclude(other)`; dunders `__repr__`, `__str__`, `__contains__`, `__iter__`, `__len__`, `__eq__`, `__lt__`, `__hash__`.
-
-**`IPv4Interface`:** subtype of `IPv4Address` constructed from `"addr/prefix"`; attrs `ip`, `network`, `netmask`, `with_prefixlen`, `with_netmask`, `with_hostmask`.
-
-**`IPv6Address`:** construction from compressed/exploded string, integer, or 16-byte `bytes`; attrs `packed`, `version`, `max_prefixlen`, `compressed`, `exploded`, all `is_*` flags, `ipv4_mapped` (for `::ffff:x.x.x.x`).
-
-**`IPv6Network`:** mirrors IPv4Network for IPv6; `num_addresses` uses `math/big`; `subnets` capped at 100.
-
-**`IPv6Interface`:** subtype of `IPv6Address`; attrs `ip`, `network`, `with_prefixlen`.
-
-**Factory functions:** `ip_address(addr)`, `ip_network(addr, strict=True)`, `ip_interface(addr)` — auto-detect v4/v6.
-
-**Utility functions:** `v4_int_to_packed(n)`, `v6_int_to_packed(n)`, `get_mixed_type_key(obj)`, `collapse_addresses(addrs)`, `summarize_address_range(first, last)`.
-
-25 test cases verified against CPython 3.14 (fixture 248).
-
-## v0.0.247 - 2026-04-26
-
-`xmlrpc.server` — deeper API coverage building on fixture 245.
-
-**New module-level functions:** `list_public_methods(instance)` — returns sorted public method names (excludes `_`-prefixed); `resolve_dotted_attribute(obj, attr, allow_dotted_names=True)` — walks dotted attribute chains with optional blocking.
-
-**Dispatcher additions (`SimpleXMLRPCDispatcher`):** `_dispatch(method, params)` — resolves and calls registered functions or instance methods, raises `Fault(1, ...)` for unknown methods; `_marshaled_dispatch(data: bytes) -> bytes` — full XML-RPC request/response round-trip; `register_introspection_functions` now actually registers `system.listMethods`, `system.methodHelp`, `system.methodSignature` in the funcs dict; `register_multicall_functions` now registers `system.multicall`; `system_listMethods` now includes public methods from the registered instance; `register_instance` accepts `allow_dotted_names=False` kwarg.
-
-**`XMLRPCDocGenerator`:** default attrs (`server_name`, `server_title`, `server_documentation`) and `set_server_name`, `set_server_title`, `set_server_documentation` mutators.
-
-**`ServerHTMLDoc`:** stub class added.
-
-**Class hierarchy fix:** `DocXMLRPCRequestHandler` now has `[SimpleXMLRPCRequestHandler]` as its only base (matches CPython; previously incorrectly included `XMLRPCDocGenerator`).
-
-**Internal:** `marshalXmlrpc` promoted to package-level `marshalXmlrpcVal` so `buildXmlrpcServer` can reuse it.
-
-14 test cases verified against CPython 3.14 (fixture 247).
-
-## v0.0.246 - 2026-04-26
-
-`xmlrpc.client` — deeper API coverage building on fixture 245.
-
-**New functions:** `escape(s)` — HTML entity encoding (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`); `gzip_encode(data)` / `gzip_decode(data)` — gzip round-trip on bytes; `getparser()` → `(ExpatParser, Unmarshaller)` — XML-RPC parser/unmarshaller pair.
-
-**New types:** `Marshaller` with `dumps(values)` → `<params>...</params>` XML fragment; `Unmarshaller` with `getmethodname()` and `close()` (raises `ResponseError` on a fresh instance); `ExpatParser` with `feed(data)` / `close()` — feeds accumulated XML into the linked Unmarshaller; `MultiCallIterator` — iterates over multi-call results, unwraps single-element lists, and raises `Fault` for fault dicts.
-
-**Extended types:** `DateTime` — `__eq__`, `__lt__`, `__le__`, `__gt__`, `__ge__` (lexicographic value comparison); `Binary` — `__eq__` comparing `.data` bytes.
-
-**Constants:** `WRAPPERS = (DateTime, Binary)`; `FastParser = FastMarshaller = FastUnmarshaller = None`.
-
-12 test cases verified against CPython 3.14 (fixture 246).
-
-## v0.0.245 - 2026-04-26
-
-`xmlrpc` package — namespace, `xmlrpc.client`, and `xmlrpc.server` submodules.
-
-**xmlrpc.client:**
-
-_Exceptions:_ `Error(Exception)`, `Fault(Error)` with `faultCode`/`faultString` attrs, `ProtocolError(Error)` with `url`/`errcode`/`errmsg`/`headers` attrs, `ResponseError(Error)`.
-
-_Types:_ `DateTime(value)` with `.value` attr; `Binary(data=b'')` with `.data` attr, `decode(bytes)`, `encode(out)`; `boolean(value)` returning Python bool.
-
-_Functions:_ `dumps(params, methodname=None, ...)` → XML-RPC `methodCall` string; `loads(data)` → `(params_tuple, methodname)` tuple. Supports int, str, bool, float, bytes, list/tuple (as array), dict (as struct).
-
-_Proxy/Transport:_ `ServerProxy(uri)`, `MultiCall(server)`, `Transport`, `SafeTransport(Transport)`.
-
-_Constants:_ `MAXINT=2147483647`, `MININT=-2147483648`, and all standard fault codes (`PARSE_ERROR`, `SERVER_ERROR`, `APPLICATION_ERROR`, etc.).
-
-**xmlrpc.server:**
-
-_`SimpleXMLRPCDispatcher`:_ `register_function`, `register_instance`, `register_introspection_functions`, `register_multicall_functions`, `system_listMethods`, `system_methodHelp`, `system_methodSignature`, `system_multicall`.
-
-_`SimpleXMLRPCServer(TCPServer, SimpleXMLRPCDispatcher)`:_ `allow_reuse_address=True`; inherits base classes from `socketserver`.
-
-_`SimpleXMLRPCRequestHandler(BaseHTTPRequestHandler)`:_ `rpc_paths=('/', '/RPC2')`, `encode_threshold=1400`.
-
-_`CGIXMLRPCRequestHandler(SimpleXMLRPCDispatcher)`:_ `handle_xmlrpc`, `handle_get`, `handle_request`.
-
-_`MultiPathXMLRPCServer(SimpleXMLRPCServer)`, `DocXMLRPCServer`, `DocXMLRPCRequestHandler`, `DocCGIXMLRPCRequestHandler`._
-
-19 test cases verified against CPython 3.14 (fixture 245).
-
-## v0.0.244 - 2026-04-26
-
-`http.cookiejar` module — cookie storage and policy classes.
-
-**LoadError(OSError):** raised on cookie file load failures.
-
-**CookieJar:** cookie storage container with `__len__`, `__iter__`, `set_cookie(cookie)`, `clear()`, `clear_session_cookies()` (removes `discard=True` cookies), `clear_expired_cookies()`, `set_policy(policy)`; stub methods `set_cookie_if_ok`, `make_cookies`, `extract_cookies`, `add_cookie_header`.
-
-**FileCookieJar(CookieJar):** adds `filename` attribute; stub `load`, `save`, `revert`.
-
-**MozillaCookieJar(FileCookieJar)**, **LWPCookieJar(FileCookieJar):** subclasses for Netscape and libwww-perl cookie file formats.
-
-**Cookie:** full constructor with kwargs (`version`, `name`, `value`, `port`, `port_specified`, `domain`, `domain_specified`, `domain_initial_dot`, `path`, `path_specified`, `secure`, `expires`, `discard`, `comment`, `comment_url`, `rest`, `rfc2109`); `has_nonstandard_attr(name)` checks `rest` dict; `__str__` → `<Cookie name=value for domain/path>`.
-
-**CookiePolicy:** base class with stubs `return_ok`, `domain_return_ok`, `path_return_ok`, `set_ok`.
-
-**DefaultCookiePolicy(CookiePolicy):** class constants `DomainStrictNoDots=1`, `DomainStrictNonDomain=2`, `DomainRFC2965Match=4`, `DomainLiberal=0`, `DomainStrict=3`; instance defaults `netscape=True`, `rfc2965=False`, `strict_domain=False`, `strict_rfc2965_unverifiable=True`, `strict_ns_unverifiable=False`, `strict_ns_domain=0`, `hide_cookie2=False`.
-
-16 test cases verified against CPython 3.14 (fixture 244).
-
-## v0.0.243 - 2026-04-26
-
-`http.cookies` module — cookie manipulation classes, Morsel, BaseCookie, SimpleCookie, CookieError.
-
-**CookieError(Exception):** raised on invalid Morsel attribute keys.
-
-**Morsel:** dict-like cookie attribute container with class-level `_reserved` (10 entries: comment, domain, expires, httponly, max-age, partitioned, path, samesite, secure, version) and `_flags` set (httponly, partitioned, secure); instance properties `key`, `value`, `coded_value`; methods `set(key, val, coded_val)`, `isReservedKey(key)`, `OutputString()`, `output(header='Set-Cookie:')`, `js_output()`; `__setitem__`/`__getitem__` validate against `_reserved`; boolean flags emit bare attribute names (e.g. `HttpOnly`); string attributes emit `Attr=value`.
-
-**BaseCookie:** dict-like cookie jar; `__setitem__` auto-wraps string values in Morsel; `load(rawdata)` accepts cookie string or dict; `output(sep='\r\n')` joins all Morsel output strings; `value_decode`/`value_encode` pass through unchanged.
-
-**SimpleCookie(BaseCookie):** `value_decode` unquotes double-quoted values; `value_encode` preserves originals.
-
-18 test cases verified against CPython 3.14 (fixture 243).
-
-## v0.0.242 - 2026-04-26
-
-`http.server` module — full class hierarchy, all attributes, complete HTTP status responses dictionary.
-
-**Server classes:** `HTTPServer(socketserver.TCPServer)` with `allow_reuse_address=True`; `ThreadingHTTPServer(ThreadingMixIn, HTTPServer)`. Instantiation with `bind_and_activate=False` supported.
-
-**BaseHTTPRequestHandler(socketserver.StreamRequestHandler):** class attrs `server_version='BaseHTTP/0.6'`, `protocol_version='HTTP/1.0'`, `default_request_version='HTTP/0.9'`, `error_content_type`, `sys_version`, `MessageClass`, `weekdayname` (7 entries), `monthname` (13 entries, None-padded); full `responses` dict (62 entries, integer-keyed) covering all HTTP status codes 100–511; stub methods `send_response`, `send_header`, `end_headers`, `flush_headers`, `send_error`, `log_request`, `log_error`, `log_message`, `version_string`, `address_string`, `date_time_string`, `log_date_time_string`, `handle_one_request`, `parse_request`.
-
-**SimpleHTTPRequestHandler(BaseHTTPRequestHandler):** `server_version='SimpleHTTP/0.6'`, `extensions_map` (.gz, .Z, .bz2, .xz), `do_GET`/`do_HEAD`.
-
-**CGIHTTPRequestHandler(BaseHTTPRequestHandler):** `cgi_directories=['/cgi-bin', '/htbin']`, `do_GET`/`do_HEAD`/`do_POST`.
-
-**Module constants:** `DEFAULT_ERROR_CONTENT_TYPE`, `DEFAULT_ERROR_MESSAGE` (HTML template).
-
-21 test cases verified against CPython 3.14 (fixture 242).
-
-## v0.0.241 - 2026-04-26
-
-`socketserver` module — full class hierarchy, attributes, and stub server API.
-
-**Server classes:** `BaseServer` with all shared methods (`verify_request`, `handle_error`, `server_close`, `handle_request`, `serve_forever`, `shutdown`, `finish_request`, `process_request`, `server_activate`, `handle_timeout`, `service_actions`, `close_request`, `shutdown_request`, `__enter__`/`__exit__`); `TCPServer(BaseServer)` (`address_family=2`, `socket_type=1`, `allow_reuse_address=False`, `allow_reuse_port=False`, `request_queue_size=5`, `server_bind`); `UDPServer(BaseServer)` (`socket_type=2`); `UnixStreamServer(TCPServer)` / `UnixDatagramServer(UDPServer)` (`address_family=1`).
-
-**Mixin classes:** `ThreadingMixIn` (`daemon_threads=False`, `block_on_close=True`); `ForkingMixIn` (`max_children=40`, `block_on_close=True`).
-
-**Pre-combined classes:** `ThreadingTCPServer`, `ThreadingUDPServer`, `ThreadingUnixStreamServer`, `ThreadingUnixDatagramServer`, `ForkingTCPServer`, `ForkingUDPServer`, `ForkingUnixStreamServer`, `ForkingUnixDatagramServer`.
-
-**Request handlers:** `BaseRequestHandler` (`setup`/`handle`/`finish`); `StreamRequestHandler(BaseRequestHandler)` (`rbufsize=-1`, `wbufsize=0`, `timeout=None`, `disable_nagle_algorithm=False`); `DatagramRequestHandler(BaseRequestHandler)`.
-
-**Instantiation:** `TCPServer(addr, handler, bind_and_activate=False)` sets `server_address` and `RequestHandlerClass` without opening a real socket.
-
-17 test cases verified against CPython 3.14 (fixture 241).
-
-## v0.0.240 - 2026-04-26
-
-`uuid` module — full RFC 4122 implementation: UUID class, SafeUUID enum, variant/namespace constants, and all four generation functions.
-
-**Variant constants:** `RESERVED_NCS`, `RFC_4122`, `RESERVED_MICROSOFT`, `RESERVED_FUTURE`.
-
-**SafeUUID:** class with three instances — `SafeUUID.safe` (value=0), `SafeUUID.unsafe` (value=-1), `SafeUUID.unknown` (value=None); `str(SafeUUID.safe)` → `'SafeUUID.safe'`; `isinstance` works correctly.
-
-**UUID class:** `__init__` accepts `hex`, `bytes`, `bytes_le`, `fields`, `int`, `version`, `is_safe` keyword args; all 128-bit properties exposed as attributes: `hex`, `int`, `bytes`, `bytes_le`, `fields`, `time_low`, `time_mid`, `time_hi_version`, `clock_seq_hi_variant`, `clock_seq_low`, `node`, `time`, `clock_seq`, `variant`, `version`, `urn`, `is_safe`; rich comparison (`__eq__`, `__ne__`, `__lt__`, `__gt__`, `__le__`, `__ge__`), `__hash__`, `__str__`, `__repr__`.
-
-**Namespace constants:** `NAMESPACE_DNS`, `NAMESPACE_URL`, `NAMESPACE_OID`, `NAMESPACE_X500`.
-
-**Generation functions:** `uuid1(node=None, clock_seq=None)` (time-based, version 1); `uuid3(namespace, name)` (MD5, deterministic); `uuid4()` (random, version 4); `uuid5(namespace, name)` (SHA-1, deterministic); `getnode()` (returns int).
-
-21 test cases verified against CPython 3.14 (fixture 240).
-
-## v0.0.239 - 2026-04-26
-
-`smtplib` module — constants, full exception hierarchy rooted at OSError, `SMTP` class with stub API, `SMTP_SSL` and `LMTP` subclasses.
-
-**Constants:** `SMTP_PORT = 25`, `SMTP_SSL_PORT = 465`, `LMTP_PORT = 2003`.
-
-**Exception hierarchy:** `SMTPException(OSError)` → `SMTPServerDisconnected`, `SMTPNotSupportedError`, `SMTPRecipientsRefused` (`.recipients`), `SMTPResponseException` (`.smtp_code`, `.smtp_error`) → `SMTPSenderRefused` (+ `.sender`), `SMTPDataError`, `SMTPConnectError`, `SMTPHeloError`, `SMTPAuthenticationError`. All catchable as `OSError`.
-
-**SMTP class:** `__init__(host='', port=0, ...)` — connects only if host is non-empty; instance defaults `esmtp_features={}`, `does_esmtp=False`, `helo_resp/ehlo_resp=None`, `debuglevel=0`; pure methods `set_debuglevel()`, `has_extn()`, `close()`; stub network methods `connect`, `helo`, `ehlo`, `ehlo_or_helo_if_needed`, `starttls`, `login`, `auth`, `sendmail`, `send_message`, `quit`, `noop`, `rset`, `verify`, `expn`, `help`, `docmd`; context manager.
-
-**SMTP_SSL(SMTP)** and **LMTP(SMTP)** subclasses.
-
-14 test cases verified against CPython 3.14 (fixture 239).
-
-## v0.0.238 - 2026-04-26
-
-`imaplib` module — constants, nested exception hierarchy, utility functions, `IMAP4` class with full stub API, `IMAP4_SSL` and `IMAP4_stream` subclasses.
-
-**Constants:** `IMAP4_PORT = 143`, `IMAP4_SSL_PORT = 993`, `Debug = 0`.
-
-**Utility functions:** `Int2AP(num)` base-16 bytes using A-P chars; `ParseFlags(resp)` extracts flag tuple from IMAP response; `Time2Internaldate(date_time)` formats a Unix timestamp as an IMAP4 internal date string; `Internaldate2tuple(resp)` parses an IMAP4 date string to a 9-element tuple (returns `None` on mismatch).
-
-**IMAP4 nested exceptions:** `IMAP4.error(Exception)` → `IMAP4.abort` → `IMAP4.readonly`; catchable at any level.
-
-**IMAP4 class:** `__init__(host='', port=143, timeout=None)`; `set_debuglevel()`; full stub network API covering all RFC 2060/2195/2086/2087/2342/3501 commands: `login`, `logout`, `capability`, `noop`, `select`, `examine`, `search`, `fetch`, `store`, `copy`, `move`, `expunge`, `append`, `check`, `close`, `list`, `lsub`, `create`, `delete`, `rename`, `subscribe`, `unsubscribe`, `status`, `sort`, `thread`, `uid`, `getacl/setacl/deleteacl/myrights`, `getquota/setquota/getquotaroot`, `namespace`, `enable`, `xatom`, `getannotation/setannotation`, `proxyauth`, `starttls`, `partial`, `recent`, `response`; context manager.
-
-**IMAP4_SSL(IMAP4):** `default_port = 993`. **IMAP4_stream(IMAP4):** no extra methods.
-
-10 test cases verified against CPython 3.14 (fixture 238).
-
-## v0.0.237 - 2026-04-26
-
-`poplib` module — constants, `error_proto` exception, `POP3` class with full stub API, `POP3_SSL` subclass.
-
-**Constants:** `POP3_PORT = 110`, `POP3_SSL_PORT = 995`.
-
-**Exception:** `error_proto(Exception)` — raised on POP3 protocol errors.
-
-**POP3 class:** `__init__(host, port=110, timeout=None)` stores attrs without connecting; `set_debuglevel()`, `getwelcome()`; stub network methods: `user()`, `pass_()`, `stat()`, `list()`, `retr()`, `top()`, `dele()`, `noop()`, `rset()`, `quit()`, `uidl()`, `apop()`, `rpop()`, `capa()`, `utf8()`, `stls()`, `close()`; context manager.
-
-**POP3_SSL(POP3):** `default_port = 995`; inherits all POP3 methods.
-
-6 test cases verified against CPython 3.14 (fixture 237).
-
-## v0.0.236 - 2026-04-26
-
-`ftplib` module deep coverage — constants, exception hierarchy, parse functions, FTP class, FTP_TLS subclass.
-
-**Constants:** `FTP_PORT = 21`, `MAXLINE = 8192`, `MSG_OOB = 1`, `CRLF = "\r\n"`, `B_CRLF = b"\r\n"`.
-
-**Exception hierarchy:** `Error(Exception)` → `error_reply`, `error_temp`, `error_perm`, `error_proto`. `all_errors = (Error, OSError, EOFError)`.
-
-**Parse functions:** `parse150(resp)` extracts file size from 150 response (None if absent, raises `error_reply` if non-150); `parse227(resp)` extracts `(host, port)` from PASV response (raises `error_proto` on bad format); `parse229(resp, peer)` extracts host/port from EPSV response; `parse257(resp)` extracts directory name from MKD/PWD response (returns `""` for non-compliant, raises `error_reply` if not 257). `print_line(line)` prints to stdout.
-
-**FTP class:** class-level defaults (`host`, `port`, `sock`, `file`, `welcome`, `passiveserver`, `trust_server_pasv_ipv4_address`, `debugging`, `maxline`); pure methods `set_debuglevel()`/`debug()`, `set_pasv()`, `sanitize()` (masks PASS password), `getwelcome()`; context manager (`__enter__`/`__exit__`); network stubs (no real TCP): `connect()`, `login()`, `close()`, `quit()`, `sendcmd()`, `voidcmd()`, `pwd()`, `cwd()`, `mkd()`, `rmd()`, `delete()`, `rename()`, `size()`, `abort()`, `nlst()`, `dir()`, `retrbinary()`, `retrlines()`, `storbinary()`, `storlines()`, `acct()`.
-
-**FTP_TLS(FTP):** stub subclass with `auth()`, `ccc()`, `prot_c()`, `prot_p()`.
-
-30 new test fixtures (fixture 236).
-
-## v0.0.235 - 2026-04-26
-
-`http.client` deep coverage — exception hierarchy, HTTPMessage, parse_headers, HTTPConnection, HTTPSConnection, responses dict, and status-code integer re-exports.
-
-**Exception hierarchy (14 classes):**
-`HTTPException(Exception)` → `NotConnected`, `InvalidURL`, `UnknownProtocol` (`.version`), `UnknownTransferEncoding`, `UnimplementedFileMode`, `IncompleteRead` (`.partial`, `.expected`, custom `repr()`), `ImproperConnectionState` → `CannotSendRequest`, `CannotSendHeader`, `ResponseNotReady`; `BadStatusLine` (`.line`); `LineTooLong` (computed message from line_type arg); `RemoteDisconnected(ConnectionResetError, BadStatusLine)` — catchable as `OSError`, `ConnectionResetError`, `BadStatusLine`, and `HTTPException`.
-
-**HTTPMessage:** case-insensitive ordered multi-value header container; `get()`, `get_all()`, `get_content_type()`, `keys()`, `values()`, `items()`, `__contains__`, `__len__`, `__getitem__`, `__setitem__`.
-
-**parse_headers(fp):** reads lines from a BytesIO/file-like object until blank line; returns `HTTPMessage`.
-
-**HTTPConnection(host, port, timeout):** `.host`, `.port`, `.timeout`, `.debuglevel`; `set_debuglevel()`, `set_tunnel()`, `connect()`, `close()`, `send()`, `request()`, `putheader()`, `putrequest()`, `endheaders()` (stubs — no real TCP); `getresponse()` raises `ResponseNotReady`.
-
-**HTTPSConnection(HTTPConnection):** `default_port = 443`; inherits all connection methods.
-
-**responses:** dict mapping integer status codes to phrase strings for all IANA codes.
-
-**Status code re-exports:** all `http.HTTPStatus` names exported as plain integers (`OK = 200`, `NOT_FOUND = 404`, …) including CPython 3.14 aliases (`RANGE_NOT_SATISFIABLE`, `UNPROCESSABLE_CONTENT`, `CONTENT_TOO_LARGE`, `URI_TOO_LONG`).
-
-33 new test fixtures (fixture 235).
-
-## v0.0.234 - 2026-04-26
-
-`http` module deep coverage — `HTTPStatus` and `HTTPMethod` enums.
-
-`http.HTTPStatus` is an IntEnum with all standard IANA HTTP status codes (1xx–5xx). Each member carries `.value` (int), `.phrase` (short description string), and `.description` (long description string). Boolean properties — `.is_informational`, `.is_success`, `.is_redirection`, `.is_client_error`, `.is_server_error`, `.is_integer` — are set directly on each member instance. Ordering (`<`, `<=`, `>`, `>=`) and equality with plain integers work as expected for IntEnum. Construction by value (`HTTPStatus(200)`) and subscript by name (`HTTPStatus["OK"]`) are supported. Iteration yields all members in definition order.
-
-`http.HTTPMethod` is a StrEnum (Python 3.11+) with nine standard methods: CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE. Each member carries `.value` (the method string), `.name`, and `.description`. `str(HTTPMethod.GET) == "GET"` and equality with plain strings both work. Construction by value (`HTTPMethod("GET")`) and subscript by name (`HTTPMethod["GET"]`) are supported.
-
-32 new test fixtures (fixture 234).
-
-## v0.0.233 - 2026-04-26
-
-`urllib.robotparser` deep coverage — correct return types, `mtime`/`modified`, full-URL `can_fetch`, first-match-wins semantics.
-
-`crawl_delay(agent)` now returns `int` (was string); values that are not valid integers (e.g. `1.5`) correctly return `None`, matching CPython 3.14.
-
-`request_rate(agent)` now returns a `RequestRate(requests, seconds)` instance with integer `.requests` and `.seconds` attributes (was string); `repr()` shows `RequestRate(requests=N, seconds=M)`. `RequestRate` is exported from the module.
-
-`mtime()` now returns `0` before any call to `parse()` or `modified()`, and the current Unix timestamp (float) after calling either — `parse()` internally calls `modified()`, exactly as CPython does.
-
-`modified()` was previously a no-op; it now updates the stored mtime to the current time.
-
-`can_fetch(useragent, url)` now extracts the path from full HTTP/HTTPS URLs before matching, so `can_fetch('*', 'http://example.com/private/')` and `can_fetch('*', '/private/')` behave identically.
-
-**Matching semantics fixed:** the engine now uses **first-match wins** (CPython 3.14 behaviour) instead of longest-match. Rules are evaluated in document order and the first matching rule determines the result. Empty `Disallow:` is correctly converted to an allow-all rule.
-
-**Webbrowser fix:** `webbrowserLaunch()` no longer spawns a real OS browser process. The three tests in fixture 227 (`test_open_returns_bool`, etc.) that previously caused Safari/Chrome to open `http://example.com` now run silently in CI and on developer machines.
-
-24 new test fixtures (fixture 233). Fixture 229 updated: `rfp.crawl_delay("mybot") == "10"` → `== 10`.
-
-## v0.0.232 - 2026-04-26
-
-`urllib.error` deep coverage — complete attribute set, response methods, and exception-hierarchy fixes.
-
-`URLError`: `reason` works for both string and exception-instance arguments; `str()` now calls the class `__str__` (returns `<urlopen error …>`) rather than the raw first arg; `repr()` now calls the class `__repr__` for exception subclasses; `issubclass(URLError, OSError)` and catch-as-`OSError` confirmed.
-
-`HTTPError`: added `filename` attribute (alias for `url`); new methods — `read([n])` delegates to `fp.read()`; `getcode()` returns the integer status code; `geturl()` returns the request URL; `info()` returns the `hdrs` mapping; `close()` closes the file-pointer; `__enter__`/`__exit__` context-manager support; `__repr__` now returns `<HTTPError code: 'msg'>` format; `isinstance(e, URLError)` and `isinstance(e, OSError)` confirmed; catchable as both.
-
-`ContentTooShortError`: `reason` and `content` attributes confirmed; `str()` returns `<urlopen error …>` via inherited `URLError.__str__`; hierarchy confirmed.
-
-**VM fix:** `str()` builtin now calls the class `__str__` for `*object.Exception` subclasses (previously bypassed it, returning the raw first arg). Same fix for `repr()` and class-defined `__repr__`.
-
-24 new test fixtures (fixture 232).
-
-## v0.0.231 - 2026-04-26
-
-`urllib.parse` deep coverage — complete `ParseResult`/`SplitResult` attribute set, bytes variants, and improved query-string functions.
-
-`ParseResult` and `SplitResult`: added `username` and `password` attributes (decoded from the `user:pass@host` portion of `netloc`); `geturl()` method reconstructs the full URL from components; `encode(encoding='ascii')` returns a `ParseResultBytes`/`SplitResultBytes` instance with all fields as `bytes`; `SplitResult.__repr__` now renders as `SplitResult(scheme=…, netloc=…, path=…, query=…, fragment=…)` (5 fields, no `params`), while `ParseResult.__repr__` retains its 6-field format; `SplitResult[i]` indexing returns 5 elements.
-
-`ParseResultBytes` / `SplitResultBytes` / `DefragResultBytes`: full bytes-valued result classes returned when the input to `urlparse`/`urlsplit`/`urldefrag` is `bytes`; `decode(encoding='ascii')` converts back to the str result class; `geturl()` returns `bytes`.
-
-`DefragResult`: added `__getitem__` (index 0 → url, 1 → fragment), `__len__` (always 2), `__iter__` (yields url then fragment), and `encode()` → `DefragResultBytes`.
-
-`urlparse` / `urlsplit`: new `scheme=''` kwarg used as the default scheme when the URL has none; new `allow_fragments=True` kwarg (False folds the fragment into path/query).
-
-`urljoin`: `allow_fragments=True` kwarg strips the fragment from the result when False.
-
-`urlencode`: `quote_via` kwarg accepts any callable (e.g. `urllib.parse.quote`) used for percent-encoding values — the default remains `quote_plus`; `safe=''` kwarg forwarded to `quote_via`.
-
-`parse_qs` / `parse_qsl`: `keep_blank_values=False` kwarg retains params with empty values when True; `separator='&'` kwarg sets the field delimiter (single char); `max_num_fields=None` kwarg raises `ValueError` when exceeded.
-
-Exported classes: `ParseResult`, `SplitResult`, `ParseResultBytes`, `SplitResultBytes`, `DefragResult`, `DefragResultBytes` are all accessible as `urllib.parse.*`.
-
-24 test fixtures (fixture 231).
-
-## v0.0.230 - 2026-04-26
-
-`urllib.request` deep coverage — complete handler hierarchy, real `OpenerDirector`, `urlretrieve`, and response methods.
-
-`Request` class: full attribute set including `full_url` (parses scheme/host/selector), `type`, `host`, `origin_req_host`, `selector`, `data`, `unverifiable`, `_method`; `get_method()` returns POST when data is set; `set_proxy(host, type)`; `add_header`/`has_header`/`get_header`/`remove_header` with capitalize-key semantics; `add_unredirected_header` (stored separately, not sent on redirect); `header_items()` merges both header maps; state stored per-instance in a package-level `sync.Map`.
-
-`HTTPPasswordMgr` hierarchy: `HTTPPasswordMgr` — `add_password(realm, uri, user, passwd)`, `find_user_password(realm, authuri)` with longest-URI-prefix matching; `HTTPPasswordMgrWithDefaultRealm` — falls back to `realm=None` entry when no exact match; `HTTPPasswordMgrWithPriorAuth` — adds `update_authenticated(uri, flag)` and `is_authenticated(authuri)`. All three handle `realm=None` by canonicalising to an empty-string key.
-
-`Handler` classes with real logic: `HTTPDefaultErrorHandler.http_error_default` raises `HTTPError`; `HTTPErrorProcessor.http_response`/`https_response` passes 2xx through and calls `opener.error` for others; `HTTPRedirectHandler.redirect_request` builds a new `Request` for the redirect target and implements `http_error_301/302/303/307/308`; `HTTPCookieProcessor.__init__(cookiejar=None)` stores the jar; `ProxyHandler.__init__(proxies=None)` stores the proxy map; `AbstractBasicAuthHandler.http_error_auth_reqed` extracts realm from `WWW-Authenticate`, fetches credentials from the password manager, encodes them as Base64, and re-opens via the parent opener; `HTTPBasicAuthHandler.http_error_401` / `ProxyBasicAuthHandler.http_error_407`; `AbstractDigestAuthHandler` / `HTTPDigestAuthHandler` / `ProxyDigestAuthHandler` stubs; `AbstractHTTPHandler.do_request_` adds `Content-Type`/`Content-Length` when `data` is set; `AbstractHTTPHandler.do_open` performs the real HTTP request via Go `net/http`; `HTTPHandler.http_open` / `HTTPSHandler.https_open`; `FileHandler.open_local_file`/`file_open` reads local files; `DataHandler.data_open` full RFC 2397 (plain and base64); `UnknownHandler.unknown_open` raises `URLError`; `CacheFTPHandler.setTimeout`/`setMaxConns` stubs.
-
-`addinfourl` response object: `read(n=-1)`, `readline()`, `readlines()`, `close()`, `geturl()`, `info()`, `getcode()`, `__enter__`/`__exit__` context-manager support.
-
-`OpenerDirector`: complete `add_handler` (scans class dict for `protocol_open`, `http_error_NNN`, `protocol_request`, `protocol_response` methods); `open(url, data, timeout)` runs three-stage dispatch (request processors → open handlers → response processors); `error(proto, *args)` dispatches through `http_error_NNN` chains then `http_error_default`; `build_opener(*handlers)` installs the default handler set.
-
-`urlretrieve(url, filename=None, reporthook=None, data=None)` downloads to a temp file when no filename is given, calls `reporthook(block, blocksize, totalsize)` every 8192 bytes, and tracks temp files in a `sync.Map`. `urlcleanup()` removes all tracked temp files.
-
-24 test fixtures (fixture 230).
-
-## v0.0.229 - 2026-04-26
-
-`urllib` package — urllib.parse additions plus three new sub-modules.
-
-`urllib.parse` additions: `urldefrag(url)` returns a `DefragResult` instance with `.url` and `.fragment` attributes; `quote_from_bytes(bytes, safe='/')` percent-encodes a bytes object; `unquote_to_bytes(str)` percent-decodes a string to bytes; `unwrap(url)` strips leading `<`/`>` angle brackets and `URL:` prefix.
-
-`urllib.error`: `URLError(reason)` (base: `OSError`) with `.reason`; `HTTPError(url, code, msg, hdrs, fp)` (base: `URLError`) with `.url`, `.code`, `.reason`, `.headers`, `.hdrs`, `.fp`; `ContentTooShortError(msg, content)` with `.content`. Attribute access on all three is backed by the constructor `Args` tuple via `__getattr__`; `__str__` gives human-readable representations (`<urlopen error …>` / `HTTP Error N: …`).
-
-`urllib.request`: `Request(url, data=None, headers={}, …, method=None)` with `.full_url`, `.type`, `.host`, `.selector`, `.data`, `get_method()`, `add_header`, `has_header`, `get_header`, `remove_header`, `add_unredirected_header`, `header_items` (headers stored with capitalize-key semantics via a `sync.Map`); `urlopen(url, data=None)` supports `data:` URIs (RFC 2397 — plain percent-encoded and base64 variants) and HTTP/HTTPS via Go `net/http`; returns `addinfourl` with `read(n)`, `readline`, `readlines`, `close`, `url`, `status`, `code`, `headers`, `geturl`, `info`, `getcode`, and context-manager support; `build_opener(*handlers)` → `OpenerDirector` (with `open`, `add_handler`, `error`); `install_opener(opener)`; `OpenerDirector`; full set of 19 handler class stubs (`HTTPDefaultErrorHandler`, `HTTPRedirectHandler`, `HTTPCookieProcessor`, `ProxyHandler`, `HTTPPasswordMgr`, `HTTPPasswordMgrWithDefaultRealm`, `HTTPPasswordMgrWithPriorAuth`, `HTTPBasicAuthHandler`, `ProxyBasicAuthHandler`, `HTTPDigestAuthHandler`, `ProxyDigestAuthHandler`, `HTTPHandler`, `HTTPSHandler`, `FileHandler`, `DataHandler`, `FTPHandler`, `CacheFTPHandler`, `UnknownHandler`, `HTTPErrorProcessor`); `pathname2url`, `url2pathname`, `getproxies`, `urlretrieve`, `urlcleanup`.
-
-`urllib.robotparser`: `RobotFileParser(url='')` — `set_url`, `read` (fetches via HTTP), `parse(lines)` (groups `User-agent`/`Allow`/`Disallow`/`Crawl-delay`/`Sitemap` directives), `can_fetch(agent, path)` (longest-match-wins with Allow precedence over Disallow, wildcard `*` fallback), `crawl_delay(agent)`, `request_rate(agent)`, `site_maps()`, `mtime()`, `modified()`. Internal state stored in a `sync.Map` keyed by instance pointer.
-
-VM fix: added `__getattr__` fallback support for `*object.Exception` instances in `getAttr`, mirroring the existing `*object.Instance` behaviour.
-
-18 test fixtures cover all sub-modules (fixture 229).
-
-## v0.0.228 - 2026-04-26
-
-`wsgiref` package — all six sub-modules.
-
-`wsgiref.util`: `guess_scheme`, `setup_testing_defaults`, `request_uri`, `application_uri`, `shift_path_info`, `is_hop_by_hop`, and `FileWrapper` (iterable file wrapper with configurable block size). `wsgiref.headers`: `Headers` class — case-insensitive HTTP header mapping over a `(name, value)` list; `__getitem__`/`__setitem__`/`__delitem__`/`__contains__`/`__len__`/`__iter__`, `get`, `setdefault`, `keys`, `values`, `items`, `get_all`, `add_header` (MIME params via kwargs), `__bytes__` (formatted HTTP header block). `wsgiref.simple_server`: `demo_app`, `make_server` (binds a real TCP listener via Go `net.Listen`), `WSGIServer` (`set_app`/`get_app`/`server_close`/`serve_forever`/`handle_request`), `WSGIRequestHandler`. `wsgiref.handlers`: `SimpleHandler` whose `run(app)` calls the WSGI app, then writes a complete `HTTP/1.0` response (status line, headers, blank line, body) to the `stdout` file-like object via Python's write protocol; `BaseHandler`, `BaseCGIHandler`, `CGIHandler`, `IISCGIHandler`, `read_environ` stubs. `wsgiref.validate`: `validator` pass-through wrapper. `wsgiref.types`: runtime `None` stubs for all PEP 3333 type aliases.
-
-21 test fixtures cover all sub-modules (fixture 228).
-
-## v0.0.227 - 2026-04-26
-
-`webbrowser` module.
-
-Adds the `webbrowser` module with `open(url, new=0, autoraise=True)`, `open_new(url)`, `open_new_tab(url)`, `get(using=None)`, and `register(name, constructor, instance=None, *, preferred=False)`. The `Error` exception class and the `Controller` base class (with `name` attribute and `open`/`open_new`/`open_new_tab` methods) are exposed. The built-in `Controller` delegates to the OS default browser (`open` on macOS, `xdg-open` on Linux, `cmd /c start` on Windows). `register` stores controllers in a per-module registry; `preferred=True` prepends the name to the preferred list so `get()` and module-level `open` dispatch through it first.
-
-11 test fixtures cover: `Error` class hierarchy, `Controller` instantiation, `register`+`get` roundtrip, `get` error for unknown browser, module-level callables, `open`/`open_new`/`open_new_tab` return types, default `get()`, preferred browser dispatch, and constructor-based registration (fixture 227).
-
-## v0.0.226 - 2026-04-26
-
-`pyexpat` module deep coverage per Python 3.14.
-
-Adds the `pyexpat` module (the C extension underlying `xml.parsers.expat`) as a first-class goipy module. `ParserCreate([encoding[, namespace_separator]])` returns an `xmlparser` instance (exposed as `XMLParserType`). The full handler set is supported: `StartElementHandler`, `EndElementHandler`, `CharacterDataHandler`, `ProcessingInstructionHandler`, `CommentHandler`, `XmlDeclHandler`, `StartCdataSectionHandler`/`EndCdataSectionHandler`, `StartDoctypeDeclHandler`/`EndDoctypeDeclHandler`, `NotationDeclHandler`, `StartNamespaceDeclHandler`/`EndNamespaceDeclHandler`, and stubs for the remaining handlers. Parse errors raise `ExpatError` with `lineno`, `offset`, and `code` attributes; the `Error*` and `Current*` position attributes are updated accordingly. `ordered_attributes=True` mode produces a flat `[name, val, …]` list instead of a dict. Incremental parsing (`isfinal=False`) buffers data until the final call. `ExternalEntityParserCreate`, `SetBase`/`GetBase`, `SetParamEntityParsing`, `UseForeignDTD`, `GetInputContext` are all implemented. The `errors` sub-module exports all 44 `XML_ERROR_*` string constants plus `codes` and `messages` dicts. The `model` sub-module exports `XML_CTYPE_*` and `XML_CQUANT_*` integer constants. `pyexpat.errors` and `pyexpat.model` are also importable as sub-packages.
-
-25 test fixtures cover all of the above (fixture 226).
-
-## v0.0.225 - 2026-04-26
-
-`xml.sax.xmlreader` deep coverage per Python 3.14.
-
-Rewrites `XMLReader` with a proper `__init__` that initialises four default handler slots (`_cont_handler`, `_dtd_handler`, `_ent_handler`, `_err_handler`) from `xml.sax.handler`, adds `getDTDHandler`/`setDTDHandler`/`getEntityResolver`/`setEntityResolver`, and makes `setLocale` raise `SAXNotSupportedException` and `getFeature`/`setFeature`/`getProperty`/`setProperty` raise `SAXNotRecognizedException` with the feature/property name in the message. Rewrites `IncrementalParser` with `__init__(bufsize=65536)`, abstract `feed`/`close`/`reset`/`prepareParser` methods (raise `NotImplementedError`), and a concrete `parse(source)` that reads from the source's byte/char stream in `_bufsize`-sized chunks. Adds `values()` and `get(name, alternative=None)` to `AttributesImpl`, and fixes `getQNameByName`/`getNameByQName` to raise `KeyError` when the name is missing. Fully implements `AttributesNSImpl(attrs, qnames)` with NS tuple keys: all access/lookup methods, `getValueByQName`/`getNameByQName`/`getQNameByName` via reverse scan, and `copy()` returning a new `AttributesNSImpl`.
-
-21 test fixtures cover all of the above (fixture 225).
-
-## v0.0.224 - 2026-04-26
-
-`xml.sax.saxutils` deep coverage per Python 3.14.
-
-Fixes `escape` to process `&` → `>` → `<` in the correct order (ampersand first, matching CPython exactly). Fixes `unescape` ordering: `&lt;`/`&gt;` decoded first, custom entities next, `&amp;` last — so `&amp;lt;` correctly becomes `&lt;` rather than `<`. Adds whitespace escaping to `quoteattr` (`\n` → `&#10;`, `\r` → `&#13;`, `\t` → `&#9;`). Rewrites `XMLGenerator` with proper `short_empty_elements` support (`_pending_start_element` flag for `<br/>` collapse), correct attribute quoting via `quoteattr`-style (single-quote wrap when value contains `"`), truthy guard on `characters`/`ignorableWhitespace`, and `flush()` in `endDocument`. Rewrites `XMLFilterBase` with `_parent`, all four handler get/set pairs, and full delegation from `ContentHandler`/`ErrorHandler`/`DTDHandler`/`EntityResolver`. Adds `prepare_input_source` (str → `InputSource`, bytes → `BytesIO`-backed, `InputSource` pass-through).
-
-21 test fixtures cover every function and edge case listed above (fixture 224).
-
-## v0.0.223 - 2026-04-26
-
-`xml.sax.handler` deep coverage per Python 3.14.
-
-Adds the missing `version = "2.0beta"` module attribute. Fixes `all_properties` ordering to match Python exactly: `dom-node` now appears before `declaration-handler` in the list. Fixes `ErrorHandler.warning` to call `print(exception)` rather than silently do nothing, matching Python's base-class implementation.
-
-14 test fixtures verify every constant value and ordering, all five handler base classes, `EntityResolver.resolveEntity` return value, `ErrorHandler` raise/no-op semantics, and `LexicalHandler` no-op stubs (fixture 223).
-
-## v0.0.222 - 2026-04-25
-
-Full `xml.sax` coverage per Python 3.14: the push-based SAX2 parser, all four handler base classes, saxutils helpers, and the xmlreader types.
-
-`xml.sax` — `SAXException`, `SAXParseException`, `SAXNotRecognizedException`, `SAXNotSupportedException`, `SAXReaderNotAvailable` are all proper exception subclasses. `parseString` and `parse` (file-like, bytes, or path) dispatch `startDocument`, `startElement`, `endElement`, `characters`, `processingInstruction`, `endDocument` to any `ContentHandler`. `make_parser()` returns an `ExpatParser` with the full get/set handler API: `setContentHandler`, `getContentHandler`, `setErrorHandler`, `getErrorHandler`, `setDTDHandler`, `getDTDHandler`, `setEntityResolver`, `getEntityResolver`, `setFeature`, `getFeature`, `setProperty`, `getProperty`, `reset`.
-
-`xml.sax.handler` — `ContentHandler` (13 no-op methods), `DTDHandler`, `EntityResolver`, `ErrorHandler` (error/fatalError raise, warning is no-op), `LexicalHandler` (comment, startDTD, endDTD, startCDATA, endCDATA). All six `feature_*` and six `property_*` string constants; `all_features` and `all_properties` lists.
-
-`xml.sax.saxutils` — `escape`, `unescape`, `quoteattr`; `XMLGenerator` writes `<?xml ...?>`, elements, and escaped text to any file-like; `XMLFilterBase` stub.
-
-`xml.sax.xmlreader` — `XMLReader`, `IncrementalParser`, `Locator` (`getColumnNumber`/`getLineNumber` return −1), `InputSource` (full getter/setter set), `AttributesImpl` (keys, items, copy, getQNames, getValueByQName, getQNameByName, getNameByQName, __len__, __getitem__, __contains__), `AttributesNSImpl`.
-
-Also fixes exception method dispatch: methods defined on exception subclass dicts are now returned as bound methods, making user-defined methods on exception instances callable without panicking.
-
-23 test fixtures cover all of the above (fixture 222).
-
-## v0.0.221 - 2026-04-25
-
-This release completes `xml.dom.pulldom` with a working pull API, real DOM nodes, and `expandNode`.
-
-Previously the module had event constants and `parseString`/`parse` that returned a stream object, but that stream was basically a wrapper around a pre-built list with no way to drive it from Python code. The iteration worked by returning the list itself, which meant `for event, node in stream:` happened to work, but `getEvent()`, `reset()`, and `expandNode()` did nothing.
-
-`getEvent()` is now the primary pull interface — it returns the next `(event, node)` tuple and advances the cursor, or returns `None` when exhausted. `reset()` resets the cursor to the beginning so the stream can be replayed. `__iter__` returns `self` (proper iterator protocol) and `__next__` raises `StopIteration` when done.
-
-`expandNode(node)` is now real. After you receive a `START_ELEMENT` event, calling `expandNode(node)` consumes the remaining events for that element's subtree and builds the full DOM tree under `node`. Once done, `node.childNodes.length` is correct, `node.firstChild` and `node.lastChild` work, text children have `.data`, and nested elements are fully populated.
-
-Nodes in the event stream are now real minidom nodes backed by `domNodeState`, so all the minidom APIs (`getAttribute`, `childNodes`, `firstChild`, `lastChild`, `data`, `target`) work on them without `expandNode`.
-
-`START_ELEMENT` and `END_ELEMENT` events for the same tag now return the same node instance. `START_DOCUMENT` and `END_DOCUMENT` return a real Document node. `default_bufsize = 8192` is present. `PullDOM` class added (stub).
-
-18 new test fixtures cover all of the above (fixture 221).
-
-## v0.0.220 - 2026-04-25
-
-This release completes the `xml.dom.minidom` serialization layer and wires up several properties that were missing or returning wrong values.
-
-`writexml` is now the real serialization core, matching CPython's rules exactly: an element with zero children emits a self-closing tag, an element with exactly one `Text` child emits it inline (no indentation on the text), and everything else gets the indent/addindent/newl treatment with each child on its own line. `toxml` and `toprettyxml` both call through to `writexml` and support the `encoding` and `standalone` keyword arguments. Passing `encoding` returns `bytes` with the right `encoding="..."` declaration; `standalone=True/False` inserts `standalone="yes"/"no"`. `Document.writexml` also accepts those extra keywords.
-
-`Attr` objects now carry the full set of properties CPython minidom exposes: `specified` is always `False`, `ownerElement` points back to the element that owns the attribute, `localName` strips any namespace prefix, `prefix` and `namespaceURI` are `None` for unqualified attrs.
-
-`Document.doctype` is a live property that scans the document children for a `DocumentType` node and returns it, or `None` if there is none. `Document.implementation` returns the `DOMImplementation` singleton. The `Document` class now works as a context manager so `with minidom.parseString(...) as doc:` works.
-
-`Node.localName` is now set for all node types, not just elements. Non-element, non-attribute nodes get `None`.
-
-12 new test fixtures cover all these features (fixture 220).
-
-## v0.0.219 - 2026-04-25
-
-This release fills in the parts of `xml.dom` and `xml.dom.minidom` that were stubs before.
-
-The main additions: `firstChild`, `lastChild`, `previousSibling`, and `nextSibling` are now live properties that reflect the current tree instead of being hardcoded `None`. `cloneNode(deep)` does a real structural copy. `normalize()` merges adjacent text nodes. The `CharacterData` interface -- `substringData`, `appendData`, `insertData`, `deleteData`, `replaceData`, `length`, and direct `data` assignment -- is wired up on `Text`, `Comment`, and `CDATASection`. `Text.splitText(offset)` splits a text node in place and inserts the tail into the parent. `createDocumentFragment` now returns a proper `DocumentFragment` node instead of the wrong class. `importNode(node, deep)` clones a node into the target document. `NamedNodeMap.getNamedItemNS`, `setNamedItemNS`, and `removeNamedItemNS` are real implementations. `Element.hasAttributeNS` is available. `DOMImplementation.createDocument` returns a full working `Document`.
-
-13 new test fixtures cover these features (fixture 219).
-
-## v0.0.218.1 - 2026-04-25
-
-Patch release adding Windows support. The stdlib modules that used Unix-only syscalls (`os`, `signal`, `socket`, `shutil`, `time`, `mmap`, `select`, `selectors`) now have Windows-compatible implementations. The release workflow now builds and ships a `windows/amd64` binary alongside the four Unix targets.
-
-## v0.0.218 - 2026-04-25
-
-First release of goipy. The version number tracks the number of merged PRs; v0.0.218 means 218 test fixtures passing against CPython 3.14 bytecode.
-
-### What is goipy
-
-A pure-Go interpreter for CPython 3.14 `.pyc` files. No cgo, no libpython, no subprocess. You compile your Python with `python3.14 -m py_compile`, ship the `.pyc` alongside a single static binary, and goipy runs it. Works on Linux, macOS, and Windows.
-
-### Core language
-
-The bytecode eval loop covers the full CPython 3.14 instruction set: LOAD/STORE/DELETE for all scopes (local, global, deref, fast), CALL/CALL_INTRINSIC variants, MAKE_FUNCTION with closures and defaults, all comprehension forms, generators (sync and async), match/case with all pattern types, with/async-with, exception groups, and the full set of binary/unary/comparison ops.
-
-Class creation goes through `__init_subclass__`, `__set_name__`, and `__class_cell__`. Descriptors (`__get__`, `__set__`, `__delete__`) work on both instances and classes. `super()` works with zero and two arguments.
-
-### Standard library
-
-The stdlib covers about 100 modules:
-
-**Built-in types:** `int`, `float`, `complex`, `str`, `bytes`, `bytearray`, `list`, `tuple`, `dict`, `set`, `frozenset`, `bool`, `memoryview`, `range`, `slice` -- all with their full CPython method surfaces.
-
-**Numerics:** `math`, `cmath`, `decimal`, `fractions`, `statistics`, `random`, `struct`
-
-**Text:** `re` (backed by Go `regexp/syntax`), `string`, `textwrap`, `difflib`, `unicodedata`, `stringprep`, `readline`
-
-**Data structures:** `collections` (deque, OrderedDict, Counter, ChainMap, namedtuple, defaultdict), `heapq`, `bisect`, `array`, `enum`, `dataclasses`, `copy`
-
-**Serialization:** `json` (full CPython 3.14 encoder/decoder), `csv`, `configparser`, `tomllib`, `plistlib`, `pickle`, `shelve`, `marshal`
-
-**Binary/encoding:** `base64`, `binascii`, `codecs`, `quopri`, `uu`
-
-**OS and files:** `os`, `os.path`, `sys`, `pathlib`, `io`, `shutil`, `glob`, `fnmatch`, `tempfile`, `fileinput`, `stat`, `mmap`, `gzip`, `bz2`, `lzma`, `zlib`, `zipfile`, `tarfile`, `zstd`
-
-**Networking and IPC:** `socket`, `ssl` (backed by Go `crypto/tls`), `select`, `selectors`, `signal`, `subprocess`, `mmap`
-
-**Concurrency:** `threading`, `multiprocessing`, `multiprocessing.shared_memory`, `concurrent.futures`, `concurrent.interpreters`, `asyncio` (full CPython 3.14 API), `queue`, `sched`, `contextvars`, `_thread`
-
-**Internet and email:** `email` (message, mime types, utils, header, encoders, generator, parser), `mailbox` (mbox, Maildir), `mimetypes`, `html.parser`, `html.entities`
-
-**XML:** `xml.etree.ElementTree` (full API including QName, TreeBuilder, iterparse, canonicalize), `xml.dom` (NodeList, NamedNodeMap, Attr, DOMImplementation, 15 DOMException subclasses, NS methods), `xml.dom.minidom`, `xml.sax`, `xml.parsers.expat`
-
-**Development tools:** `argparse`, `optparse`, `getpass`, `logging`, `unittest`, `pdb`, `traceback`, `inspect`, `dis`, `ast`, `tokenize`, `typing`, `abc`
-
-**Functional:** `functools` (full coverage), `itertools` (full coverage), `operator` (full coverage)
-
-**Other:** `datetime`, `time`, `calendar`, `hashlib`, `hmac`, `secrets`, `uuid`, `locale`, `gettext`, `importlib`, `pkgutil`, `zipimport`, `ctypes`, `errno`, `curses` (textpad, ascii, panel), `cmd`, `gc`, `weakref`, `contextlib`, `warnings`
-
-### Threading model
-
-`threading.Thread` maps to goroutines. The GIL is not emulated; Go's runtime scheduler manages goroutines. `threading.Lock`, `RLock`, `Condition`, `Semaphore`, `Event`, and `Barrier` all map to Go sync primitives. `multiprocessing` forks OS processes via `os/exec`.
-
-### Binaries
-
-Each release ships pre-built binaries for:
-
-- `linux/amd64`
-- `linux/arm64`
-- `darwin/amd64`
-- `darwin/arm64`
-
-All binaries are statically linked (CGO_ENABLED=0) and built with `-ldflags="-s -w"`.
-
-## v0.0.217 - 2026-04-25
-
-`xml.etree.ElementTree` extended: `QName`, `TreeBuilder`, `iterparse` with
-`start`/`end`/`start-ns`/`end-ns` events, `canonicalize`.
-
-## v0.0.216 - 2026-04-25
-
-Full `xml` package: `xml.etree.ElementTree` (parse, Element, SubElement,
-tostring, fromstring), `xml.sax` (ContentHandler, parse, parseString),
-`xml.dom` (base classes, constants), `xml.parsers.expat`.
-
-## v0.0.215 - 2026-04-25
-
-`html.entities` extended to full CPython 3.14 spec: all 2231 named character
-references in `html5` and `name2codepoint`/`codepoint2name` mappings.
-
-## v0.0.214 - 2026-04-25
-
-`html.parser` extended to full CPython 3.14 spec: `handle_starttag`,
-`handle_endtag`, `handle_startendtag`, `handle_data`, `handle_comment`,
-`handle_decl`, `handle_pi`, `handle_entityref`, `unknown_decl`.
-`convert_charrefs`, `CDATA_CONTENT_ELEMENTS`.
-
-## v0.0.213 - 2026-04-25
-
-`html`: `unescape`, `escape`. `html.parser`: `HTMLParser`. `html.entities`:
-`html5`, `name2codepoint`, `codepoint2name`.
-
-## v0.0.212 - 2026-04-25
-
-`quopri`: `encode`, `decode`, `encodestring`, `decodestring`. Quoted-printable
-encoding per RFC 2045. `header` mode flag.
-
-## v0.0.211 - 2026-04-25
-
-`binascii` extended to full CPython 3.14 spec: `b2a_qp`, `a2b_qp`,
-`b2a_hqx`, `a2b_hqx`, `rlecode_hqx`, `rledecode_hqx`, `crc_hqx`,
-`b2a_uu`, `a2b_uu`, `b2a_base64` with `newline` param, `Error`, `Incomplete`.
-
-## v0.0.210 - 2026-04-25
-
-`base64` extended to full CPython 3.14 spec: `encodebytes`, `decodebytes`,
-`b85encode`, `b85decode`, `a85encode`, `a85decode`, `b16encode`, `b16decode`,
-`b32encode`, `b32decode`, `b32hexencode`, `b32hexdecode`, `urlsafe_b64encode`,
-`urlsafe_b64decode`.
-
-## v0.0.209 - 2026-04-25
-
-`mimetypes`: `guess_type`, `guess_extension`, `guess_all_extensions`,
-`add_type`, `init`, `read_mime_types`, `MimeTypes`. Common MIME types
-pre-loaded.
-
-## v0.0.208 - 2026-04-25
-
-`mailbox`: `mbox`, `Maildir`, `MaildirMessage`, `mboxMessage`. `add`,
-`remove`, `update`, `flush`, `lock`, `unlock`. `NoSuchMailboxError`.
-
-## v0.0.207 - 2026-04-25
-
-`json` extended to full CPython 3.14 feature set: `JSONDecodeError` with
-`pos`/`lineno`/`colno`, `JSONEncoder` with `check_circular`, `allow_nan`,
-`sort_keys`, `default` hook. `JSONDecoder` with `object_hook`,
-`object_pairs_hook`, `parse_float`, `parse_int`, `parse_constant`.
-
-## v0.0.206 - 2026-04-25
-
-`email` package: `email.message.Message`, MIME classes (`MIMEText`,
-`MIMEMultipart`, `MIMEBase`, `MIMEImage`, `MIMEAudio`, `MIMEApplication`).
-`email.utils`, `email.header`, `email.encoders`, `email.generator`,
-`email.parser`.
-
-## v0.0.205 - 2026-04-25
-
-`mmap`: file-backed and anonymous mappings. `ACCESS_READ`, `ACCESS_WRITE`,
-`ACCESS_COPY`, `ACCESS_NONE`. `seek`, `tell`, `read`, `write`, `readline`,
-`find`, `rfind`, `flush`, `resize`, `close`. Slice assignment.
-
-## v0.0.204 - 2026-04-25
-
-`signal`: `signal`, `getsignal`, `raise_signal`, `strsignal`, `valid_signals`,
-`pause`, `alarm`, `setitimer`, `getitimer`. Handler registry and OS-level
-signal delivery. `SIG_DFL`, `SIG_IGN`.
-
-## v0.0.203 - 2026-04-25
-
-`selectors`: `DefaultSelector`, `EpollSelector`, `KqueueSelector`,
-`PollSelector`, `SelectSelector`. `register`, `unregister`, `modify`,
-`select`, `get_key`, `get_map`. `EVENT_READ`, `EVENT_WRITE`.
-
-## v0.0.202 - 2026-04-25
-
-`select`: `select`, `poll`, `epoll`, `kqueue`, `kevent`. `POLLIN`, `POLLOUT`,
-`POLLERR`, `POLLHUP`, `POLLNVAL`. `epoll` edge-triggered and level-triggered.
-
-## v0.0.201 - 2026-04-25
-
-`ssl` backed by Go `crypto/tls`: `SSLContext`, `wrap_socket`, `SSLSocket`,
-`SSLError`. `PROTOCOL_TLS_CLIENT`, `PROTOCOL_TLS_SERVER`. Certificate
-loading, hostname verification, `check_hostname`, `verify_mode`.
-
-For releases v0.0.001 through v0.0.200, see the [changelog/](changelog/) folder.
+Individual release notes live in [`changelog/`](changelog/).
+
+| Version | Date | Summary |
+|---------|------|---------|
+| [v0.0.313](changelog/0.0.313.md) | 2026-04-28 | `compileall` module — fixture 313 for https://docs.python.org/3/library/compi... |
+| [v0.0.312](changelog/0.0.312.md) | 2026-04-28 | `py_compile` module — fixture 312 for https://docs.python.org/3/library/py_co... |
+| [v0.0.311](changelog/0.0.311.md) | 2026-04-28 | `pyclbr` module — fixture 311 for https://docs.python.org/3/library/pyclbr.ht... |
+| [v0.0.310](changelog/0.0.310.md) | 2026-04-28 | `tabnanny` module — fixture 310 for https://docs.python.org/3/library/tabnann... |
+| [v0.0.309](changelog/0.0.309.md) | 2026-04-28 | `tokenize` module — fixture 309 for https://docs.python.org/3/library/tokeniz... |
+| [v0.0.308](changelog/0.0.308.md) | 2026-04-28 | `keyword` module — fixture 308 for https://docs.python.org/3/library/keyword.... |
+| [v0.0.307](changelog/0.0.307.md) | 2026-04-28 | `token` module — fixture 307 for https://docs.python.org/3/library/token.html... |
+| [v0.0.306](changelog/0.0.306.md) | 2026-04-28 | `symtable` module — fixture 306 for https://docs.python.org/3/library/symtabl... |
+| [v0.0.305](changelog/0.0.305.md) | 2026-04-28 | `ast` module — fixture 305 for https://docs.python.org/3/library/ast.html. Fu... |
+| [v0.0.304](changelog/0.0.304.md) | 2026-04-28 | `sys` path initialization attributes — fixture 304 for https://docs.python.or... |
+| [v0.0.303](changelog/0.0.303.md) | 2026-04-28 | `importlib.metadata` comprehensive — fixture 303 for https://docs.python.org/... |
+| [v0.0.302](changelog/0.0.302.md) | 2026-04-28 | `importlib.resources.abc` comprehensive — fixture 302 for https://docs.python... |
+| [v0.0.301](changelog/0.0.301.md) | 2026-04-28 | `importlib.resources` comprehensive — fixture 301 for https://docs.python.org... |
+| [v0.0.300](changelog/0.0.300.md) | 2026-04-28 | `importlib` family — first comprehensive fixture (300) for https://docs.pytho... |
+| [v0.0.299](changelog/0.0.299.md) | 2026-04-28 | `runpy` — first fixture (299) for https://docs.python.org/3/library/runpy.htm... |
+| [v0.0.298](changelog/0.0.298.md) | 2026-04-28 | `modulefinder` — first fixture (298) for https://docs.python.org/3/library/mo... |
+| [v0.0.297](changelog/0.0.297.md) | 2026-04-28 | `pkgutil` — first fixture (297) for https://docs.python.org/3/library/pkgutil... |
+| [v0.0.296](changelog/0.0.296.md) | 2026-04-28 | `zipimport` — first fixture (296) for https://docs.python.org/3/library/zipim... |
+| [v0.0.295](changelog/0.0.295.md) | 2026-04-28 | `codeop` — first fixture (295) for https://docs.python.org/3/library/codeop.h... |
+| [v0.0.294](changelog/0.0.294.md) | 2026-04-28 | `code` — first fixture (294) for https://docs.python.org/3/library/code.html.... |
+| [v0.0.293](changelog/0.0.293.md) | 2026-04-28 | `site` — comprehensive deep-coverage fixture (293) for https://docs.python.or... |
+| [v0.0.292](changelog/0.0.292.md) | 2026-04-28 | `annotationlib` — comprehensive deep-coverage fixture (292) for https://docs.... |
+| [v0.0.291](changelog/0.0.291.md) | 2026-04-28 | `inspect` — comprehensive deep-coverage fixture (291) for https://docs.python... |
+| [v0.0.290](changelog/0.0.290.md) | 2026-04-28 | `gc` — comprehensive deep-coverage fixture (290) for https://docs.python.org/... |
+| [v0.0.289](changelog/0.0.289.md) | 2026-04-28 | `__future__` — full coverage of https://docs.python.org/3/library/__future__.... |
+| [v0.0.288](changelog/0.0.288.md) | 2026-04-28 | `traceback` — comprehensive deep-coverage fixture (288) for https://docs.pyth... |
+| [v0.0.287](changelog/0.0.287.md) | 2026-04-28 | `atexit` — comprehensive deep-coverage fixture (287) for https://docs.python.... |
+| [v0.0.286](changelog/0.0.286.md) | 2026-04-28 | `abc` — full coverage of https://docs.python.org/3/library/abc.html. New modu... |
+| [v0.0.285](changelog/0.0.285.md) | 2026-04-28 | `warnings` — comprehensive coverage of https://docs.python.org/3/library/warn... |
+| [v0.0.284](changelog/0.0.284.md) | 2026-04-28 | `contextlib` — comprehensive coverage of https://docs.python.org/3/library/co... |
+| [v0.0.283](changelog/0.0.283.md) | 2026-04-28 | `dataclasses` — comprehensive coverage of https://docs.python.org/3/library/d... |
+| [v0.0.282](changelog/0.0.282.md) | 2026-04-28 | `__main__` — implements `import __main__` from https://docs.python.org/3/libr... |
+| [v0.0.281](changelog/0.0.281.md) | 2026-04-28 | `builtins` — implements `import builtins` from https://docs.python.org/3/libr... |
+| [v0.0.280](changelog/0.0.280.md) | 2026-04-27 | `sys.monitoring` — implements the Python 3.12+ monitoring API from https://do... |
+| [v0.0.279](changelog/0.0.279.md) | 2026-04-27 | `site` — implements the site-customization module from https://docs.python.or... |
+| [v0.0.278](changelog/0.0.278.md) | 2026-04-27 | `annotationlib` — implements the Python 3.14 annotation utilities from https:... |
+| [v0.0.277](changelog/0.0.277.md) | 2026-04-27 | `inspect` — implements the inspection module from https://docs.python.org/3/l... |
+| [v0.0.276](changelog/0.0.276.md) | 2026-04-27 | `sysconfig` — implements the build configuration module from https://docs.pyt... |
+| [v0.0.275](changelog/0.0.275.md) | 2026-04-27 | `gc` — implements the garbage collector interface from https://docs.python.or... |
+| [v0.0.274](changelog/0.0.274.md) | 2026-04-27 | `traceback` — implements the traceback utilities from https://docs.python.org... |
+| [v0.0.273](changelog/0.0.273.md) | 2026-04-27 | `atexit` — implements the exit handler registration module from https://docs.... |
+| [v0.0.272](changelog/0.0.272.md) | 2026-04-28 | `zipapp` — implements the Python executable zip archive module from https://d... |
+| [v0.0.271](changelog/0.0.271.md) | 2026-04-27 | `venv` — implements the Python virtual environment creation module from https... |
+| [v0.0.270](changelog/0.0.270.md) | 2026-04-27 | `ensurepip` — implements the pip bootstrap module from https://docs.python.or... |
+| [v0.0.269](changelog/0.0.269.md) | 2026-04-27 | `tracemalloc` — implements the Python memory allocation tracer module from ht... |
+| [v0.0.268](changelog/0.0.268.md) | 2026-04-27 | `trace` — implements the Python execution tracing and coverage module from ht... |
+| [v0.0.267](changelog/0.0.267.md) | 2026-04-27 | `timeit` — implements the Python micro-benchmarking module from https://docs.... |
+| [v0.0.266](changelog/0.0.266.md) | 2026-04-27 | `profile` / `cProfile` / `pstats` — implements the Python profiler suite from... |
+| [v0.0.265](changelog/0.0.265.md) | 2026-04-27 | `pdb` — implements the Python interactive debugger module from https://docs.p... |
+| [v0.0.264](changelog/0.0.264.md) | 2026-04-27 | `faulthandler` — implements the Python fault handler module from https://docs... |
+| [v0.0.263](changelog/0.0.263.md) | 2026-04-27 | `bdb` — implements the Python debugger base infrastructure from https://docs.... |
+| [v0.0.262](changelog/0.0.262.md) | 2026-04-27 | `sys` audit events — implements the audit hook mechanism from https://docs.py... |
+| [v0.0.261](changelog/0.0.261.md) | 2026-04-27 | `unittest.mock` extended — fixture 261 covers the advanced APIs from the offi... |
+| [v0.0.260](changelog/0.0.260.md) | 2026-04-27 | `unittest.mock` — implements the standard library unittest.mock module. |
+| [v0.0.259](changelog/0.0.259.md) | 2026-04-27 | `dataclasses` — implements the standard library dataclasses module. |
+| [v0.0.258](changelog/0.0.258.md) | 2026-04-27 | `contextlib` — implements the standard library context management utilities. |
+| [v0.0.257](changelog/0.0.257.md) | 2026-04-27 | `unittest` — implements the standard library unittest framework. |
+| [v0.0.256](changelog/0.0.256.md) | 2026-04-27 | `doctest` — implements the standard library `doctest` module. |
+| [v0.0.255](changelog/0.0.255.md) | 2026-04-27 | Python Development Mode (`devmode`) — adds `sys.flags`, missing `sys` functio... |
+| [v0.0.254](changelog/0.0.254.md) | 2026-04-27 | `pydoc` — runtime-sufficient implementation of the standard library pydoc mod... |
+| [v0.0.253](changelog/0.0.253.md) | 2026-04-26 | `locale` — runtime-sufficient implementation of the standard library locale m... |
+| [v0.0.252](changelog/0.0.252.md) | 2026-04-26 | `gettext` — full implementation of the standard library internationalization ... |
+| [v0.0.251](changelog/0.0.251.md) | 2026-04-26 | `typing` — runtime-sufficient subset of the standard library typing module. |
+| [v0.0.250](changelog/0.0.250.md) | 2026-04-26 | `colorsys` — full implementation of the standard library color-space conversi... |
+| [v0.0.249](changelog/0.0.249.md) | 2026-04-26 | `wave` — full implementation of the standard library WAV audio module. Go has... |
+| [v0.0.248](changelog/0.0.248.md) | 2026-04-26 | `ipaddress` — full implementation of the standard library IP address module. |
+| [v0.0.247](changelog/0.0.247.md) | 2026-04-26 | `xmlrpc.server` — deeper API coverage building on fixture 245. |
+| [v0.0.246](changelog/0.0.246.md) | 2026-04-26 | `xmlrpc.client` — deeper API coverage building on fixture 245. |
+| [v0.0.245](changelog/0.0.245.md) | 2026-04-26 | `xmlrpc` package — namespace, `xmlrpc.client`, and `xmlrpc.server` submodules. |
+| [v0.0.244](changelog/0.0.244.md) | 2026-04-26 | `http.cookiejar` module — cookie storage and policy classes. |
+| [v0.0.243](changelog/0.0.243.md) | 2026-04-26 | `http.cookies` module — cookie manipulation classes, Morsel, BaseCookie, Simp... |
+| [v0.0.242](changelog/0.0.242.md) | 2026-04-26 | `http.server` module — full class hierarchy, all attributes, complete HTTP st... |
+| [v0.0.241](changelog/0.0.241.md) | 2026-04-26 | `socketserver` module — full class hierarchy, attributes, and stub server API. |
+| [v0.0.240](changelog/0.0.240.md) | 2026-04-26 | `uuid` module — full RFC 4122 implementation: UUID class, SafeUUID enum, vari... |
+| [v0.0.239](changelog/0.0.239.md) | 2026-04-26 | `smtplib` module — constants, full exception hierarchy rooted at OSError, `SM... |
+| [v0.0.238](changelog/0.0.238.md) | 2026-04-26 | `imaplib` module — constants, nested exception hierarchy, utility functions, ... |
+| [v0.0.237](changelog/0.0.237.md) | 2026-04-26 | `poplib` module — constants, `error_proto` exception, `POP3` class with full ... |
+| [v0.0.236](changelog/0.0.236.md) | 2026-04-26 | `ftplib` module deep coverage — constants, exception hierarchy, parse functio... |
+| [v0.0.235](changelog/0.0.235.md) | 2026-04-26 | `http.client` deep coverage — exception hierarchy, HTTPMessage, parse_headers... |
+| [v0.0.234](changelog/0.0.234.md) | 2026-04-26 | `http` module deep coverage — `HTTPStatus` and `HTTPMethod` enums. |
+| [v0.0.233](changelog/0.0.233.md) | 2026-04-26 | `urllib.robotparser` deep coverage — correct return types, `mtime`/`modified`... |
+| [v0.0.232](changelog/0.0.232.md) | 2026-04-26 | `urllib.error` deep coverage — complete attribute set, response methods, and ... |
+| [v0.0.231](changelog/0.0.231.md) | 2026-04-26 | `urllib.parse` deep coverage — complete `ParseResult`/`SplitResult` attribute... |
+| [v0.0.230](changelog/0.0.230.md) | 2026-04-26 | `urllib.request` deep coverage — complete handler hierarchy, real `OpenerDire... |
+| [v0.0.229](changelog/0.0.229.md) | 2026-04-26 | `urllib` package — urllib.parse additions plus three new sub-modules. |
+| [v0.0.228](changelog/0.0.228.md) | 2026-04-26 | `wsgiref` package — all six sub-modules. |
+| [v0.0.227](changelog/0.0.227.md) | 2026-04-26 | `webbrowser` module. |
+| [v0.0.226](changelog/0.0.226.md) | 2026-04-26 | `pyexpat` module deep coverage per Python 3.14. |
+| [v0.0.225](changelog/0.0.225.md) | 2026-04-26 | `xml.sax.xmlreader` deep coverage per Python 3.14. |
+| [v0.0.224](changelog/0.0.224.md) | 2026-04-26 | `xml.sax.saxutils` deep coverage per Python 3.14. |
+| [v0.0.223](changelog/0.0.223.md) | 2026-04-26 | `xml.sax.handler` deep coverage per Python 3.14. |
+| [v0.0.222](changelog/0.0.222.md) | 2026-04-25 | Full `xml.sax` coverage per Python 3.14: the push-based SAX2 parser, all four... |
+| [v0.0.221](changelog/0.0.221.md) | 2026-04-25 | This release completes `xml.dom.pulldom` with a working pull API, real DOM no... |
+| [v0.0.220](changelog/0.0.220.md) | 2026-04-25 | This release completes the `xml.dom.minidom` serialization layer and wires up... |
+| [v0.0.219](changelog/0.0.219.md) | 2026-04-25 | This release fills in the parts of `xml.dom` and `xml.dom.minidom` that were ... |
+| [v0.0.218](changelog/0.0.218.md) | 2026-04-25 | First release of goipy. The version number tracks the number of merged PRs; v... |
+| [v0.0.217](changelog/0.0.217.md) | 2026-04-25 | `xml.etree.ElementTree` extended: `QName`, `TreeBuilder`, `iterparse` with |
+| [v0.0.216](changelog/0.0.216.md) | 2026-04-25 | Full `xml` package: `xml.etree.ElementTree` (parse, Element, SubElement, |
+| [v0.0.215](changelog/0.0.215.md) | 2026-04-25 | `html.entities` extended to full CPython 3.14 spec: all 2231 named character |
+| [v0.0.214](changelog/0.0.214.md) | 2026-04-25 | `html.parser` extended to full CPython 3.14 spec: `handle_starttag`, |
+| [v0.0.213](changelog/0.0.213.md) | 2026-04-25 | `html`: `unescape`, `escape`. `html.parser`: `HTMLParser`. `html.entities`: |
+| [v0.0.212](changelog/0.0.212.md) | 2026-04-25 | `quopri`: `encode`, `decode`, `encodestring`, `decodestring`. Quoted-printable |
+| [v0.0.211](changelog/0.0.211.md) | 2026-04-25 | `binascii` extended to full CPython 3.14 spec: `b2a_qp`, `a2b_qp`, |
+| [v0.0.210](changelog/0.0.210.md) | 2026-04-25 | `base64` extended to full CPython 3.14 spec: `encodebytes`, `decodebytes`, |
+| [v0.0.209](changelog/0.0.209.md) | 2026-04-25 | `mimetypes`: `guess_type`, `guess_extension`, `guess_all_extensions`, |
+| [v0.0.208](changelog/0.0.208.md) | 2026-04-25 | `mailbox`: `mbox`, `Maildir`, `MaildirMessage`, `mboxMessage`. `add`, |
+| [v0.0.207](changelog/0.0.207.md) | 2026-04-25 | `json` extended to full CPython 3.14 feature set: `JSONDecodeError` with |
+| [v0.0.206](changelog/0.0.206.md) | 2026-04-25 | `email` package: `email.message.Message`, MIME classes (`MIMEText`, |
+| [v0.0.205](changelog/0.0.205.md) | 2026-04-25 | `mmap`: file-backed and anonymous mappings. `ACCESS_READ`, `ACCESS_WRITE`, |
+| [v0.0.204](changelog/0.0.204.md) | 2026-04-25 | `signal`: `signal`, `getsignal`, `raise_signal`, `strsignal`, `valid_signals`, |
+| [v0.0.203](changelog/0.0.203.md) | 2026-04-25 | `selectors`: `DefaultSelector`, `EpollSelector`, `KqueueSelector`, |
+| [v0.0.202](changelog/0.0.202.md) | 2026-04-25 | `select`: `select`, `poll`, `epoll`, `kqueue`, `kevent`. `POLLIN`, `POLLOUT`, |
+| [v0.0.201](changelog/0.0.201.md) | 2026-04-25 | `ssl` backed by Go `crypto/tls`: `SSLContext`, `wrap_socket`, `SSLSocket`, |
+| [v0.0.200](changelog/0.0.200.md) | 2026-04-25 | `socket`: TCP/UDP backed by Go `net`. `socketpair` via `syscall.Socketpair`. |
+| [v0.0.199](changelog/0.0.199.md) | 2026-04-25 | `asyncio` full CPython 3.14 API: `Task`, `Future`, `create_task`, |
+| [v0.0.198](changelog/0.0.198.md) | 2026-04-25 | `_thread`: `start_new_thread`, `allocate_lock`, `get_ident`, `exit`, |
+| [v0.0.197](changelog/0.0.197.md) | 2026-04-25 | `contextvars`: `ContextVar`, `Token`, `Context`, `copy_context`. Per-goroutine |
+| [v0.0.196](changelog/0.0.196.md) | 2026-04-25 | `queue`: `Queue`, `LifoQueue`, `PriorityQueue`, `SimpleQueue`. `task_done`, |
+| [v0.0.195](changelog/0.0.195.md) | 2026-04-25 | `sched`: `scheduler` backed by `container/heap`. `enter`, `enterabs`, |
+| [v0.0.194](changelog/0.0.194.md) | 2026-04-25 | `subprocess`: `run`, `Popen`, `call`, `check_call`, `check_output`, |
+| [v0.0.193](changelog/0.0.193.md) | 2026-04-25 | `concurrent.interpreters`: `Interpreter`, `Queue`. `exec`, `call`, |
+| [v0.0.192](changelog/0.0.192.md) | 2026-04-25 | `concurrent.futures`: `ThreadPoolExecutor`, `ProcessPoolExecutor`, `Future`, |
+| [v0.0.191](changelog/0.0.191.md) | 2026-04-25 | `multiprocessing.shared_memory`: `SharedMemory`, `ShareableList`. |
+| [v0.0.190](changelog/0.0.190.md) | 2026-04-25 | `multiprocessing`: goroutine-backed `Process`, `Queue`, `Pipe`, `Pool` |
+| [v0.0.189](changelog/0.0.189.md) | 2026-04-25 | `threading` rewritten with real goroutines. `Thread` maps to `goroutine`. |
+| [v0.0.188](changelog/0.0.188.md) | 2026-04-24 | `cmd`: `Cmd` base class. `cmdloop`, `onecmd`, `parseline`, `emptyline`, |
+| [v0.0.187](changelog/0.0.187.md) | 2026-04-24 | `curses.panel`: `new_panel`, `top_panel`, `bottom_panel`, `update_panels`, |
+| [v0.0.186](changelog/0.0.186.md) | 2026-04-24 | `curses.ascii`: all 32 classification functions (`isalpha`, `isdigit`, |
+| [v0.0.185](changelog/0.0.185.md) | 2026-04-24 | `curses.textpad`: `Textbox` with all editing commands (Ctrl-A through Ctrl-Z). |
+| [v0.0.184](changelog/0.0.184.md) | 2026-04-24 | `curses`: `initscr`, `newwin`, `wrapper`. Window methods: `addstr`, `addch`, |
+| [v0.0.183](changelog/0.0.183.md) | 2026-04-24 | `fileinput`: `input`, `filename`, `fileno`, `lineno`, `filelineno`, |
+| [v0.0.182](changelog/0.0.182.md) | 2026-04-24 | `getpass`: `getpass`, `getuser`. Falls back to `input` when no TTY is present. |
+| [v0.0.181](changelog/0.0.181.md) | 2026-04-24 | `optparse`: `OptionParser`, `add_option`, `parse_args`. `store`, `store_true`, |
+| [v0.0.180](changelog/0.0.180.md) | 2026-04-24 | `argparse`: `ArgumentParser`, `add_argument`, `parse_args`, `parse_known_args`. |
+| [v0.0.179](changelog/0.0.179.md) | 2026-04-24 | `ctypes`: `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_char`, `c_char_p`, |
+| [v0.0.178](changelog/0.0.178.md) | 2026-04-24 | `errno`: all standard POSIX error constants (`EPERM`, `ENOENT`, `EACCES`, |
+| [v0.0.177](changelog/0.0.177.md) | 2026-04-24 | `platform`: `system`, `node`, `release`, `version`, `machine`, `processor`, |
+| [v0.0.176](changelog/0.0.176.md) | 2026-04-24 | `logging.handlers`: `RotatingFileHandler`, `TimedRotatingFileHandler`, |
+| [v0.0.175](changelog/0.0.175.md) | 2026-04-24 | `logging.config`: `dictConfig`, `fileConfig`, `listen`, `stopListening`. |
+| [v0.0.174](changelog/0.0.174.md) | 2026-04-24 | `logging` full coverage: `Logger`, `Handler`, `Formatter`, `Filter`, |
+| [v0.0.173](changelog/0.0.173.md) | 2026-04-24 | `time` full coverage: `struct_time`, `strftime`, `strptime`, `localtime`, |
+| [v0.0.172](changelog/0.0.172.md) | 2026-04-24 | `io` full coverage: `BytesIO` all methods, `StringIO` all methods, |
+| [v0.0.171](changelog/0.0.171.md) | 2026-04-24 | `os` full coverage: `walk`, `scandir` (with `DirEntry`), file-descriptor |
+| [v0.0.170](changelog/0.0.170.md) | 2026-04-24 | `secrets` full coverage: correct error messages, `choice`, `randbits`, |
+| [v0.0.169](changelog/0.0.169.md) | 2026-04-24 | `hmac` full coverage: SHA-3 digestmod, `block_size`, `copy`, callable |
+| [v0.0.168](changelog/0.0.168.md) | 2026-04-24 | `hashlib` full coverage: `md5`, `sha1`, `sha224`, `sha256`, `sha384`, |
+| [v0.0.167](changelog/0.0.167.md) | 2026-04-24 | `plistlib`: `loads`, `dumps`, `load`, `dump`. XML and binary plist formats. |
+| [v0.0.166](changelog/0.0.166.md) | 2026-04-24 | `netrc`: `netrc`, `netrc_entry`. Parses `.netrc` format; `authenticators`, |
+| [v0.0.165](changelog/0.0.165.md) | 2026-04-24 | `tomllib`: TOML v1.0 parser. Tables, arrays of tables, inline tables, |
+| [v0.0.164](changelog/0.0.164.md) | 2026-04-24 | `configparser`: `ConfigParser`, `RawConfigParser`, `SafeConfigParser`, |
+| [v0.0.163](changelog/0.0.163.md) | 2026-04-24 | `csv` full coverage: `reader`, `writer`, `DictReader`, `DictWriter`, |
+| [v0.0.162](changelog/0.0.162.md) | 2026-04-24 | `zstd` (`compression.zstd`): `compress`, `decompress`, `ZstdCompressor`, |
+| [v0.0.161](changelog/0.0.161.md) | 2026-04-24 | `tarfile`: `open`, `TarFile`, `TarInfo`. Read/write/append modes. |
+| [v0.0.160](changelog/0.0.160.md) | 2026-04-24 | `zipfile`: `ZipFile`, `ZipInfo`, `is_zipfile`, `Path`. Read, write, append |
+| [v0.0.159](changelog/0.0.159.md) | 2026-04-24 | `lzma`: `LZMAFile`, `LZMACompressor`, `LZMADecompressor`, `compress`, |
+| [v0.0.158](changelog/0.0.158.md) | 2026-04-24 | `bz2`: `BZ2File`, `BZ2Compressor`, `BZ2Decompressor`, `compress`, `decompress`. |
+| [v0.0.157](changelog/0.0.157.md) | 2026-04-24 | `gzip`: `open`, `GzipFile`, `compress`, `decompress`. Read/write modes, |
+| [v0.0.156](changelog/0.0.156.md) | 2026-04-24 | `zlib` full coverage: `compress`, `decompress`, `compressobj`, `decompressobj`, |
+| [v0.0.155](changelog/0.0.155.md) | 2026-04-24 | `sqlite3`: `connect`, `Connection`, `Cursor`, `Row`. DDL, DML, `executemany`, |
+| [v0.0.154](changelog/0.0.154.md) | 2026-04-24 | `dbm`: `open`, `whichdb`, `ndbm`/`gdbm`/`dumb` backends via Go's |
+| [v0.0.153](changelog/0.0.153.md) | 2026-04-24 | `marshal`: `dumps`, `loads`, `dump`, `load`. All CPython 3.14 marshal codes |
+| [v0.0.152](changelog/0.0.152.md) | 2026-04-24 | `shelve`: `open`, `Shelf`, `DbfilenameShelf`, `BsdDbShelf`. Key-based |
+| [v0.0.151](changelog/0.0.151.md) | 2026-04-24 | `copyreg`: `dispatch_table`, `pickle`, `constructor`. Used by `pickle` to |
+| [v0.0.150](changelog/0.0.150.md) | 2026-04-24 | `pickle`: `dumps`, `loads`, `Pickler`, `Unpickler`, protocols 0-5, |
+| [v0.0.149](changelog/0.0.149.md) | 2026-04-24 | `shutil`: `copy`, `copy2`, `copyfile`, `copyfileobj`, `copymode`, `copystat`, |
+| [v0.0.148](changelog/0.0.148.md) | 2026-04-23 | `linecache`: `getline`, `getlines`, `checkcache`, `clearcache`, `lazycache`. |
+| [v0.0.147](changelog/0.0.147.md) | 2026-04-23 | `fnmatch`: `fnmatch`, `fnmatchcase`, `filter`, `translate`. Character class |
+| [v0.0.146](changelog/0.0.146.md) | 2026-04-23 | `glob`: `glob`, `iglob`, `escape`, `translate`. Recursive `**` pattern. |
+| [v0.0.145](changelog/0.0.145.md) | 2026-04-23 | `tempfile`: `NamedTemporaryFile`, `TemporaryFile`, `SpooledTemporaryFile`, |
+| [v0.0.144](changelog/0.0.144.md) | 2026-04-23 | `filecmp`: `cmp`, `cmpfiles`, `dircmp`. `os.chdir` added. |
+| [v0.0.143](changelog/0.0.143.md) | 2026-04-23 | `stat`: all `S_IS*` predicates, `S_IMODE`, `S_IFMT`, `filemode`, `UF_*`, |
+| [v0.0.142](changelog/0.0.142.md) | 2026-04-23 | `os.path` complete: `join`, `split`, `dirname`, `basename`, `exists`, |
+| [v0.0.141](changelog/0.0.141.md) | 2026-04-23 | `pathlib`: `Path`, `PurePath`, `PurePosixPath`, `PureWindowsPath`. Full |
+| [v0.0.140](changelog/0.0.140.md) | 2026-04-23 | `operator` complete: all comparison, arithmetic, bitwise, and item-access |
+| [v0.0.139](changelog/0.0.139.md) | 2026-04-23 | `functools` complete: `reduce`, `partial`, `partialmethod`, `lru_cache`, |
+| [v0.0.138](changelog/0.0.138.md) | 2026-04-23 | `itertools` complete: `batched`, `pairwise`, `takewhile`, `dropwhile`, |
+| [v0.0.137](changelog/0.0.137.md) | 2026-04-23 | `statistics` rewritten to full Python 3.14 spec: `fmean`, `geometric_mean`, |
+| [v0.0.136](changelog/0.0.136.md) | 2026-04-23 | `random`: `Random` class, `SystemRandom`, all distribution functions |
+| [v0.0.135](changelog/0.0.135.md) | 2026-04-23 | `fractions`: `Fraction` with exact rational arithmetic, `limit_denominator`, |
+| [v0.0.134](changelog/0.0.134.md) | 2026-04-23 | `decimal`: `Decimal`, `Context`, `getcontext`, `setcontext`, |
+| [v0.0.133](changelog/0.0.133.md) | 2026-04-23 | `cmath`: `phase`, `polar`, `rect`, `exp`, `log`, `log10`, `sqrt`, `sin`, |
+| [v0.0.132](changelog/0.0.132.md) | 2026-04-23 | `math` full coverage: `comb`, `perm`, `isqrt`, `ulp`, `nextafter`, `dist`, |
+| [v0.0.131](changelog/0.0.131.md) | 2026-04-23 | `numbers`: abstract numeric tower: `Complex`, `Real`, `Rational`, `Integral`. |
+| [v0.0.130](changelog/0.0.130.md) | 2026-04-23 | `graphlib`: `TopologicalSorter` with `prepare`, `get_ready`, `done`, |
+| [v0.0.129](changelog/0.0.129.md) | 2026-04-23 | `enum`: `Enum`, `IntEnum`, `Flag`, `IntFlag`, `StrEnum`, `auto`, `unique`, |
+| [v0.0.128](changelog/0.0.128.md) | 2026-04-23 | `reprlib`: `Repr` class with customizable limits; `aRepr` singleton; |
+| [v0.0.127](changelog/0.0.127.md) | 2026-04-23 | `pprint`: `PrettyPrinter` with indent, width, depth, compact, sort_dicts; |
+| [v0.0.126](changelog/0.0.126.md) | 2026-04-23 | `copy`: `copy`, `deepcopy` with cycle detection and `__copy__`/`__deepcopy__` |
+| [v0.0.125](changelog/0.0.125.md) | 2026-04-22 | `types`: `SimpleNamespace`, `MappingProxyType`, `ModuleType`, `FunctionType`, |
+| [v0.0.124](changelog/0.0.124.md) | 2026-04-22 | `weakref`: `ref`, `proxy`, `WeakValueDictionary`, `WeakKeyDictionary`, |
+| [v0.0.123](changelog/0.0.123.md) | 2026-04-22 | `array`: typed homogeneous sequences. All type codes (`b`, `B`, `u`, `h`, |
+| [v0.0.122](changelog/0.0.122.md) | 2026-04-22 | `bisect` full coverage: `bisect_left`, `bisect_right`, `insort_left`, |
+| [v0.0.121](changelog/0.0.121.md) | 2026-04-22 | `heapq` full coverage: `heapify`, `heapreplace`, `heappushpop`, `merge`, |
+| [v0.0.120](changelog/0.0.120.md) | 2026-04-22 | `collections.abc`: `isinstance` checks for `Mapping`, `Sequence`, `Set`, |
+| [v0.0.119](changelog/0.0.119.md) | 2026-04-22 | `collections` full stdlib coverage: `deque` rotate/maxlen, `OrderedDict` |
+| [v0.0.118](changelog/0.0.118.md) | 2026-04-22 | `calendar`: full coverage including `TextCalendar`, `HTMLCalendar`, |
+| [v0.0.117](changelog/0.0.117.md) | 2026-04-22 | `zoneinfo`: `ZoneInfo`, `available_timezones`, `ZoneInfoNotFoundError`. Uses |
+| [v0.0.116](changelog/0.0.116.md) | 2026-04-22 | `datetime`: `date`, `time`, `datetime`, `timedelta`, `timezone`, `tzinfo`. |
+| [v0.0.115](changelog/0.0.115.md) | 2026-04-22 | `codecs`: `encode`, `decode`, `lookup`, `open`, incremental encoder/decoder, |
+| [v0.0.114](changelog/0.0.114.md) | 2026-04-22 | `struct` full coverage: all format codes (`b`, `B`, `h`, `H`, `i`, `I`, `l`, |
+| [v0.0.113](changelog/0.0.113.md) | 2026-04-22 | `rlcompleter`: `Completer` class with `complete` method, attribute and keyword |
+| [v0.0.112](changelog/0.0.112.md) | 2026-04-22 | `readline`: `get_line_buffer`, `insert_text`, `redisplay`, `parse_and_bind`, |
+| [v0.0.111](changelog/0.0.111.md) | 2026-04-22 | `stringprep` (RFC 3454): all 31 tables (`in_table_b1` through `in_table_d2`), |
+| [v0.0.110](changelog/0.0.110.md) | 2026-04-22 | `unicodedata`: `lookup`, `name`, `category`, `bidirectional`, `combining`, |
+| [v0.0.109](changelog/0.0.109.md) | 2026-04-22 | `textwrap` full coverage: `TextWrapper` constructor options, `fill`, `wrap`, |
+| [v0.0.108](changelog/0.0.108.md) | 2026-04-22 | `difflib` full coverage: `SequenceMatcher` with `get_matching_blocks`, |
+| [v0.0.107](changelog/0.0.107.md) | 2026-04-22 | `re` expanded: `Pattern.fullmatch`, `re.split`, `re.subn`, `re.escape`, |
+| [v0.0.104](changelog/0.0.104.md) | 2026-04-22 | `re` module: full flag set (`IGNORECASE`, `MULTILINE`, `DOTALL`, `VERBOSE`, |
+| [v0.0.103](changelog/0.0.103.md) | 2026-04-22 | `string.Formatter` extended tests. `string.Template` with custom delimiters. |
+| [v0.0.100](changelog/0.0.100.md) | 2026-04-22 | `string` module: `Formatter` (full format spec mini-language), `Template` |
+| [v0.0.099](changelog/0.0.099.md) | 2026-04-22 | Thread-safety fixtures: concurrent access to `list`, `dict`, `set`, |
+| [v0.0.093](changelog/0.0.093.md) | 2026-04-22 | Complete built-in exception hierarchy per docs.python.org/3/library/exceptions. |
+| [v0.0.091](changelog/0.0.091.md) | 2026-04-22 | Full `stdtypes` coverage from docs.python.org: all `str`, `int`, `float`, |
+| [v0.0.086](changelog/0.0.086.md) | 2026-04-22 | All built-in constants: `False`, `True`, `None`, `NotImplemented`, |
+| [v0.0.085](changelog/0.0.085.md) | 2026-04-22 | Seven missing CPython 3.14 opcodes implemented. `__init__` return-value check. |
+| [v0.0.080](changelog/0.0.080.md) | 2026-04-22 | Missing built-ins added: `globals`, `locals`, `vars`, `object`, `input`, |
+| [v0.0.078](changelog/0.0.078.md) | 2026-04-21 | Line table decoder for CPython 3.14 bytecode. `traceback`: format_exc, |
+| [v0.0.076](changelog/0.0.076.md) | 2026-04-21 | `statistics`: mean, median, mode, stdev, variance, pstdev, NormalDist. |
+| [v0.0.074](changelog/0.0.074.md) | 2026-04-21 | `difflib`: SequenceMatcher, `ndiff`, `unified_diff`, `context_diff`, HtmlDiff. |
+| [v0.0.072](changelog/0.0.072.md) | 2026-04-21 | `binascii`: hexlify, unhexlify, b2a/a2b variants. `uuid`: UUID1/UUID4/UUID5. |
+| [v0.0.070](changelog/0.0.070.md) | 2026-04-21 | `struct`: `pack`, `unpack`, `calcsize`, all format codes. `csv`: reader, |
+| [v0.0.068](changelog/0.0.068.md) | 2026-04-21 | `io`: `StringIO`, `BytesIO`, `FileIO`. `hashlib`: MD5, SHA-1, SHA-256, |
+| [v0.0.066](changelog/0.0.066.md) | 2026-04-21 | `json`: encoder, decoder, `loads`, `dumps`, indent/separators/sort_keys. |
+| [v0.0.064](changelog/0.0.064.md) | 2026-04-21 | `math`: full function set including `comb`, `perm`, `isqrt`, `ulp`, `dist`. |
+| [v0.0.062](changelog/0.0.062.md) | 2026-04-21 | `collections`: `deque`, `OrderedDict`, `Counter`, `ChainMap`, `namedtuple`, |
+| [v0.0.060](changelog/0.0.060.md) | 2026-04-21 | `functools`: `reduce`, `partial`, `lru_cache`, `cached_property`, |
+| [v0.0.058](changelog/0.0.058.md) | 2026-04-21 | Descriptor protocol and class-creation hooks: `__init_subclass__`, |
+| [v0.0.056](changelog/0.0.056.md) | 2026-04-21 | Complete dunder surface: in-place operators (`__iadd__` etc.), reflected |
+| [v0.0.054](changelog/0.0.054.md) | 2026-04-21 | `__dunder__` methods on user classes: `__repr__`, `__str__`, `__bool__`, |
+| [v0.0.052](changelog/0.0.052.md) | 2026-04-21 | Long-tail builtins: `pow`, `format`, `ascii`, `slice`, `dir`, `delattr`, |
+| [v0.0.050](changelog/0.0.050.md) | 2026-04-21 | `memoryview` over `bytes` and `bytearray`: slicing, format, shape, strides, |
+| [v0.0.048](changelog/0.0.048.md) | 2026-04-21 | `bytearray`: mutable byte sequences, slice assignment, `append`, `extend`, |
+| [v0.0.046](changelog/0.0.046.md) | 2026-04-21 | `frozenset` as a distinct hashable type: set operations, `issubset`, |
+| [v0.0.044](changelog/0.0.044.md) | 2026-04-21 | `complex` type: arithmetic, `abs`, `conjugate`, polar/rectangular conversion. |
+| [v0.0.042](changelog/0.0.042.md) | 2026-04-21 | `importlib`: `import_module`, `reload`, and `find_spec`. |
+| [v0.0.040](changelog/0.0.040.md) | 2026-04-21 | Package imports: `__init__.py`, sub-packages, and relative `from pkg import x` |
+| [v0.0.038](changelog/0.0.038.md) | 2026-04-21 | Filesystem imports: single-module `.pyc` loading, relative imports, and |
+| [v0.0.035](changelog/0.0.035.md) | 2026-04-20 | `async def` / `await`, async generators, `async for`, and `async with`. A |
+| [v0.0.032](changelog/0.0.032.md) | 2026-04-20 | Generator stress tests and deep generator chains. `yield from` across nested |
+| [v0.0.030](changelog/0.0.030.md) | 2026-04-20 | Format spec polish: width, fill, align, sign, `z`, `#`, `0`, precision, and |
+| [v0.0.028](changelog/0.0.028.md) | 2026-04-20 | Pattern matching edge cases: guard conditions, nested patterns, `as`-patterns, |
+| [v0.0.026](changelog/0.0.026.md) | 2026-04-20 | Descriptor stress tests. The `__class__` cell is now plumbed correctly so |
+| [v0.0.025](changelog/0.0.025.md) | 2026-04-20 | `with` statements, `super()`, descriptor protocol (`__get__`/`__set__`/ |
+| [v0.0.010](changelog/0.0.010.md) | 2026-04-20 | Initial release. The eval loop covers the core CPython 3.14 instruction set. |
