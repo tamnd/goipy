@@ -1,0 +1,6 @@
+[console_scripts]
+testpkgmeta-cli = testpkgmeta:main
+
+[plugins]
+default = testpkgmeta:DefaultPlugin
+extra = testpkgmeta:ExtraPlugin

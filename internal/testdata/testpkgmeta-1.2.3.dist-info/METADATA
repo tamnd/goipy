@@ -1,0 +1,12 @@
+Metadata-Version: 2.3
+Name: testpkgmeta
+Version: 1.2.3
+Summary: Test package for importlib.metadata fixture
+Author-email: test@example.com
+License: MIT
+Requires-Python: >=3.10
+Requires-Dist: urllib3>=1.0
+Requires-Dist: certifi
+
+This is the long description body.
+It can span multiple lines.
