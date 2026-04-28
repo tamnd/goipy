@@ -1004,16 +1004,18 @@ func (i *Interp) buildShlex() *object.Module {
 		}
 		comments := false
 		posix := true
+		if len(a) > 1 {
+			comments = isTruthy(a[1])
+		}
+		if len(a) > 2 {
+			posix = isTruthy(a[2])
+		}
 		if kw != nil {
 			if v, ok := kw.GetStr("comments"); ok {
-				if b, ok := v.(*object.Bool); ok {
-					comments = b.V
-				}
+				comments = isTruthy(v)
 			}
 			if v, ok := kw.GetStr("posix"); ok {
-				if b, ok := v.(*object.Bool); ok {
-					posix = b.V
-				}
+				posix = isTruthy(v)
 			}
 		}
 		parts, err := shlexSplit(s.V, comments, posix)
@@ -1022,6 +1024,126 @@ func (i *Interp) buildShlex() *object.Module {
 		}
 		return listOfStr(parts), nil
 	}})
+
+	shlexCls := &object.Class{
+		Name:  "shlex",
+		Bases: []*object.Class{},
+		Dict:  object.NewDict(),
+	}
+	shlexCls.Dict.SetStr("__init__", &object.BuiltinFunc{
+		Name: "__init__",
+		Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			if len(a) < 1 {
+				return object.None, nil
+			}
+			inst, ok := a[0].(*object.Instance)
+			if !ok {
+				return object.None, nil
+			}
+			posixMode := false
+			punctChars := ""
+			if len(a) > 3 {
+				if isTruthy(a[3]) {
+					posixMode = true
+				}
+			}
+			if kw != nil {
+				ks, vs := kw.Items()
+				for idx, k := range ks {
+					if kstr, ok2 := k.(*object.Str); ok2 {
+						switch kstr.V {
+						case "posix":
+							posixMode = isTruthy(vs[idx])
+						case "punctuation_chars":
+							if isTruthy(vs[idx]) {
+								punctChars = "~-./*?="
+							}
+						}
+					}
+				}
+			}
+			inst.Dict.SetStr("wordchars", &object.Str{V: "abcdfeghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"})
+			inst.Dict.SetStr("whitespace", &object.Str{V: " \t\r\n"})
+			inst.Dict.SetStr("escape", &object.Str{V: "\\"})
+			inst.Dict.SetStr("quotes", &object.Str{V: "'\""})
+			inst.Dict.SetStr("commenters", &object.Str{V: "#"})
+			inst.Dict.SetStr("whitespace_split", object.False)
+			inst.Dict.SetStr("debug", intObj(0))
+			inst.Dict.SetStr("lineno", intObj(1))
+			inst.Dict.SetStr("token", &object.Str{V: ""})
+			inst.Dict.SetStr("punctuation_chars", &object.Str{V: punctChars})
+			if posixMode {
+				inst.Dict.SetStr("posix", object.True)
+			} else {
+				inst.Dict.SetStr("posix", object.False)
+			}
+			inst.Dict.SetStr("eof", &object.Str{V: ""})
+			inst.Dict.SetStr("source", object.None)
+			inst.Dict.SetStr("state", &object.Str{V: " "})
+			inst.Dict.SetStr("filestack", &object.List{V: []object.Object{}})
+			inst.Dict.SetStr("pushback", &object.List{V: []object.Object{}})
+			inst.Dict.SetStr("infile", object.None)
+			return object.None, nil
+		},
+	})
+
+	noneStub := func(name string) *object.BuiltinFunc {
+		return &object.BuiltinFunc{
+			Name: name,
+			Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+				return object.None, nil
+			},
+		}
+	}
+	shlexCls.Dict.SetStr("get_token", &object.BuiltinFunc{
+		Name: "get_token",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: ""}, nil
+		},
+	})
+	shlexCls.Dict.SetStr("read_token", &object.BuiltinFunc{
+		Name: "read_token",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: ""}, nil
+		},
+	})
+	shlexCls.Dict.SetStr("push_token", noneStub("push_token"))
+	shlexCls.Dict.SetStr("push_source", noneStub("push_source"))
+	shlexCls.Dict.SetStr("pop_source", noneStub("pop_source"))
+	shlexCls.Dict.SetStr("sourcehook", &object.BuiltinFunc{
+		Name: "sourcehook",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			fname := object.Object(object.None)
+			if len(a) > 1 {
+				fname = a[1]
+			} else if len(a) > 0 {
+				fname = a[0]
+			}
+			return &object.Tuple{V: []object.Object{fname, object.None}}, nil
+		},
+	})
+	shlexCls.Dict.SetStr("error_leader", &object.BuiltinFunc{
+		Name: "error_leader",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: ""}, nil
+		},
+	})
+	shlexCls.Dict.SetStr("__iter__", &object.BuiltinFunc{
+		Name: "__iter__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) > 0 {
+				return a[0], nil
+			}
+			return object.None, nil
+		},
+	})
+	shlexCls.Dict.SetStr("__next__", &object.BuiltinFunc{
+		Name: "__next__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return nil, object.Errorf(i.stopIter, "")
+		},
+	})
+	m.Dict.SetStr("shlex", shlexCls)
 
 	return m
 }
@@ -1073,6 +1195,10 @@ func shlexSplit(s string, comments, posix bool) ([]string, error) {
 			}
 		case c == '\'':
 			inToken = true
+			if !posix {
+				// non-posix: include the quote chars in the token
+				cur.WriteByte(c)
+			}
 			i++
 			for i < len(s) && s[i] != '\'' {
 				cur.WriteByte(s[i])
@@ -1081,9 +1207,15 @@ func shlexSplit(s string, comments, posix bool) ([]string, error) {
 			if i >= len(s) {
 				return nil, fmt.Errorf("No closing quotation")
 			}
+			if !posix {
+				cur.WriteByte(s[i]) // include closing quote
+			}
 			i++
 		case c == '"':
 			inToken = true
+			if !posix {
+				cur.WriteByte(c) // include opening quote
+			}
 			i++
 			for i < len(s) && s[i] != '"' {
 				if s[i] == '\\' && posix && i+1 < len(s) {
@@ -1100,6 +1232,9 @@ func shlexSplit(s string, comments, posix bool) ([]string, error) {
 			}
 			if i >= len(s) {
 				return nil, fmt.Errorf("No closing quotation")
+			}
+			if !posix {
+				cur.WriteByte(s[i]) // include closing double-quote
 			}
 			i++
 		default:
