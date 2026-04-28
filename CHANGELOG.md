@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.325](changelog/0.0.325.md) | 2026-04-28 | termios deep coverage -- 4 constant fixes, remove 7 fake constants, fixture 325 |
 | [v0.0.324](changelog/0.0.324.md) | 2026-04-28 | grp deep coverage -- getgrgid/getgrnam/getgrall fixes and fixture 324 |
 | [v0.0.323](changelog/0.0.323.md) | 2026-04-28 | pwd deep coverage -- getpwnam/getpwall fixes and fixture 323 |
 | [v0.0.322](changelog/0.0.322.md) | 2026-04-28 | posix deep coverage -- named result classes, 20+ new constants, 30+ new functions |
