@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.0.291 - 2026-04-28
+
+`inspect` — comprehensive deep-coverage fixture (291) for https://docs.python.org/3/library/inspect.html. Extends the basic fixture 277.
+
+**New functions:** `getcomments(obj)` (returns None — no source in .pyc env); `ispackage(path)` (returns False); `walktree(classes, children, parent)` (callable stub); `isasyncgen(obj)` (returns False).
+
+**Fixed predicates:** `isasyncgenfunction` now checks `CO_ASYNC_GENERATOR` flag (0x200); `iscoroutinefunction` corrected to `CO_COROUTINE` flag (0x80, was 0x100); `isgeneratorfunction` checks 0x20.
+
+**Fixed `getmro`:** now performs full depth-first MRO traversal instead of only returning direct bases.
+
+**New classes:** `BoundArguments` with `args`/`kwargs`/`arguments` attrs; `Signature.bind` and `Signature.bind_partial` methods returning `BoundArguments`.
+
+**Fixed `getmembers_static`:** now returns the object's dict items (previously returned empty list).
+
+**Fixed `classify_class_attrs`:** returns a list of `Attribute` instances with `name`, `kind`, `defining_class`, `object` fields (previously always empty).
+
+**Fixed `indentsize`:** counts leading whitespace after tab expansion (tab → 8 spaces), matching Python's `str.expandtabs(8)` semantics.
+
+**Fixed `formatannotation`:** string annotations now return their `repr()` (quoted form), matching CPython.
+
+**`FrameInfo._fields`:** `('frame', 'filename', 'lineno', 'function', 'code_context', 'index')`.
+
+**`Attribute._fields`:** `('name', 'kind', 'defining_class', 'object')`.
+
+**CO_* constants:** all 12 — `CO_OPTIMIZED=1`, `CO_NEWLOCALS=2`, `CO_VARARGS=4`, `CO_VARKEYWORDS=8`, `CO_NESTED=16`, `CO_GENERATOR=32`, `CO_NOFREE=64`, `CO_COROUTINE=128`, `CO_ITERABLE_COROUTINE=256`, `CO_ASYNC_GENERATOR=512`, `CO_HAS_DOCSTRING=67108864`, `CO_METHOD=134217728`.
+
+**`TPFLAGS_IS_ABSTRACT = 1048576`**.
+
 ## v0.0.290 - 2026-04-28
 
 `gc` — comprehensive deep-coverage fixture (290) for https://docs.python.org/3/library/gc.html. Extends the partial implementation in `vm/stdlib_gc.go`.
