@@ -36,21 +36,52 @@ func (i *Interp) buildGrp() *object.Module {
 	})
 	d.SetStr("struct_group", groupCls)
 
-	notFound := func(name string) *object.BuiltinFunc {
-		return &object.BuiltinFunc{
-			Name: name,
-			Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-				return nil, object.Errorf(i.keyErr, "%s(): group not found", name)
-			},
+	mkGroup := func(name, passwd string, gid int, mem []string) *object.Instance {
+		inst := &object.Instance{Class: groupCls, Dict: object.NewDict()}
+		inst.Dict.SetStr("gr_name", &object.Str{V: name})
+		inst.Dict.SetStr("gr_passwd", &object.Str{V: passwd})
+		inst.Dict.SetStr("gr_gid", intObj(int64(gid)))
+		members := make([]object.Object, len(mem))
+		for idx, s := range mem {
+			members[idx] = &object.Str{V: s}
 		}
+		inst.Dict.SetStr("gr_mem", &object.List{V: members})
+		return inst
 	}
 
-	d.SetStr("getgrgid", notFound("getgrgid"))
-	d.SetStr("getgrnam", notFound("getgrnam"))
+	// stub database: gid 0 = wheel (mirrors macOS)
+	wheelEntry := mkGroup("wheel", "*", 0, []string{"root"})
+
+	d.SetStr("getgrgid", &object.BuiltinFunc{
+		Name: "getgrgid",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			a = mpArgs(a)
+			if len(a) > 0 {
+				if n, ok := a[0].(*object.Int); ok && n.V.Int64() == 0 {
+					return mkGroup("wheel", "*", 0, []string{"root"}), nil
+				}
+			}
+			return nil, object.Errorf(i.keyErr, "getgrgid(): gid not found")
+		},
+	})
+
+	d.SetStr("getgrnam", &object.BuiltinFunc{
+		Name: "getgrnam",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			a = mpArgs(a)
+			if len(a) > 0 {
+				if s, ok := a[0].(*object.Str); ok && s.V == "wheel" {
+					return mkGroup("wheel", "*", 0, []string{"root"}), nil
+				}
+			}
+			return nil, object.Errorf(i.keyErr, "getgrnam(): group not found")
+		},
+	})
+
 	d.SetStr("getgrall", &object.BuiltinFunc{
 		Name: "getgrall",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.List{V: []object.Object{}}, nil
+			return &object.List{V: []object.Object{wheelEntry}}, nil
 		},
 	})
 
