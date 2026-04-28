@@ -1455,6 +1455,35 @@ func (i *Interp) initBuiltins() {
 			return nil, err
 		}
 		cls := &object.Class{Name: name, Bases: bases, Dict: ns}
+		// __slots__: parse from class namespace. If declared and no
+		// base class has a __dict__ and '__dict__' isn't itself in
+		// the slot list, instances of cls reject non-slot attr
+		// writes. '__weakref__' is accepted as a slot name but is
+		// otherwise inert (goipy weakrefs work on every instance).
+		if v, ok := ns.GetStr("__slots__"); ok {
+			rawSlots := parseSlots(v)
+			allowDict := false
+			for _, s := range rawSlots {
+				if s == "__dict__" {
+					allowDict = true
+				}
+			}
+			for _, b := range bases {
+				if !b.NoDict {
+					allowDict = true
+					break
+				}
+			}
+			cleaned := rawSlots[:0]
+			for _, s := range rawSlots {
+				if s == "__dict__" || s == "__weakref__" {
+					continue
+				}
+				cleaned = append(cleaned, s)
+			}
+			cls.Slots = cleaned
+			cls.NoDict = !allowDict
+		}
 		// Populate __class__ cell so zero-arg super() in methods resolves.
 		if v, ok := ns.GetStr("__classcell__"); ok {
 			if c, ok := v.(*object.Cell); ok {
@@ -1633,6 +1662,68 @@ func dirOf(args []object.Object) []object.Object {
 		out = append(out, &object.Str{V: n})
 	}
 	return out
+}
+
+// parseSlots normalises a __slots__ value into a list of name strings.
+// Accepts a single str, a tuple/list of str, or a dict whose keys are str.
+// Any non-string entry is silently dropped — CPython would raise TypeError
+// at class-creation time, but goipy's class machinery doesn't have a clean
+// place to raise from and the resulting class would be unusable anyway.
+func parseSlots(v object.Object) []string {
+	switch s := v.(type) {
+	case *object.Str:
+		return []string{s.V}
+	case *object.Tuple:
+		out := make([]string, 0, len(s.V))
+		for _, x := range s.V {
+			if str, ok := x.(*object.Str); ok {
+				out = append(out, str.V)
+			}
+		}
+		return out
+	case *object.List:
+		out := make([]string, 0, len(s.V))
+		for _, x := range s.V {
+			if str, ok := x.(*object.Str); ok {
+				out = append(out, str.V)
+			}
+		}
+		return out
+	case *object.Dict:
+		ks, _ := s.Items()
+		out := make([]string, 0, len(ks))
+		for _, k := range ks {
+			if str, ok := k.(*object.Str); ok {
+				out = append(out, str.V)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// slotAllowed reports whether name is in the union of __slots__ across
+// cls and its MRO ancestors. Used to gate setattr/delattr when the
+// class declares NoDict.
+func slotAllowed(cls *object.Class, name string) bool {
+	for _, c := range computeMRO(cls) {
+		for _, s := range c.Slots {
+			if s == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasSlotsInMRO reports whether any class in cls's MRO declared __slots__.
+func hasSlotsInMRO(cls *object.Class) bool {
+	for _, c := range computeMRO(cls) {
+		if len(c.Slots) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func sortStrings(s []string) {

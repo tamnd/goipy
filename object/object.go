@@ -467,6 +467,15 @@ type Class struct {
 	// MRO computed lazily
 	mro []*Class
 
+	// Slots is the list of own __slots__ names declared by this class
+	// (excluding '__dict__' and '__weakref__'). Nil if the class did
+	// not declare __slots__. NoDict, when true, suppresses __dict__
+	// on instances and rejects assignment to non-slot names. The
+	// default (false) preserves the legacy "every instance has a
+	// dict" behaviour.
+	Slots  []string
+	NoDict bool
+
 	// Mu protects MethodCache for concurrent access from goroutine threads.
 	Mu sync.Mutex
 
