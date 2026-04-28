@@ -265,6 +265,108 @@ func (i *Interp) buildSys() *object.Module {
 	// ── sys.stdin (stub) ──────────────────────────────────────────────────────
 	m.Dict.SetStr("stdin", object.None)
 
+	// ── sys path-init attributes ───────────────────────────────────────────────
+
+	m.Dict.SetStr("path_hooks", &object.List{V: nil})
+	m.Dict.SetStr("path_importer_cache", object.NewDict())
+	m.Dict.SetStr("meta_path", &object.List{V: nil})
+
+	m.Dict.SetStr("prefix", &object.Str{V: ""})
+	m.Dict.SetStr("exec_prefix", &object.Str{V: ""})
+	m.Dict.SetStr("base_prefix", &object.Str{V: ""})
+	m.Dict.SetStr("base_exec_prefix", &object.Str{V: ""})
+	m.Dict.SetStr("platlibdir", &object.Str{V: "lib"})
+
+	m.Dict.SetStr("abiflags", &object.Str{V: ""})
+	m.Dict.SetStr("float_repr_style", &object.Str{V: "short"})
+	m.Dict.SetStr("hexversion", object.NewInt(0x030e00f0))
+
+	// sys.stdlib_module_names — frozenset of CPython 3.14 stdlib module names
+	stdlibNames := []string{
+		"_thread", "abc", "aifc", "argparse", "array", "ast", "asynchat",
+		"asyncio", "asyncore", "atexit", "audioop", "base64", "bdb", "binascii",
+		"binhex", "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb",
+		"chunk", "cmath", "cmd", "code", "codecs", "codeop", "colorsys",
+		"compileall", "concurrent", "configparser", "contextlib", "contextvars",
+		"copy", "copyreg", "cProfile", "csv", "ctypes", "curses", "dataclasses",
+		"datetime", "dbm", "decimal", "difflib", "dis", "doctest", "email",
+		"encodings", "enum", "errno", "faulthandler", "fcntl", "filecmp",
+		"fileinput", "fnmatch", "fractions", "ftplib", "functools", "gc",
+		"getopt", "getpass", "gettext", "glob", "grp", "gzip", "hashlib",
+		"heapq", "hmac", "html", "http", "idlelib", "imaplib", "importlib",
+		"inspect", "io", "ipaddress", "itertools", "json", "keyword", "lib2to3",
+		"linecache", "locale", "logging", "lzma", "mailbox", "marshal", "math",
+		"mimetypes", "mmap", "modulefinder", "multiprocessing", "netrc",
+		"numbers", "operator", "optparse", "os", "ossaudiodev", "pathlib",
+		"pdb", "pickle", "pickletools", "pipes", "pkgutil", "platform",
+		"plistlib", "poplib", "posix", "posixpath", "pprint", "profile",
+		"pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "queue",
+		"quopri", "random", "re", "readline", "reprlib", "resource", "rlcompleter",
+		"runpy", "sched", "secrets", "select", "selectors", "shelve", "shlex",
+		"shutil", "signal", "site", "smtpd", "smtplib", "sndhdr", "socket",
+		"socketserver", "spwd", "sqlite3", "sre_compile", "sre_constants",
+		"sre_parse", "ssl", "stat", "statistics", "string", "stringprep",
+		"struct", "subprocess", "sunau", "symtable", "sys", "sysconfig",
+		"syslog", "tabnanny", "tarfile", "telnetlib", "tempfile", "termios",
+		"test", "textwrap", "threading", "time", "timeit", "tkinter", "token",
+		"tokenize", "tomllib", "trace", "traceback", "tracemalloc", "tty",
+		"turtle", "turtledemo", "types", "typing", "unicodedata", "unittest",
+		"urllib", "uu", "uuid", "venv", "warnings", "wave", "weakref",
+		"webbrowser", "wsgiref", "xdrlib", "xml", "xmlrpc", "zipapp",
+		"zipfile", "zipimport", "zlib", "zoneinfo",
+	}
+	stdlibFS := object.NewFrozenset()
+	for _, n := range stdlibNames {
+		_ = stdlibFS.Add(&object.Str{V: n})
+	}
+	m.Dict.SetStr("stdlib_module_names", stdlibFS)
+
+	// sys.int_info
+	intInfoCls := &object.Class{Name: "int_info", Dict: object.NewDict()}
+	intInfoInst := &object.Instance{Class: intInfoCls, Dict: object.NewDict()}
+	intInfoInst.Dict.SetStr("bits_per_digit", object.NewInt(30))
+	intInfoInst.Dict.SetStr("sizeof_digit", object.NewInt(4))
+	intInfoInst.Dict.SetStr("default_max_str_digits", object.NewInt(4300))
+	intInfoInst.Dict.SetStr("str_digits_check_threshold", object.NewInt(640))
+	m.Dict.SetStr("int_info", intInfoInst)
+
+	// sys.float_info
+	floatInfoCls := &object.Class{Name: "float_info", Dict: object.NewDict()}
+	floatInfoInst := &object.Instance{Class: floatInfoCls, Dict: object.NewDict()}
+	floatInfoInst.Dict.SetStr("max", &object.Float{V: 1.7976931348623157e+308})
+	floatInfoInst.Dict.SetStr("max_exp", object.NewInt(1024))
+	floatInfoInst.Dict.SetStr("max_10_exp", object.NewInt(308))
+	floatInfoInst.Dict.SetStr("min", &object.Float{V: 2.2250738585072014e-308})
+	floatInfoInst.Dict.SetStr("min_exp", object.NewInt(-1021))
+	floatInfoInst.Dict.SetStr("min_10_exp", object.NewInt(-307))
+	floatInfoInst.Dict.SetStr("dig", object.NewInt(15))
+	floatInfoInst.Dict.SetStr("mant_dig", object.NewInt(53))
+	floatInfoInst.Dict.SetStr("epsilon", &object.Float{V: 2.220446049250313e-16})
+	floatInfoInst.Dict.SetStr("radix", object.NewInt(2))
+	floatInfoInst.Dict.SetStr("rounds", object.NewInt(1))
+	m.Dict.SetStr("float_info", floatInfoInst)
+
+	// sys.hash_info
+	hashInfoCls := &object.Class{Name: "hash_info", Dict: object.NewDict()}
+	hashInfoInst := &object.Instance{Class: hashInfoCls, Dict: object.NewDict()}
+	hashInfoInst.Dict.SetStr("width", object.NewInt(64))
+	hashInfoInst.Dict.SetStr("modulus", object.NewInt(2305843009213693951))
+	hashInfoInst.Dict.SetStr("inf", object.NewInt(314159))
+	hashInfoInst.Dict.SetStr("nan", object.NewInt(0))
+	hashInfoInst.Dict.SetStr("imag", object.NewInt(1000003))
+	hashInfoInst.Dict.SetStr("algorithm", &object.Str{V: "siphash13"})
+	hashInfoInst.Dict.SetStr("hash_bits", object.NewInt(64))
+	hashInfoInst.Dict.SetStr("seed_bits", object.NewInt(128))
+	m.Dict.SetStr("hash_info", hashInfoInst)
+
+	// sys.thread_info
+	threadInfoCls := &object.Class{Name: "thread_info", Dict: object.NewDict()}
+	threadInfoInst := &object.Instance{Class: threadInfoCls, Dict: object.NewDict()}
+	threadInfoInst.Dict.SetStr("name", &object.Str{V: "pthread"})
+	threadInfoInst.Dict.SetStr("lock", &object.Str{V: "mutex+cond"})
+	threadInfoInst.Dict.SetStr("version", object.None)
+	m.Dict.SetStr("thread_info", threadInfoInst)
+
 	return m
 }
 
