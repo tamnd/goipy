@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.299 - 2026-04-28
+
+`runpy` — first fixture (299) for https://docs.python.org/3/library/runpy.html. Full coverage of Python 3.14 `runpy` module public API.
+
+**New module `vm/stdlib_runpy.go`:** `run_module(mod_name, init_globals=None, run_name=None, alter_sys=False)` loads a module via goipy's module loader, snapshots its dict into a fresh result dict, overrides `__name__` with `run_name` (defaults to `mod_name`), injects `init_globals` on top, and raises `ImportError` for unknown modules; `run_path(path_name, init_globals=None, run_name=None)` verifies the path exists (raises `FileNotFoundError` otherwise), locates the sibling `.pyc` file, executes it in a fresh globals frame (with `__name__` set to `run_name` defaulting to `"<run_path>"`), injects `init_globals` before execution, and returns the resulting namespace dict.
+
 ## v0.0.298 - 2026-04-28
 
 `modulefinder` — first fixture (298) for https://docs.python.org/3/library/modulefinder.html. Full coverage of Python 3.14 `modulefinder` module public API.
