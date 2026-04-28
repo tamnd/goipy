@@ -6,6 +6,8 @@ func (s *Set) Add(o Object) error {
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, idx := range s.index[h] {
 		eq, err := Eq(s.items[idx], o)
 		if err != nil {
@@ -26,6 +28,8 @@ func (s *Set) Contains(o Object) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, idx := range s.index[h] {
 		eq, err := Eq(s.items[idx], o)
 		if err != nil {
@@ -44,6 +48,8 @@ func (s *Set) Discard(o Object) {
 	if err != nil {
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, idx := range s.index[h] {
 		eq, err := Eq(s.items[idx], o)
 		if err != nil || !eq {
@@ -70,10 +76,21 @@ func (s *Set) Discard(o Object) {
 }
 
 // Len returns element count.
-func (s *Set) Len() int { return len(s.items) }
+func (s *Set) Len() int {
+	s.mu.RLock()
+	n := len(s.items)
+	s.mu.RUnlock()
+	return n
+}
 
-// Items exposes the underlying slice (caller must not mutate).
-func (s *Set) Items() []Object { return s.items }
+// Items returns a snapshot slice of the set's elements. Safe to mutate.
+func (s *Set) Items() []Object {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Object, len(s.items))
+	copy(out, s.items)
+	return out
+}
 
 // --- Frozenset: same operations, but immutable from Python and hashable. ---
 
@@ -82,6 +99,8 @@ func (s *Frozenset) Add(o Object) error {
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, idx := range s.index[h] {
 		eq, err := Eq(s.items[idx], o)
 		if err != nil {
@@ -101,6 +120,8 @@ func (s *Frozenset) Contains(o Object) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, idx := range s.index[h] {
 		eq, err := Eq(s.items[idx], o)
 		if err != nil {
@@ -113,5 +134,18 @@ func (s *Frozenset) Contains(o Object) (bool, error) {
 	return false, nil
 }
 
-func (s *Frozenset) Len() int        { return len(s.items) }
-func (s *Frozenset) Items() []Object { return s.items }
+func (s *Frozenset) Len() int {
+	s.mu.RLock()
+	n := len(s.items)
+	s.mu.RUnlock()
+	return n
+}
+
+// Items returns a snapshot slice of the frozenset's elements.
+func (s *Frozenset) Items() []Object {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Object, len(s.items))
+	copy(out, s.items)
+	return out
+}

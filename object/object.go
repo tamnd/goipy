@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 )
 
 // Object is any Python-level value visible to bytecode.
@@ -138,12 +139,34 @@ func (s *Str) Runes() []rune {
 type Bytes struct{ V []byte }
 
 // Bytearray is Python's mutable bytes.
-// Views counts active memoryview objects backed by this bytearray; while
-// Views > 0, resize operations must raise BufferError.
+// views counts active memoryview objects backed by this bytearray; while
+// views > 0, resize operations must raise BufferError. Atomic so that
+// memoryview.release() and resize-attempt checks from different goroutines
+// observe a coherent count.
 type Bytearray struct {
 	V     []byte
-	Views int
+	views atomic.Int32
 }
+
+// AddView increments the active memoryview count.
+func (b *Bytearray) AddView() { b.views.Add(1) }
+
+// DropView decrements the active memoryview count if positive. Returns
+// true when a view was actually dropped.
+func (b *Bytearray) DropView() bool {
+	for {
+		n := b.views.Load()
+		if n <= 0 {
+			return false
+		}
+		if b.views.CompareAndSwap(n, n-1) {
+			return true
+		}
+	}
+}
+
+// HasViews reports whether any memoryview is currently backed by this bytearray.
+func (b *Bytearray) HasViews() bool { return b.views.Load() > 0 }
 
 // Memoryview is a shared view over a bytes/bytearray buffer. Start/stop
 // describe a contiguous Python slice of the backing buffer (step=1 only).
@@ -185,11 +208,53 @@ func mvRaw(m *Memoryview) []byte {
 // Tuple is immutable.
 type Tuple struct{ V []Object }
 
-// List is mutable.
-type List struct{ V []Object }
+// List is mutable. Mu guards V for concurrent goroutine access in
+// no-GIL threading. Direct V access is permitted on a freshly
+// constructed list before it is published to other goroutines; once
+// shared, callers must use Append/Extend/SetItem or take the lock
+// themselves.
+type List struct {
+	Mu sync.Mutex
+	V  []Object
+}
+
+// Append appends o to l under Mu. Used by LIST_APPEND opcode and
+// other concurrent producers.
+func (l *List) Append(o Object) {
+	l.Mu.Lock()
+	l.V = append(l.V, o)
+	l.Mu.Unlock()
+}
+
+// Extend appends items to l under Mu.
+func (l *List) Extend(items []Object) {
+	l.Mu.Lock()
+	l.V = append(l.V, items...)
+	l.Mu.Unlock()
+}
+
+// Snapshot returns a copy of l.V taken under Mu so iterators see a
+// stable view even if writers append concurrently.
+func (l *List) Snapshot() []Object {
+	l.Mu.Lock()
+	out := make([]Object, len(l.V))
+	copy(out, l.V)
+	l.Mu.Unlock()
+	return out
+}
+
+// Len returns len(l.V) under Mu.
+func (l *List) Len() int {
+	l.Mu.Lock()
+	n := len(l.V)
+	l.Mu.Unlock()
+	return n
+}
 
 // Set backed by a slice + map of hash→indices for equality-based membership.
+// mu protects items/index for concurrent goroutine access in no-GIL threading.
 type Set struct {
+	mu    sync.RWMutex
 	items []Object
 	index map[uint64][]int
 }
@@ -197,8 +262,11 @@ type Set struct {
 func NewSet() *Set { return &Set{index: map[uint64][]int{}} }
 
 // Frozenset is an immutable, hashable set. Shares the Set layout but is a
-// distinct type so TypeName, repr, and hashability differ.
+// distinct type so TypeName, repr, and hashability differ. mu guards the
+// brief construction window before the value is exposed; once frozen, only
+// reads occur and the lock is uncontended.
 type Frozenset struct {
+	mu    sync.RWMutex
 	items []Object
 	index map[uint64][]int
 }
@@ -331,10 +399,37 @@ type Function struct {
 	Dict        *Dict
 }
 
-// Cell is a shared storage slot used for closures.
+// Cell is a shared storage slot used for closures. Mu protects V/Set
+// for closures captured by goroutine-backed threads (threading.Thread
+// targets reading nonlocal state).
 type Cell struct {
+	Mu  sync.Mutex
 	V   Object
 	Set bool
+}
+
+// Load returns the cell's value and whether it is set, under Mu.
+func (c *Cell) Load() (Object, bool) {
+	c.Mu.Lock()
+	v, ok := c.V, c.Set
+	c.Mu.Unlock()
+	return v, ok
+}
+
+// Store assigns v to the cell and marks it set, under Mu.
+func (c *Cell) Store(v Object) {
+	c.Mu.Lock()
+	c.V = v
+	c.Set = true
+	c.Mu.Unlock()
+}
+
+// Unset clears the cell (DELETE_DEREF) under Mu.
+func (c *Cell) Unset() {
+	c.Mu.Lock()
+	c.V = nil
+	c.Set = false
+	c.Mu.Unlock()
 }
 
 // BuiltinFunc wraps a Go callable exposed as a Python builtin.
@@ -397,14 +492,17 @@ type MethodCacheEntry struct {
 }
 
 // classEpoch is bumped on any class dict mutation; MethodCache entries
-// carry the epoch at which they were computed.
-var classEpoch uint64 = 1
+// carry the epoch at which they were computed. Atomic so concurrent
+// goroutines (no-GIL threads) can read/bump without tearing.
+var classEpoch atomic.Uint64
+
+func init() { classEpoch.Store(1) }
 
 // ClassEpoch returns the current epoch.
-func ClassEpoch() uint64 { return classEpoch }
+func ClassEpoch() uint64 { return classEpoch.Load() }
 
 // BumpClassEpoch invalidates every class method cache.
-func BumpClassEpoch() { classEpoch++ }
+func BumpClassEpoch() { classEpoch.Add(1) }
 
 // Instance of a user class.
 type Instance struct {

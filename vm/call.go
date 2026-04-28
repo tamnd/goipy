@@ -1492,7 +1492,7 @@ func parseInt(s string) (int64, bool) {
 // BoundMethod{Fn:*BuiltinFunc} without allocating a new args slice.
 var sharedListAppend = &object.BuiltinFunc{Name: "append", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 	l := a[0].(*object.List)
-	l.V = append(l.V, a[1])
+	l.Append(a[1])
 	return object.None, nil
 }}
 
@@ -1506,11 +1506,13 @@ func listMethod(l *object.List, name string) (object.Object, bool) {
 			if err != nil {
 				return nil, err
 			}
-			l.V = append(l.V, items...)
+			l.Extend(items)
 			return object.None, nil
 		}}, true
 	case "pop":
 		return &object.BuiltinFunc{Name: "pop", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			l.Mu.Lock()
+			defer l.Mu.Unlock()
 			idx := len(l.V) - 1
 			if len(a) > 0 {
 				if n, ok := toInt64(a[0]); ok {
@@ -1529,6 +1531,8 @@ func listMethod(l *object.List, name string) (object.Object, bool) {
 		}}, true
 	case "insert":
 		return &object.BuiltinFunc{Name: "insert", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			l.Mu.Lock()
+			defer l.Mu.Unlock()
 			n, _ := toInt64(a[0])
 			idx := int(n)
 			if idx < 0 {
@@ -1545,6 +1549,8 @@ func listMethod(l *object.List, name string) (object.Object, bool) {
 		}}, true
 	case "remove":
 		return &object.BuiltinFunc{Name: "remove", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			l.Mu.Lock()
+			defer l.Mu.Unlock()
 			for k, x := range l.V {
 				eq, err := object.Eq(x, a[0])
 				if err != nil {
@@ -1559,14 +1565,18 @@ func listMethod(l *object.List, name string) (object.Object, bool) {
 		}}, true
 	case "clear":
 		return &object.BuiltinFunc{Name: "clear", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			l.Mu.Lock()
 			l.V = l.V[:0]
+			l.Mu.Unlock()
 			return object.None, nil
 		}}, true
 	case "reverse":
 		return &object.BuiltinFunc{Name: "reverse", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			l.Mu.Lock()
 			for k, j := 0, len(l.V)-1; k < j; k, j = k+1, j-1 {
 				l.V[k], l.V[j] = l.V[j], l.V[k]
 			}
+			l.Mu.Unlock()
 			return object.None, nil
 		}}, true
 	case "sort":
@@ -2264,8 +2274,8 @@ func memoryviewAttr(mv *object.Memoryview, name string) (object.Object, bool) {
 		}}, true
 	case "release":
 		return &object.BuiltinFunc{Name: "release", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba, ok := mv.Backing.(*object.Bytearray); ok && ba.Views > 0 {
-				ba.Views--
+			if ba, ok := mv.Backing.(*object.Bytearray); ok {
+				ba.DropView()
 			}
 			return object.None, nil
 		}}, true
@@ -2317,7 +2327,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 	switch name {
 	case "clear":
 		return &object.BuiltinFunc{Name: "clear", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			ba.V = ba.V[:0]
@@ -2332,7 +2342,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 		}}, true
 	case "insert":
 		return &object.BuiltinFunc{Name: "insert", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			n, ok := toInt64(a[0])
@@ -2361,7 +2371,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 		}}, true
 	case "remove":
 		return &object.BuiltinFunc{Name: "remove", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			v, ok := toInt64(a[0])
@@ -2379,7 +2389,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 		}}, true
 	case "append":
 		return &object.BuiltinFunc{Name: "append", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			n, ok := toInt64(a[0])
@@ -2391,7 +2401,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 		}}, true
 	case "extend":
 		return &object.BuiltinFunc{Name: "extend", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			if bb, ok := bytesBytesOrArray(a[0]); ok {
@@ -2413,7 +2423,7 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 		}}, true
 	case "pop":
 		return &object.BuiltinFunc{Name: "pop", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-			if ba.Views > 0 {
+			if ba.HasViews() {
 				return nil, bufErr()
 			}
 			idx := len(ba.V) - 1

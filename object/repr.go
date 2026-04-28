@@ -63,20 +63,22 @@ func Repr(o Object) string {
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	case *Set:
-		if v.Len() == 0 {
+		items := v.Items()
+		if len(items) == 0 {
 			return "set()"
 		}
-		parts := make([]string, len(v.items))
-		for i, x := range v.items {
+		parts := make([]string, len(items))
+		for i, x := range items {
 			parts[i] = Repr(x)
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	case *Frozenset:
-		if v.Len() == 0 {
+		items := v.Items()
+		if len(items) == 0 {
 			return "frozenset()"
 		}
-		parts := make([]string, len(v.items))
-		for i, x := range v.items {
+		parts := make([]string, len(items))
+		for i, x := range items {
 			parts[i] = Repr(x)
 		}
 		return "frozenset({" + strings.Join(parts, ", ") + "})"

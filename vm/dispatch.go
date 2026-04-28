@@ -205,22 +205,24 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			f.Fast[oparg] = c
 		case op.LOAD_DEREF:
 			c, ok := f.Fast[oparg].(*object.Cell)
-			if !ok || c == nil || !c.Set {
+			if !ok || c == nil {
 				return nil, object.Errorf(i.nameErr, "free variable referenced before assignment")
 			}
-			f.push(c.V)
+			v, set := c.Load()
+			if !set {
+				return nil, object.Errorf(i.nameErr, "free variable referenced before assignment")
+			}
+			f.push(v)
 		case op.STORE_DEREF:
 			c, ok := f.Fast[oparg].(*object.Cell)
 			if !ok || c == nil {
 				c = &object.Cell{}
 				f.Fast[oparg] = c
 			}
-			c.V = f.pop()
-			c.Set = true
+			c.Store(f.pop())
 		case op.DELETE_DEREF:
 			if c, ok := f.Fast[oparg].(*object.Cell); ok && c != nil {
-				c.Set = false
-				c.V = nil
+				c.Unset()
 			}
 		case op.COPY_FREE_VARS:
 			// no-op — free cells were already copied when frame was created
@@ -235,10 +237,14 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				}
 			}
 			c, ok := f.Fast[oparg].(*object.Cell)
-			if !ok || c == nil || !c.Set {
+			if !ok || c == nil {
 				return nil, object.Errorf(i.nameErr, "name '%s' is not defined", name)
 			}
-			f.push(c.V)
+			v, set := c.Load()
+			if !set {
+				return nil, object.Errorf(i.nameErr, "name '%s' is not defined", name)
+			}
+			f.push(v)
 		case op.LOAD_FROM_DICT_OR_GLOBALS:
 			name := f.Code.Names[oparg]
 			dict := f.pop()
@@ -917,7 +923,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		case op.LIST_APPEND:
 			v := f.pop()
 			l := f.peek(int(oparg) - 1).(*object.List)
-			l.V = append(l.V, v)
+			l.Append(v)
 		case op.LIST_EXTEND:
 			it := f.pop()
 			l := f.peek(int(oparg) - 1).(*object.List)
@@ -926,7 +932,7 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 			if err != nil {
 				goto handleErr
 			}
-			l.V = append(l.V, items...)
+			l.Extend(items)
 		case op.SET_ADD:
 			v := f.pop()
 			s := f.peek(int(oparg) - 1).(*object.Set)
