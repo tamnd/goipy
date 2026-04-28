@@ -299,6 +299,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildCodeop(), true
 	case "zipimport":
 		return i.buildZipimport(), true
+	case "pkgutil":
+		return i.buildPkgutil(), true
 	case "sys.monitoring":
 		return i.buildSysMonitoring(), true
 	case "shutil":
