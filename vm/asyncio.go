@@ -11,6 +11,16 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildAsyncio(), true
 	case "importlib":
 		return i.buildImportlib(), true
+	case "importlib.util":
+		return i.buildImportlibUtil(), true
+	case "importlib.abc":
+		return i.buildImportlibAbc(), true
+	case "importlib.machinery":
+		return i.buildImportlibMachinery(), true
+	case "importlib.resources":
+		return i.buildImportlibResources(), true
+	case "importlib.metadata":
+		return i.buildImportlibMetadata(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":

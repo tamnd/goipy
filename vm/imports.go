@@ -298,7 +298,16 @@ func (i *Interp) buildImportlib() *object.Module {
 			return nil, object.Errorf(i.typeErr, "reload() argument must be module")
 		}
 		if mod.Path == "" {
-			return nil, object.Errorf(i.importErr, "module %s has no .pyc path; cannot reload", mod.Name)
+			// Builtin module: re-register it from the builtin registry.
+			if fresh, ok2 := i.builtinModule(mod.Name); ok2 {
+				// Copy fresh dict into existing module so callers holding
+				// a reference see the refreshed attributes.
+				keys, vals := fresh.Dict.Items()
+				for idx, k := range keys {
+					mod.Dict.Set(k, vals[idx]) //nolint
+				}
+			}
+			return mod, nil
 		}
 		code, err := marshal.LoadPyc(mod.Path)
 		if err != nil {
@@ -313,6 +322,11 @@ func (i *Interp) buildImportlib() *object.Module {
 		return mod, nil
 	}}
 	m.Dict.SetStr("reload", reload)
+
+	m.Dict.SetStr("invalidate_caches", &object.BuiltinFunc{Name: "invalidate_caches",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		}})
 
 	return m
 }
