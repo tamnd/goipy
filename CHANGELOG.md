@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.330](changelog/0.0.330.md) | 2026-04-28 | syslog deep coverage -- 7 missing macOS facility constants and fixture 330 |
 | [v0.0.329](changelog/0.0.329.md) | 2026-04-28 | resource deep coverage -- ru_utime/ru_stime float fix and fixture 329 |
 | [v0.0.328](changelog/0.0.328.md) | 2026-04-28 | fcntl deep coverage -- 6 new constants, 5 removed, F_RDAHEAD fix, fcntl/ioctl return int |
 | [v0.0.327](changelog/0.0.327.md) | 2026-04-28 | pty deep coverage -- close, waitpid, setraw, tcgetattr, tcsetattr re-exports |
