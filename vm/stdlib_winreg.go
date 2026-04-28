@@ -31,7 +31,7 @@ func (i *Interp) buildWinreg() *object.Module {
 	d.SetStr("KEY_WOW64_64KEY", intObj(256))
 	d.SetStr("KEY_WOW64_32KEY", intObj(512))
 
-	// REG value type constants
+	// REG value type constants (documented)
 	d.SetStr("REG_NONE", intObj(0))
 	d.SetStr("REG_SZ", intObj(1))
 	d.SetStr("REG_EXPAND_SZ", intObj(2))
@@ -46,6 +46,25 @@ func (i *Interp) buildWinreg() *object.Module {
 	d.SetStr("REG_RESOURCE_REQUIREMENTS_LIST", intObj(10))
 	d.SetStr("REG_QWORD", intObj(11))
 	d.SetStr("REG_QWORD_LITTLE_ENDIAN", intObj(11))
+
+	// REG undocumented constants (present on real Windows and in typeshed)
+	d.SetStr("REG_CREATED_NEW_KEY", intObj(1))
+	d.SetStr("REG_LEGAL_CHANGE_FILTER", intObj(268435471))
+	d.SetStr("REG_LEGAL_OPTION", intObj(31))
+	d.SetStr("REG_NOTIFY_CHANGE_ATTRIBUTES", intObj(2))
+	d.SetStr("REG_NOTIFY_CHANGE_LAST_SET", intObj(4))
+	d.SetStr("REG_NOTIFY_CHANGE_NAME", intObj(1))
+	d.SetStr("REG_NOTIFY_CHANGE_SECURITY", intObj(8))
+	d.SetStr("REG_NO_LAZY_FLUSH", intObj(4))
+	d.SetStr("REG_OPENED_EXISTING_KEY", intObj(2))
+	d.SetStr("REG_OPTION_BACKUP_RESTORE", intObj(4))
+	d.SetStr("REG_OPTION_CREATE_LINK", intObj(2))
+	d.SetStr("REG_OPTION_NON_VOLATILE", intObj(0))
+	d.SetStr("REG_OPTION_OPEN_LINK", intObj(8))
+	d.SetStr("REG_OPTION_RESERVED", intObj(0))
+	d.SetStr("REG_OPTION_VOLATILE", intObj(1))
+	d.SetStr("REG_REFRESH_HIVE", intObj(2))
+	d.SetStr("REG_WHOLE_HIVE_VOLATILE", intObj(1))
 
 	// error = OSError
 	d.SetStr("error", i.osErr)
@@ -89,9 +108,30 @@ func (i *Interp) buildWinreg() *object.Module {
 			return intObj(0), nil
 		},
 	})
+	hkeyCls.Dict.SetStr("__hash__", &object.BuiltinFunc{
+		Name: "__hash__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return intObj(0), nil
+		},
+	})
+	hkeyCls.Dict.SetStr("__enter__", &object.BuiltinFunc{
+		Name: "__enter__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) > 0 {
+				return a[0], nil
+			}
+			return object.None, nil
+		},
+	})
+	hkeyCls.Dict.SetStr("__exit__", &object.BuiltinFunc{
+		Name: "__exit__",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.None, nil
+		},
+	})
 	d.SetStr("HKEYType", hkeyCls)
 
-	// stub that raises OSError
+	// All registry functions raise OSError (Windows registry not available)
 	osErrStub := func(name string) *object.BuiltinFunc {
 		return &object.BuiltinFunc{
 			Name: name,
