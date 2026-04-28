@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.322](changelog/0.0.322.md) | 2026-04-28 | posix deep coverage -- named result classes, 20+ new constants, 30+ new functions |
 | [v0.0.321](changelog/0.0.321.md) | 2026-04-28 | shlex class, posix=False fix, and fixture 321 deep coverage |
 | [v0.0.320](changelog/0.0.320.md) | 2026-04-28 | Unix modules (posix, pwd, grp, termios, tty, pty, fcntl, resource, syslog) -- fixture 320 |
 | [v0.0.319](changelog/0.0.319.md) | 2026-04-28 | winsound dedicated fixture 319 -- full API coverage |
