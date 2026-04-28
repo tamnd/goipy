@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -126,7 +127,8 @@ func (i *Interp) buildSubprocess() *object.Module {
 			if !ok {
 				return nil, object.Errorf(i.typeErr, "getoutput() cmd must be str")
 			}
-			c := exec.Command("sh", "-c", cmd.V)
+			shellName, shellArgs := spShellCommand("")
+			c := exec.Command(shellName, append(shellArgs, cmd.V)...)
 			c.Stderr = nil
 			out, _ := c.Output()
 			return &object.Str{V: strings.TrimRight(string(out), "\n")}, nil
@@ -143,7 +145,8 @@ func (i *Interp) buildSubprocess() *object.Module {
 				return nil, object.Errorf(i.typeErr, "getstatusoutput() cmd must be str")
 			}
 			var outBuf bytes.Buffer
-			c := exec.Command("sh", "-c", cmd.V)
+			shellName, shellArgs := spShellCommand("")
+			c := exec.Command(shellName, append(shellArgs, cmd.V)...)
 			c.Stdout = &outBuf
 			c.Stderr = &outBuf
 			runErr := c.Run()
@@ -173,14 +176,15 @@ func (i *Interp) makeSubprocPopen(
 ) (*object.Instance, error) {
 	// Parse parameters.
 	var (
-		argsObj    object.Object
-		stdinMode  = 0  // 0=inherit, spPIPE, spDEVNULL
-		stdoutMode = 0
-		stderrMode = 0
-		shellMode  = false
-		cwdStr     = ""
-		textMode   = false
-		envMap     *object.Dict
+		argsObj        object.Object
+		stdinMode      = 0  // 0=inherit, spPIPE, spDEVNULL
+		stdoutMode     = 0
+		stderrMode     = 0
+		shellMode      = false
+		cwdStr         = ""
+		textMode       = false
+		envMap         *object.Dict
+		executableStr  = ""
 	)
 
 	if len(a) > 0 {
@@ -241,6 +245,13 @@ func (i *Interp) makeSubprocPopen(
 				envMap = d
 			}
 		}
+		if v, ok := kw.GetStr("executable"); ok {
+			if s, ok2 := v.(*object.Str); ok2 {
+				executableStr = s.V
+			} else if b, ok2 := v.(*object.Bytes); ok2 {
+				executableStr = string(b.V)
+			}
+		}
 	}
 	if argsObj == nil {
 		return nil, object.Errorf(i.typeErr, "Popen() requires args argument")
@@ -255,12 +266,29 @@ func (i *Interp) makeSubprocPopen(
 	ps := &spPopenState{argsObj: argsObj, textMode: textMode}
 
 	if shellMode {
-		ps.cmd = exec.Command("sh", "-c", strings.Join(argv, " "))
+		// CPython: with shell=True, args[0] is the command string and
+		// args[1:] are positional arguments to the shell ($0, $1, …).
+		// Single-string args is the common case and runs the string
+		// directly.
+		if len(argv) == 0 {
+			return nil, object.Errorf(i.typeErr, "Popen() args must not be empty")
+		}
+		shellName, shellArgs := spShellCommand(executableStr)
+		fullArgs := append([]string{}, shellArgs...)
+		fullArgs = append(fullArgs, argv...)
+		ps.cmd = exec.Command(shellName, fullArgs...)
 	} else {
 		if len(argv) == 0 {
 			return nil, object.Errorf(i.typeErr, "Popen() args must not be empty")
 		}
-		ps.cmd = exec.Command(argv[0], argv[1:]...)
+		if executableStr != "" {
+			// Bypass exec.Command's PATH lookup: we want exec to land on
+			// `executable` while the running binary still sees argv[0]
+			// from the user-supplied list. CPython's argv0 trick.
+			ps.cmd = &exec.Cmd{Path: executableStr, Args: argv}
+		} else {
+			ps.cmd = exec.Command(argv[0], argv[1:]...)
+		}
 	}
 
 	if cwdStr != "" {
@@ -703,6 +731,26 @@ func (i *Interp) spCompletedProcess(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+// spShellCommand picks the shell binary and its flag for shell=True.
+// Honours the executable= kwarg, falls back to COMSPEC/cmd.exe on
+// Windows and /bin/sh on Posix.
+func spShellCommand(executable string) (name string, args []string) {
+	if runtime.GOOS == "windows" {
+		flag := "/c"
+		if executable != "" {
+			return executable, []string{flag}
+		}
+		if comspec := os.Getenv("COMSPEC"); comspec != "" {
+			return comspec, []string{flag}
+		}
+		return "cmd.exe", []string{flag}
+	}
+	if executable != "" {
+		return executable, []string{"-c"}
+	}
+	return "/bin/sh", []string{"-c"}
+}
 
 // spBuildArgv converts a Python args object to a Go string slice.
 func spBuildArgv(argsObj object.Object, shell bool) ([]string, error) {
