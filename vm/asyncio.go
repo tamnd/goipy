@@ -29,6 +29,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildSymtable(), true
 	case "token":
 		return i.buildToken(), true
+	case "keyword":
+		return i.buildKeyword(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
