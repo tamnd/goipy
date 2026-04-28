@@ -32,7 +32,7 @@ func termiosConstants() map[string]int64 {
 		"OPOST": 0x1, "ONLCR": 0x2, "OXTABS": 0x4, "ONOEOT": 0x8,
 		"OCRNL": 0x10, "ONOCR": 0x20, "ONLRET": 0x40, "OFILL": 0x80,
 		"OFDEL": 0x20000, "NLDLY": 0x300, "NL0": 0, "NL1": 0x100, "NL2": 0x200, "NL3": 0x300,
-		"TABDLY": 0x4, "TAB0": 0, "TAB1": 0x400, "TAB2": 0x800, "TAB3": 0x4,
+		"TABDLY": 0xC04, "TAB0": 0, "TAB1": 0x400, "TAB2": 0x800, "TAB3": 0x4,
 		"CRDLY": 0x3000, "CR0": 0, "CR1": 0x1000, "CR2": 0x2000, "CR3": 0x3000,
 		"FFDLY": 0x4000, "FF0": 0, "FF1": 0x4000,
 		"BSDLY": 0x8000, "BS0": 0, "BS1": 0x8000,
@@ -41,7 +41,7 @@ func termiosConstants() map[string]int64 {
 		"CSIZE": 0x300, "CS5": 0, "CS6": 0x100, "CS7": 0x200, "CS8": 0x300,
 		"CSTOPB": 0x400, "CREAD": 0x800, "PARENB": 0x1000, "PARODD": 0x2000,
 		"HUPCL": 0x4000, "CLOCAL": 0x8000, "CIGNORE": 0x1,
-		"CRTSCTS": 0x30000, "CRTS_IFLOW": 0x10000, "CCTS_OFLOW": 0x20000,
+		"CRTSCTS": 0x30000, "CRTS_IFLOW": 0x20000, "CCTS_OFLOW": 0x10000,
 		"CDTR_IFLOW": 0x40000, "CDSR_OFLOW": 0x80000, "CCAR_OFLOW": 0x100000,
 		"MDMBUF": 0x100000,
 		// c_lflag bits
@@ -59,8 +59,6 @@ func termiosConstants() map[string]int64 {
 		"B57600": 57600, "B76800": 76800, "B115200": 115200,
 		"B230400": 230400, "B7200": 7200,
 		"EXTA": 19200, "EXTB": 38400,
-		// struct indices for tcgetattr return
-		"IFLAG": 0, "OFLAG": 1, "CFLAG": 2, "LFLAG": 3, "ISPEED": 4, "OSPEED": 5, "CC": 6,
 		// ioctl constants
 		"TIOCGPGRP": 0x40047477, "TIOCSPGRP": 0x80047476,
 		"TIOCGWINSZ": 0x40087468, "TIOCSWINSZ": 0x80087467,
@@ -81,7 +79,7 @@ func termiosConstants() map[string]int64 {
 		"TIOCM_RI": 0x080, "TIOCM_DSR": 0x100,
 		"FIOASYNC": 0x8004667d, "FIONCLEX": 0x20006602, "FIOCLEX": 0x20006601,
 		"FIONBIO": 0x8004667e, "FIONREAD": 0x4004667f,
-		"CRPRNT": 0x20,
+		"CRPRNT": 0x12,
 	}
 }
 
