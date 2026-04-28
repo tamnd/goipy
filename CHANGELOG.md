@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.308 - 2026-04-28
+
+`keyword` module — fixture 308 for https://docs.python.org/3/library/keyword.html. Complete CPython 3.14 hard-keyword and soft-keyword lists with predicate functions.
+
+**New `vm/stdlib_keyword.go` — `buildKeyword()`:**
+
+- **`kwlist`** — list of 35 Python hard keywords in alphabetical order (`False` … `yield`)
+- **`softkwlist`** — list of 4 soft keywords: `_`, `case`, `match`, `type`
+- **`iskeyword(s)`** → bool: membership test against `kwlist`
+- **`issoftkeyword(s)`** → bool: membership test against `softkwlist`
+
+Registered `"keyword"` in `vm/asyncio.go`.
+
 ## v0.0.307 - 2026-04-28
 
 `token` module — fixture 307 for https://docs.python.org/3/library/token.html. All 70 CPython 3.14 token constants, `tok_name` dict, `EXACT_TOKEN_TYPES` dict, and `ISEOF`/`ISTERMINAL`/`ISNONTERMINAL` functions.
