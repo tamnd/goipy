@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.320](changelog/0.0.320.md) | 2026-04-28 | Unix modules (posix, pwd, grp, termios, tty, pty, fcntl, resource, syslog) -- fixture 320 |
 | [v0.0.319](changelog/0.0.319.md) | 2026-04-28 | winsound dedicated fixture 319 -- full API coverage |
 | [v0.0.318](changelog/0.0.318.md) | 2026-04-28 | winreg dedicated fixture 318 -- full API coverage plus missing constants |
 | [v0.0.317](changelog/0.0.317.md) | 2026-04-28 | msvcrt dedicated fixture 317 -- full API coverage |
