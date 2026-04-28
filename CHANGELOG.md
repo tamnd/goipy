@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.294 - 2026-04-28
+
+`code` — first fixture (294) for https://docs.python.org/3/library/code.html. Full coverage of Python 3.14 `code` module public API.
+
+**New module `vm/stdlib_code.go`:** `compile_command(source, filename, symbol, flags)` (returns code object or None using incompleteness heuristic); `interact()` (no-op); `CommandCompiler` class (callable, delegates to compile_command logic); `Quitter(name)` class (repr shows exit hint, calling raises SystemExit); `InteractiveInterpreter(locals)` class (runsource returns True/False based on incompleteness, runcode/showsyntaxerror/showtraceback/write stubs); `InteractiveConsole(locals, filename, local_exit)` class (extends InteractiveInterpreter with buffer/push/resetbuffer/raw_input/interact).
+
+**Fixed `callable()` builtin:** now returns True for `*object.Instance` when the class has `__call__` defined (previously only checked BuiltinFunc/Function/BoundMethod/Class).
+
 ## v0.0.293 - 2026-04-28
 
 `site` — comprehensive deep-coverage fixture (293) for https://docs.python.org/3/library/site.html. Extends the basic fixture 279.
