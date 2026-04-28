@@ -55,6 +55,8 @@ func (i *Interp) buildResource() *object.Module {
 			for idx, f := range ruFields {
 				if idx+1 < len(a) {
 					inst.Dict.SetStr(f, a[idx+1])
+				} else if f == "ru_utime" || f == "ru_stime" {
+					inst.Dict.SetStr(f, &object.Float{V: 0.0})
 				} else {
 					inst.Dict.SetStr(f, intObj(0))
 				}
@@ -67,7 +69,12 @@ func (i *Interp) buildResource() *object.Module {
 	mkRusage := func() *object.Instance {
 		inst := &object.Instance{Class: ruCls, Dict: object.NewDict()}
 		for _, f := range ruFields {
-			inst.Dict.SetStr(f, intObj(0))
+			// ru_utime and ru_stime are float in CPython; all others are int
+			if f == "ru_utime" || f == "ru_stime" {
+				inst.Dict.SetStr(f, &object.Float{V: 0.0})
+			} else {
+				inst.Dict.SetStr(f, intObj(0))
+			}
 		}
 		return inst
 	}
