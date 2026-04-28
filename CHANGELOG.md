@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.0.311 - 2026-04-28
+
+`pyclbr` module — fixture 311 for https://docs.python.org/3/library/pyclbr.html. Full CPython 3.14 class browser API.
+
+**New `vm/stdlib_pyclbr.go` — `buildPyclbr()`:**
+
+- **`_Object(module, name, file, lineno, end_lineno, parent)`** — base class; sets all attributes and auto-registers `self` in `parent.children[name]` when `parent` is provided
+- **`Class(module, name, super_, file, lineno, parent=None, *, end_lineno=None)`** — subclass of `_Object`; adds `super` list and `methods` dict; `super_=None` yields empty list
+- **`Function(module, name, file, lineno, parent=None, is_async=False, *, end_lineno=None)`** — subclass of `_Object`; adds `is_async` flag; when `parent` is a `Class`, auto-registers `name→lineno` in `parent.methods`
+- **`readmodule(module, path=None)`** → `dict` — stub returning empty dict (no parser available)
+- **`readmodule_ex(module, path=None)`** → `dict` — stub returning empty dict
+- **`__all__`** set to `['readmodule', 'readmodule_ex', 'Class', 'Function']`
+
+Registered `"pyclbr"` in `vm/asyncio.go`.
+
 ## v0.0.310 - 2026-04-28
 
 `tabnanny` module — fixture 310 for https://docs.python.org/3/library/tabnanny.html. Full CPython 3.14 tabnanny API.
