@@ -376,16 +376,261 @@ func (i *Interp) buildImportlibResources() *object.Module {
 
 func (i *Interp) buildImportlibResourcesAbc() *object.Module {
 	m := &object.Module{Name: "importlib.resources.abc", Dict: object.NewDict()}
-	for _, name := range []string{"Traversable", "TraversableResources", "ResourceReader"} {
-		n := name
-		cls := &object.Class{Name: n, Dict: object.NewDict()}
-		m.Dict.SetStr(n, cls)
+
+	// ── ResourceReader (abstract base for loaders) ─────────────────────────────
+
+	readerCls := &object.Class{Name: "ResourceReader", Dict: object.NewDict()}
+
+	// ── Traversable (abstract base for path-like objects) ─────────────────────
+
+	traversableCls := &object.Class{Name: "Traversable", Dict: object.NewDict()}
+
+	// read_bytes() — concrete default: self.open('rb').read()
+	traversableCls.Dict.SetStr("read_bytes", &object.BuiltinFunc{Name: "read_bytes",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.typeErr, "read_bytes() needs self")
+			}
+			self := a[0]
+			openFn, err := ii.getAttr(self, "open")
+			if err != nil {
+				return nil, err
+			}
+			fp, err := ii.callObject(openFn, []object.Object{&object.Str{V: "rb"}}, nil)
+			if err != nil {
+				return nil, err
+			}
+			readFn, err := ii.getAttr(fp, "read")
+			if err != nil {
+				return nil, err
+			}
+			return ii.callObject(readFn, nil, nil)
+		}})
+
+	// read_text(encoding='utf-8') — concrete default: self.open(encoding=encoding).read()
+	traversableCls.Dict.SetStr("read_text", &object.BuiltinFunc{Name: "read_text",
+		Call: func(interp any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.typeErr, "read_text() needs self")
+			}
+			self := a[0]
+			encoding := "utf-8"
+			// positional arg[1] or kwarg encoding
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					encoding = s.V
+				}
+			}
+			if kw != nil {
+				if v, ok2 := kw.GetStr("encoding"); ok2 {
+					if s, ok3 := v.(*object.Str); ok3 {
+						encoding = s.V
+					}
+				}
+			}
+			openFn, err := ii.getAttr(self, "open")
+			if err != nil {
+				return nil, err
+			}
+			openKw := object.NewDict()
+			openKw.SetStr("encoding", &object.Str{V: encoding})
+			fp, err := ii.callObject(openFn, nil, openKw)
+			if err != nil {
+				return nil, err
+			}
+			readFn, err := ii.getAttr(fp, "read")
+			if err != nil {
+				return nil, err
+			}
+			return ii.callObject(readFn, nil, nil)
+		}})
+
+	// joinpath(*descendants) — concrete: chain self / child for each descendant
+	traversableCls.Dict.SetStr("joinpath", &object.BuiltinFunc{Name: "joinpath",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) == 0 {
+				return nil, object.Errorf(ii.typeErr, "joinpath() needs self")
+			}
+			// strip self if first arg is Instance (bound method dispatch)
+			args := a
+			if len(args) > 1 {
+				if _, ok := args[0].(*object.Instance); ok {
+					// check if second arg is also Instance — if first is self, skip it
+					// we detect by checking if the method is looked up from class dict
+					// The safest heuristic: first arg is self; rest are descendants.
+				}
+			}
+			self := args[0]
+			descendants := args[1:]
+			if len(descendants) == 0 {
+				return self, nil
+			}
+			current := self
+			for _, d := range descendants {
+				divFn, err := ii.getAttr(current, "__truediv__")
+				if err != nil {
+					return nil, err
+				}
+				current, err = ii.callObject(divFn, []object.Object{d}, nil)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return current, nil
+		}})
+
+	// __truediv__(child) — concrete: self.joinpath(child)
+	traversableCls.Dict.SetStr("__truediv__", &object.BuiltinFunc{Name: "__truediv__",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) < 2 {
+				return nil, object.Errorf(ii.typeErr, "__truediv__ needs self and child")
+			}
+			self := a[0]
+			child := a[1]
+			jpFn, err := ii.getAttr(self, "joinpath")
+			if err != nil {
+				return nil, err
+			}
+			return ii.callObject(jpFn, []object.Object{child}, nil)
+		}})
+
+	// ── TraversableResources (extends ResourceReader, abstract files()) ─────────
+
+	trCls := &object.Class{
+		Name:  "TraversableResources",
+		Dict:  object.NewDict(),
+		Bases: []*object.Class{readerCls},
 	}
+
+	// open_resource(resource) → self.files().joinpath(resource).open('rb')
+	trCls.Dict.SetStr("open_resource", &object.BuiltinFunc{Name: "open_resource",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) < 2 {
+				return nil, object.Errorf(ii.typeErr, "open_resource() requires self and resource")
+			}
+			self, resource := a[0], a[1]
+			filesFn, err := ii.getAttr(self, "files")
+			if err != nil {
+				return nil, err
+			}
+			filesRoot, err := ii.callObject(filesFn, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			jpFn, err := ii.getAttr(filesRoot, "joinpath")
+			if err != nil {
+				return nil, err
+			}
+			node, err := ii.callObject(jpFn, []object.Object{resource}, nil)
+			if err != nil {
+				return nil, err
+			}
+			openFn, err := ii.getAttr(node, "open")
+			if err != nil {
+				return nil, err
+			}
+			return ii.callObject(openFn, []object.Object{&object.Str{V: "rb"}}, nil)
+		}})
+
+	// resource_path(resource) → always raises FileNotFoundError
+	trCls.Dict.SetStr("resource_path", &object.BuiltinFunc{Name: "resource_path",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			name := ""
+			if len(a) >= 2 {
+				if s, ok := a[1].(*object.Str); ok {
+					name = s.V
+				}
+			}
+			return nil, object.Errorf(ii.fileNotFoundErr, "resource_path() not supported for %q", name)
+		}})
+
+	// is_resource(path) → self.files().joinpath(path).is_file()
+	trCls.Dict.SetStr("is_resource", &object.BuiltinFunc{Name: "is_resource",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) < 2 {
+				return object.False, nil
+			}
+			self, path := a[0], a[1]
+			filesFn, err := ii.getAttr(self, "files")
+			if err != nil {
+				return nil, err
+			}
+			filesRoot, err := ii.callObject(filesFn, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			jpFn, err := ii.getAttr(filesRoot, "joinpath")
+			if err != nil {
+				return nil, err
+			}
+			node, err := ii.callObject(jpFn, []object.Object{path}, nil)
+			if err != nil {
+				return nil, err
+			}
+			isFileFn, err := ii.getAttr(node, "is_file")
+			if err != nil {
+				return nil, err
+			}
+			return ii.callObject(isFileFn, nil, nil)
+		}})
+
+	// contents() → [x.name for x in self.files().iterdir()]
+	trCls.Dict.SetStr("contents", &object.BuiltinFunc{Name: "contents",
+		Call: func(interp any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			ii := interp.(*Interp)
+			if len(a) == 0 {
+				return &object.List{V: nil}, nil
+			}
+			self := a[0]
+			filesFn, err := ii.getAttr(self, "files")
+			if err != nil {
+				return nil, err
+			}
+			filesRoot, err := ii.callObject(filesFn, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			iterdirFn, err := ii.getAttr(filesRoot, "iterdir")
+			if err != nil {
+				return nil, err
+			}
+			iterVal, err := ii.callObject(iterdirFn, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			items, err := iterate(ii, iterVal)
+			if err != nil {
+				return nil, err
+			}
+			var names []object.Object
+			for _, item := range items {
+				nameVal, err2 := ii.getAttr(item, "name")
+				if err2 != nil {
+					return nil, err2
+				}
+				names = append(names, nameVal)
+			}
+			return &object.List{V: names}, nil
+		}})
+
+	// ── TraversalError ─────────────────────────────────────────────────────────
+
 	errCls := &object.Class{
 		Name:  "TraversalError",
 		Dict:  object.NewDict(),
 		Bases: []*object.Class{i.exception},
 	}
+
+	m.Dict.SetStr("Traversable", traversableCls)
+	m.Dict.SetStr("TraversableResources", trCls)
+	m.Dict.SetStr("ResourceReader", readerCls)
 	m.Dict.SetStr("TraversalError", errCls)
 	return m
 }
