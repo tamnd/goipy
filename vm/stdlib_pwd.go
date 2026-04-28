@@ -48,6 +48,9 @@ func (i *Interp) buildPwd() *object.Module {
 		return inst
 	}
 
+	// stub database: uid 0 = root
+	rootEntry := mkPasswd("root", "*", 0, 0, "System Administrator", "/var/root", "/bin/sh")
+
 	d.SetStr("getpwuid", &object.BuiltinFunc{
 		Name: "getpwuid",
 		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -63,7 +66,13 @@ func (i *Interp) buildPwd() *object.Module {
 
 	d.SetStr("getpwnam", &object.BuiltinFunc{
 		Name: "getpwnam",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			a = mpArgs(a)
+			if len(a) > 0 {
+				if s, ok := a[0].(*object.Str); ok && s.V == "root" {
+					return mkPasswd("root", "*", 0, 0, "System Administrator", "/var/root", "/bin/sh"), nil
+				}
+			}
 			return nil, object.Errorf(i.keyErr, "getpwnam(): name not found")
 		},
 	})
@@ -71,7 +80,7 @@ func (i *Interp) buildPwd() *object.Module {
 	d.SetStr("getpwall", &object.BuiltinFunc{
 		Name: "getpwall",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.List{V: []object.Object{}}, nil
+			return &object.List{V: []object.Object{rootEntry}}, nil
 		},
 	})
 
