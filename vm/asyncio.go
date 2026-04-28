@@ -37,6 +37,8 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildTabnanny(), true
 	case "pyclbr":
 		return i.buildPyclbr(), true
+	case "py_compile":
+		return i.buildPyCompile(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
