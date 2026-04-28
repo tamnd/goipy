@@ -12,8 +12,9 @@ func (i *Interp) buildGc() *object.Module {
 	type gcState struct {
 		enabled    bool
 		thresholds [3]int64
+		debug      int64
 	}
-	state := &gcState{enabled: true, thresholds: [3]int64{700, 10, 10}}
+	state := &gcState{enabled: true, thresholds: [3]int64{2000, 10, 0}}
 
 	m.Dict.SetStr("enable", &object.BuiltinFunc{
 		Name: "enable",
@@ -34,10 +35,7 @@ func (i *Interp) buildGc() *object.Module {
 	m.Dict.SetStr("isenabled", &object.BuiltinFunc{
 		Name: "isenabled",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			if state.enabled {
-				return object.True, nil
-			}
-			return object.False, nil
+			return object.BoolOf(state.enabled), nil
 		},
 	})
 
@@ -52,24 +50,22 @@ func (i *Interp) buildGc() *object.Module {
 	m.Dict.SetStr("get_count", &object.BuiltinFunc{
 		Name: "get_count",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			items := []object.Object{
+			return &object.Tuple{V: []object.Object{
 				object.NewInt(0),
 				object.NewInt(0),
 				object.NewInt(0),
-			}
-			return &object.Tuple{V: items}, nil
+			}}, nil
 		},
 	})
 
 	m.Dict.SetStr("get_threshold", &object.BuiltinFunc{
 		Name: "get_threshold",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			items := []object.Object{
+			return &object.Tuple{V: []object.Object{
 				object.NewInt(state.thresholds[0]),
 				object.NewInt(state.thresholds[1]),
 				object.NewInt(state.thresholds[2]),
-			}
-			return &object.Tuple{V: items}, nil
+			}}, nil
 		},
 	})
 
@@ -86,11 +82,8 @@ func (i *Interp) buildGc() *object.Module {
 					state.thresholds[1] = v
 				}
 			}
-			if len(a) >= 3 {
-				if v, ok := toInt64(a[2]); ok {
-					state.thresholds[2] = v
-				}
-			}
+			// Python 3.14 incremental GC: third threshold is always 0
+			state.thresholds[2] = 0
 			return object.None, nil
 		},
 	})
@@ -99,6 +92,40 @@ func (i *Interp) buildGc() *object.Module {
 		Name: "get_objects",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 			return &object.List{V: []object.Object{}}, nil
+		},
+	})
+
+	m.Dict.SetStr("get_stats", &object.BuiltinFunc{
+		Name: "get_stats",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			result := make([]object.Object, 3)
+			for j := 0; j < 3; j++ {
+				d := object.NewDict()
+				d.SetStr("collections", object.NewInt(0))
+				d.SetStr("collected", object.NewInt(0))
+				d.SetStr("uncollectable", object.NewInt(0))
+				result[j] = d
+			}
+			return &object.List{V: result}, nil
+		},
+	})
+
+	m.Dict.SetStr("set_debug", &object.BuiltinFunc{
+		Name: "set_debug",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) >= 1 {
+				if v, ok := toInt64(a[0]); ok {
+					state.debug = v
+				}
+			}
+			return object.None, nil
+		},
+	})
+
+	m.Dict.SetStr("get_debug", &object.BuiltinFunc{
+		Name: "get_debug",
+		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+			return object.NewInt(state.debug), nil
 		},
 	})
 
@@ -151,20 +178,7 @@ func (i *Interp) buildGc() *object.Module {
 		},
 	})
 
-	m.Dict.SetStr("set_debug", &object.BuiltinFunc{
-		Name: "set_debug",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.None, nil
-		},
-	})
-
-	m.Dict.SetStr("get_debug", &object.BuiltinFunc{
-		Name: "get_debug",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return object.NewInt(0), nil
-		},
-	})
-
+	m.Dict.SetStr("garbage", &object.List{V: []object.Object{}})
 	m.Dict.SetStr("callbacks", &object.List{V: []object.Object{}})
 
 	// GC debug flags
