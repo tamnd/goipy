@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.334](changelog/0.0.334.md) | 2026-04-28 | `subprocess` shell handling -- shell=True positional args, `executable=` kwarg, `COMSPEC` on Windows, fixture 334 |
 | [v0.0.333](changelog/0.0.333.md) | 2026-04-28 | `__slots__` semantics -- setattr/delattr gating, `__dict__` hiding, MRO-aware filtering, fixture 333 |
 | [v0.0.332](changelog/0.0.332.md) | 2026-04-29 | threading correctness -- per-object locks on List/Set/Cell/Bytearray, atomic classEpoch, weakref table mutex, fixture 332 |
 | [v0.0.331](changelog/0.0.331.md) | 2026-04-28 | v0.1.0 prep -- C3 MRO, all intrinsic1/2 cases, 20 specialized opcodes routed, ExceptionGroup split, PEP 695 closure fix |

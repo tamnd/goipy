@@ -1,0 +1,8 @@
+shell list ok
+shell str ok
+shell pipe ok
+shell executable ok
+nonshell executable ok
+getoutput ok
+shell positional ok
+ok
