@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.298 - 2026-04-28
+
+`modulefinder` — first fixture (298) for https://docs.python.org/3/library/modulefinder.html. Full coverage of Python 3.14 `modulefinder` module public API.
+
+**New module `vm/stdlib_modulefinder.go`:** module-level state `packagePathMap` and `replacePackageMap` (dicts); `AddPackagePath(pkg_name, path)` appends to the package path list; `ReplacePackage(oldname, newname)` registers a name alias; `Module(name, file=None, path=None)` class with `__name__`, `__file__`, `__path__`, `globalnames` and `starimports` attributes and a Python-style `__repr__`; `ModuleFinder(path, debug, excludes, replace_paths)` class with `modules` and `badmodules` dicts, `add_module(fqname)` (creates and caches a Module entry), `any_missing()` (sorted list of unresolved bad-module names), `any_missing_maybe()` (tuple of missing/maybe lists using CPython dot-name resolution logic), `report()` (prints formatted module table to stdout), and stubs for `find_module`, `run_script`, `msg`, `msgin`, `msgout`.
+
 ## v0.0.297 - 2026-04-28
 
 `pkgutil` — first fixture (297) for https://docs.python.org/3/library/pkgutil.html. Full coverage of Python 3.14 `pkgutil` module public API.

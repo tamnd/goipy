@@ -1,0 +1,31 @@
+mymod
+/tmp/mymod.py
+None
+Module('mymod', '/tmp/mymod.py')
+dict
+dict
+Module('pkg', '/tmp/pkg/__init__.py', ['/tmp/pkg'])
+Module('bare')
+dict
+dict
+True
+['/some/path']
+2
+newpkg
+dict
+dict
+0
+[]
+1
+['os']
+Module
+True
+testmod
+[]
+([], [])
+2
+True
+True
+2
+0
+done
