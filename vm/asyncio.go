@@ -53,6 +53,24 @@ func (i *Interp) builtinModule(name string) (*object.Module, bool) {
 		return i.buildWinsound(), true
 	case "msilib":
 		return i.buildMsilib(), true
+	case "posix":
+		return i.buildPosix(), true
+	case "pwd":
+		return i.buildPwd(), true
+	case "grp":
+		return i.buildGrp(), true
+	case "termios":
+		return i.buildTermios(), true
+	case "tty":
+		return i.buildTty(), true
+	case "pty":
+		return i.buildPty(), true
+	case "fcntl":
+		return i.buildFcntl(), true
+	case "resource":
+		return i.buildResource(), true
+	case "syslog":
+		return i.buildSyslog(), true
 	case "functools":
 		return i.buildFunctools(), true
 	case "itertools":
