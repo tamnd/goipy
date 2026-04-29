@@ -94,6 +94,15 @@ func applyEncodeErrors(errName, s string) ([]byte, error) {
 					b := []byte{byte(r >> 24), byte(r >> 16), byte(r >> 8), byte(r)}
 					out = append(out, []byte(`\U`+zeroPad(hex.EncodeToString(b), 8))...)
 				}
+			case "namereplace":
+				if name := unicodeName(r); name != "" {
+					out = append(out, []byte(`\N{`+name+`}`)...)
+				} else if r <= 0xFFFF {
+					out = append(out, []byte(`\u`+zeroPad(hex.EncodeToString([]byte{byte(r >> 8), byte(r)}), 4))...)
+				} else {
+					b := []byte{byte(r >> 24), byte(r >> 16), byte(r >> 8), byte(r)}
+					out = append(out, []byte(`\U`+zeroPad(hex.EncodeToString(b), 8))...)
+				}
 			default:
 				return nil, nil // caller raises UnicodeEncodeError
 			}
@@ -164,7 +173,7 @@ func (i *Interp) codecsEncode(obj object.Object, enc, errName string) (object.Ob
 		out, err := applyEncodeErrors(errName, s.V)
 		if err != nil || out == nil {
 			if errName == "strict" || out == nil {
-				return nil, object.Errorf(i.unicodeErr, "'ascii' codec can't encode characters in string")
+				return nil, object.Errorf(i.unicodeEncodeErr, "'ascii' codec can't encode characters in string")
 			}
 		}
 		return &object.Bytes{V: out}, nil
@@ -177,7 +186,7 @@ func (i *Interp) codecsEncode(obj object.Object, enc, errName string) (object.Ob
 		enc2 := charmap.ISO8859_1.NewEncoder()
 		b, err := enc2.Bytes([]byte(s.V))
 		if err != nil && errName == "strict" {
-			return nil, object.Errorf(i.unicodeErr, "'latin-1' codec can't encode character")
+			return nil, object.Errorf(i.unicodeEncodeErr, "'latin-1' codec can't encode character")
 		}
 		if err != nil {
 			return &object.Bytes{V: []byte(s.V)}, nil // fallback
@@ -246,7 +255,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		}
 		if errName == "strict" {
 			if !utf8.Valid(data) {
-				return nil, object.Errorf(i.unicodeErr, "'utf-8' codec can't decode bytes")
+				return nil, object.Errorf(i.unicodeDecodeErr, "'utf-8' codec can't decode bytes")
 			}
 		}
 		return &object.Str{V: string(data)}, nil
@@ -260,7 +269,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		if err2 != nil || (s == "" && errName == "strict") {
 			for _, b := range data {
 				if b > 0x7F {
-					return nil, object.Errorf(i.unicodeErr, "'ascii' codec can't decode byte 0x%02x", b)
+					return nil, object.Errorf(i.unicodeDecodeErr, "'ascii' codec can't decode byte 0x%02x", b)
 				}
 			}
 		}
@@ -277,7 +286,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		dec := charmap.ISO8859_1.NewDecoder()
 		b, err2 := dec.Bytes(data)
 		if err2 != nil {
-			return nil, object.Errorf(i.unicodeErr, "'latin-1' codec can't decode")
+			return nil, object.Errorf(i.unicodeDecodeErr, "'latin-1' codec can't decode")
 		}
 		return &object.Str{V: string(b)}, nil
 
@@ -289,7 +298,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		dec := unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
 		b, err2 := dec.Bytes(data)
 		if err2 != nil {
-			return nil, object.Errorf(i.unicodeErr, "'utf-16' codec can't decode")
+			return nil, object.Errorf(i.unicodeDecodeErr, "'utf-16' codec can't decode")
 		}
 		return &object.Str{V: string(b)}, nil
 
@@ -301,7 +310,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		dec := unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM).NewDecoder()
 		b, err2 := dec.Bytes(data)
 		if err2 != nil {
-			return nil, object.Errorf(i.unicodeErr, "'utf-16-be' codec can't decode")
+			return nil, object.Errorf(i.unicodeDecodeErr, "'utf-16-be' codec can't decode")
 		}
 		return &object.Str{V: string(b)}, nil
 
@@ -313,7 +322,7 @@ func (i *Interp) codecsDecode(obj object.Object, enc, errName string) (object.Ob
 		dec := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder()
 		b, err2 := dec.Bytes(data)
 		if err2 != nil {
-			return nil, object.Errorf(i.unicodeErr, "'utf-16-le' codec can't decode")
+			return nil, object.Errorf(i.unicodeDecodeErr, "'utf-16-le' codec can't decode")
 		}
 		return &object.Str{V: string(b)}, nil
 
