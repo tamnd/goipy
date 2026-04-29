@@ -2,9 +2,136 @@ package object
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"unsafe"
 )
+
+// CPython numeric hash constants (pyhash.c). Keeping the same modulus
+// guarantees the data-model invariant `x == y ⇒ hash(x) == hash(y)`
+// across int/float/complex/Decimal/Fraction.
+const (
+	pyHashBits     = 61
+	pyHashModulus  = uint64(1)<<61 - 1
+	pyHashInf      = int64(314159)
+	pyHashImagMult = uint64(1000003)
+)
+
+// HashFloat64 reproduces CPython's _Py_HashDouble exactly. Integer
+// floats hash to the same value as the equivalent int (mod
+// pyHashModulus); ±inf hash to ±314159; nan hashes to 0.
+func HashFloat64(v float64) int64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	if math.IsInf(v, 1) {
+		return pyHashInf
+	}
+	if math.IsInf(v, -1) {
+		return -pyHashInf
+	}
+	if v == 0 {
+		return 0
+	}
+	m, e := math.Frexp(v)
+	sign := int64(1)
+	if m < 0 {
+		sign = -1
+		m = -m
+	}
+	var x uint64 = 0
+	for m != 0 {
+		x = ((x << 28) & pyHashModulus) | (x >> (pyHashBits - 28))
+		m *= 268435456.0 // 2**28
+		e -= 28
+		y := uint64(m)
+		m -= float64(y)
+		x += y
+		if x >= pyHashModulus {
+			x -= pyHashModulus
+		}
+	}
+	var ee int
+	if e >= 0 {
+		ee = e % pyHashBits
+	} else {
+		ee = pyHashBits - 1 - ((-1 - e) % pyHashBits)
+	}
+	if ee != 0 {
+		x = ((x << ee) & pyHashModulus) | (x >> (pyHashBits - ee))
+	}
+	h := int64(x) * sign
+	if h == -1 {
+		h = -2
+	}
+	return h
+}
+
+// HashBigInt reproduces CPython's long_hash: x mod (2**61 - 1) with
+// sign carried through. Integer floats are routed here via
+// HashFloat64's frexp algorithm — they collapse to the same value.
+func HashBigInt(v *big.Int) int64 {
+	if v.Sign() == 0 {
+		return 0
+	}
+	mod := new(big.Int).SetUint64(pyHashModulus)
+	abs := new(big.Int).Abs(v)
+	rem := new(big.Int).Mod(abs, mod)
+	h := rem.Int64()
+	if v.Sign() < 0 {
+		h = -h
+	}
+	if h == -1 {
+		h = -2
+	}
+	return h
+}
+
+// HashRational matches CPython's data-model hash for any object that
+// represents `num / den` exactly (Fraction, Decimal). The result agrees
+// with HashBigInt(num) when den == 1, with HashFloat64 when the value
+// is float-representable, and with both for any value coercible to
+// either type. Uses pow(den, -1, P) modular inverse over the Mersenne
+// prime P = 2**61 - 1.
+func HashRational(num, den *big.Int) int64 {
+	mod := new(big.Int).SetUint64(pyHashModulus)
+	denMod := new(big.Int).Mod(new(big.Int).Abs(den), mod)
+	if denMod.Sign() == 0 {
+		// Denominator a multiple of P → infinite hash sentinel.
+		if num.Sign() >= 0 {
+			return pyHashInf
+		}
+		return -pyHashInf
+	}
+	dinv := new(big.Int).ModInverse(denMod, mod)
+	if dinv == nil {
+		// Should not happen: P is prime and denMod < P, so inverse exists.
+		return 0
+	}
+	absNum := new(big.Int).Abs(num)
+	x := new(big.Int).Mul(new(big.Int).Mod(absNum, mod), dinv)
+	x.Mod(x, mod)
+	h := x.Int64()
+	if num.Sign() < 0 {
+		h = -h
+	}
+	if h == -1 {
+		h = -2
+	}
+	return h
+}
+
+// HashComplex combines real/imag hashes with CPython's IMAG multiplier.
+// The arithmetic intentionally wraps at uint64 (matching CPython).
+func HashComplex(real, imag float64) int64 {
+	hr := HashFloat64(real)
+	hi := HashFloat64(imag)
+	combined := uint64(hr) + pyHashImagMult*uint64(hi)
+	if combined == ^uint64(0) {
+		combined = ^uint64(0) - 1
+	}
+	return int64(combined)
+}
 
 // Set inserts or replaces a value for key in the dict.
 func (d *Dict) Set(key, val Object) error {
@@ -408,11 +535,11 @@ func Hash(o Object) (uint64, error) {
 		}
 		return 0, nil
 	case *Int:
-		return v.V.Uint64() ^ uint64(v.V.Sign())*0x9e3779b97f4a7c15, nil
+		return uint64(HashBigInt(&v.V)), nil
 	case *Float:
-		return uint64(v.V * 1e6), nil
+		return uint64(HashFloat64(v.V)), nil
 	case *Complex:
-		return uint64(v.Real*1e6) ^ (uint64(v.Imag*1e6) * 0x9e3779b97f4a7c15), nil
+		return uint64(HashComplex(v.Real, v.Imag)), nil
 	case *Str:
 		return stringHash(v.V), nil
 	case *Bytes:

@@ -1,0 +1,10 @@
+trio ok
+dict lookup ok
+set dedup ok
+big int ok
+big-int/float ok
+negatives ok
+specials ok
+decimal/fraction ok
+bool ok
+ok
