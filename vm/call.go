@@ -158,6 +158,8 @@ func (i *Interp) callFunctionFast(fn *object.Function, self object.Object, args 
 			frame.ExcInfo = nil
 			frame.curExc = nil
 			frame.Yielded = nil
+			frame.LocalTrace = nil
+			frame.LastLine = -1
 			// Cells may have been captured by escaped closures; allocate fresh.
 			if code.NCells+code.NFrees > 0 {
 				frame.Cells = make([]*object.Cell, code.NCells+code.NFrees)

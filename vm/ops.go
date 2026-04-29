@@ -1214,7 +1214,10 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		case "f_lasti":
 			return object.NewInt(int64(fr.LastIP)), nil
 		case "f_trace":
-			return object.None, nil
+			if fr.LocalTrace == nil {
+				return object.None, nil
+			}
+			return fr.LocalTrace, nil
 		case "f_trace_lines":
 			return object.True, nil
 		case "f_trace_opcodes":
@@ -1265,6 +1268,22 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 		}
 		fn.Dict.SetStr(name, val)
 		return nil
+	}
+	if fr, ok := o.(*Frame); ok {
+		switch name {
+		case "f_trace":
+			if _, isNone := val.(*object.NoneType); isNone {
+				fr.LocalTrace = nil
+			} else {
+				fr.LocalTrace = val
+			}
+			return nil
+		case "f_trace_lines", "f_trace_opcodes":
+			// Accepted but ignored — goipy fires line events whenever
+			// f_trace is set (matching default 3.13 behaviour) and never
+			// fires opcode events (out of scope).
+			return nil
+		}
 	}
 	if e, ok := o.(*object.Exception); ok {
 		switch name {

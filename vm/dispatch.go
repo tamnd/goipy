@@ -33,6 +33,16 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 		startIP := f.IP
 		f.IP += 2 + 2*int(op.Cache[opcode])
 
+		// Per-frame line trace: fires on source-line transitions only.
+		// Hot-loop guard — most frames have no tracer attached.
+		if f.LocalTrace != nil && !i.inTrace {
+			line := f.Code.LineForOffset(startIP)
+			if line != 0 && line != f.LastLine {
+				f.LastLine = line
+				i.fireLineEvent(f)
+			}
+		}
+
 		var result object.Object
 		var err error
 

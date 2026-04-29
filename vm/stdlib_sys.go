@@ -102,6 +102,44 @@ func (i *Interp) buildSys() *object.Module {
 	m.Dict.SetStr("getrecursionlimit", &object.BuiltinFunc{Name: "getrecursionlimit", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.NewInt(int64(i.MaxDepth)), nil
 	}})
+
+	// ── sys.settrace / sys.gettrace / sys.setprofile / sys.getprofile ─────────
+	// Stores a global trace/profile function on the interpreter; runFrame
+	// fires 'call'/'return'/'exception' events and dispatch fires 'line'.
+	m.Dict.SetStr("settrace", &object.BuiltinFunc{Name: "settrace", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(i.typeErr, "settrace() takes exactly one argument (%d given)", len(a))
+		}
+		if _, isNone := a[0].(*object.NoneType); isNone {
+			i.traceFn = nil
+		} else {
+			i.traceFn = a[0]
+		}
+		return object.None, nil
+	}})
+	m.Dict.SetStr("gettrace", &object.BuiltinFunc{Name: "gettrace", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		if i.traceFn == nil {
+			return object.None, nil
+		}
+		return i.traceFn, nil
+	}})
+	m.Dict.SetStr("setprofile", &object.BuiltinFunc{Name: "setprofile", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(i.typeErr, "setprofile() takes exactly one argument (%d given)", len(a))
+		}
+		if _, isNone := a[0].(*object.NoneType); isNone {
+			i.profileFn = nil
+		} else {
+			i.profileFn = a[0]
+		}
+		return object.None, nil
+	}})
+	m.Dict.SetStr("getprofile", &object.BuiltinFunc{Name: "getprofile", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		if i.profileFn == nil {
+			return object.None, nil
+		}
+		return i.profileFn, nil
+	}})
 	m.Dict.SetStr("setrecursionlimit", &object.BuiltinFunc{Name: "setrecursionlimit", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		if len(a) != 1 {
 			return nil, object.Errorf(i.typeErr, "setrecursionlimit() takes exactly one argument")
