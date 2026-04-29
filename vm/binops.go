@@ -779,6 +779,10 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 			return r, err
 		}
 	}
+	// PEP 604: int | str, list | None, etc. — both operands type-like.
+	if kind == "|" && isTypeLike(a) && isTypeLike(b) {
+		return makeUnionType([]object.Object{a, b}), nil
+	}
 	// Counter & Counter, Counter | Counter
 	if kind == "&" || kind == "|" {
 		if ca, ok := a.(*object.Counter); ok {
@@ -860,6 +864,11 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 		}
 		if fn, ok := classLookup(cls, "__class_getitem__"); ok {
 			return i.callObject(fn, []object.Object{cls, key}, nil)
+		}
+	}
+	if bf, ok := container.(*object.BuiltinFunc); ok && bf.Attrs != nil {
+		if fn, ok := bf.Attrs.GetStr("__class_getitem__"); ok {
+			return i.callObject(fn, []object.Object{key}, nil)
 		}
 	}
 	switch c := container.(type) {

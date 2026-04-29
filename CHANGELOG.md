@@ -4,6 +4,10 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.338](changelog/0.0.338.md) | 2026-04-29 | PEP 585 / 604 / 560 -- `list[int]`, `int | str`, `__mro_entries__` substitution, fixture 338 |
+| [v0.0.337](changelog/0.0.337.md) | 2026-04-29 | frame & code exposure -- `sys._getframe`, `f_*` attrs, `co_qualname`/`co_consts`/`co_lines()`, `inspect` chain walkers, fixture 337 |
+| [v0.0.336](changelog/0.0.336.md) | 2026-04-29 | hash invariant -- CPython numeric hash (Mersenne P=2^61-1), `int`/`float`/`Fraction`/`Decimal`/`complex` collide, fixture 336 |
+| [v0.0.335](changelog/0.0.335.md) | 2026-04-29 | function introspection -- `__code__`, `__defaults__`, `__closure__`, `__globals__`, PEP 649 lazy `__annotate__`, BoundMethod attrs, fixture 335 |
 | [v0.0.334](changelog/0.0.334.md) | 2026-04-28 | `subprocess` shell handling -- shell=True positional args, `executable=` kwarg, `COMSPEC` on Windows, fixture 334 |
 | [v0.0.333](changelog/0.0.333.md) | 2026-04-28 | `__slots__` semantics -- setattr/delattr gating, `__dict__` hiding, MRO-aware filtering, fixture 333 |
 | [v0.0.332](changelog/0.0.332.md) | 2026-04-29 | threading correctness -- per-object locks on List/Set/Cell/Bytearray, atomic classEpoch, weakref table mutex, fixture 332 |

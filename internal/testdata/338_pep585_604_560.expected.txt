@@ -1,0 +1,18 @@
+list[int]
+list[int] ok
+dict[str, int]
+dict[str,int] ok
+dict[str, list[int]]
+re-subscription ok
+int | str
+int|str ok
+int | str | float
+flatten ok
+list[int] | None
+alias|None ok
+['C', 'object']
+['object']
+mro_entries ok
+True True False
+user-class union ok
+typing.List ok

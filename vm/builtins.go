@@ -1432,8 +1432,33 @@ func (i *Interp) initBuiltins() {
 		in := ii.(*Interp)
 		fn := a[0].(*object.Function)
 		name := a[1].(*object.Str).V
+		// PEP 560: any base whose object exposes __mro_entries__ is replaced
+		// by the entries it returns. Walk first, expand, then collect classes.
+		rawBases := a[2:]
+		expanded := make([]object.Object, 0, len(rawBases))
+		basesTuple := &object.Tuple{V: append([]object.Object{}, rawBases...)}
+		for _, base := range rawBases {
+			if _, ok := base.(*object.Class); ok {
+				expanded = append(expanded, base)
+				continue
+			}
+			fn := lookupMROEntries(base)
+			if fn == nil {
+				expanded = append(expanded, base)
+				continue
+			}
+			r, err := in.callObject(fn, []object.Object{base, basesTuple}, nil)
+			if err != nil {
+				return nil, err
+			}
+			if t, ok := r.(*object.Tuple); ok {
+				expanded = append(expanded, t.V...)
+			} else {
+				expanded = append(expanded, r)
+			}
+		}
 		var bases []*object.Class
-		for _, b := range a[2:] {
+		for _, b := range expanded {
 			if cls, ok := b.(*object.Class); ok {
 				bases = append(bases, cls)
 			}
@@ -1526,6 +1551,23 @@ func (i *Interp) initBuiltins() {
 		}
 		return cls, nil
 	}})
+
+	// PEP 585 / 604: install __class_getitem__ and __or__ on type-like
+	// builtins so list[int], dict[str, int], int | str, … work.
+	i.initGenericAliasClasses()
+	for _, name := range []string{"list", "dict", "tuple", "set", "frozenset", "type",
+		"int", "float", "complex", "str", "bytes", "bytearray", "bool", "object"} {
+		v, ok := b.GetStr(name)
+		if !ok {
+			continue
+		}
+		switch o := v.(type) {
+		case *object.BuiltinFunc:
+			installTypeSubscriptHooks(o)
+		case *object.Class:
+			installClassUnionHooks(o)
+		}
+	}
 }
 
 func reduceMinMax(in *Interp, a []object.Object, isMin bool) (object.Object, error) {
@@ -1562,6 +1604,19 @@ func reduceMinMax(in *Interp, a []object.Object, isMin bool) (object.Object, err
 }
 
 func isinstance(o, t object.Object) bool {
+	if isUnionType(t) {
+		inst := t.(*object.Instance)
+		if argsObj, ok := inst.Dict.GetStr("__args__"); ok {
+			if tup, ok := argsObj.(*object.Tuple); ok {
+				for _, m := range tup.V {
+					if isinstance(o, m) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
 	if cls, ok := t.(*object.Class); ok {
 		// ABC structural check: if the class defines ABCCheck, try it first.
 		if cls.ABCCheck != nil && cls.ABCCheck(o) {
