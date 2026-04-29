@@ -1024,10 +1024,131 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		switch name {
 		case "co_name":
 			return &object.Str{V: c.Name}, nil
+		case "co_qualname":
+			if c.QualName != "" {
+				return &object.Str{V: c.QualName}, nil
+			}
+			return &object.Str{V: c.Name}, nil
 		case "co_filename":
 			return &object.Str{V: c.Filename}, nil
 		case "co_firstlineno":
 			return object.NewInt(int64(c.FirstLineNo)), nil
+		case "co_argcount":
+			return object.NewInt(int64(c.ArgCount)), nil
+		case "co_posonlyargcount":
+			return object.NewInt(int64(c.PosOnlyArgCount)), nil
+		case "co_kwonlyargcount":
+			return object.NewInt(int64(c.KwOnlyArgCount)), nil
+		case "co_nlocals":
+			return object.NewInt(int64(c.NLocals)), nil
+		case "co_stacksize":
+			return object.NewInt(int64(c.Stacksize)), nil
+		case "co_flags":
+			return object.NewInt(int64(c.Flags)), nil
+		case "co_consts":
+			out := make([]object.Object, len(c.Consts))
+			copy(out, c.Consts)
+			return &object.Tuple{V: out}, nil
+		case "co_names":
+			out := make([]object.Object, len(c.Names))
+			for k, s := range c.Names {
+				out[k] = &object.Str{V: s}
+			}
+			return &object.Tuple{V: out}, nil
+		case "co_varnames":
+			// Fast locals only (CO_FAST_LOCAL bit set, CO_FAST_HIDDEN clear).
+			var vs []object.Object
+			for k, n := range c.LocalsPlusNames {
+				if k >= len(c.LocalsPlusKinds) {
+					break
+				}
+				kind := c.LocalsPlusKinds[k]
+				if kind&object.FastLocal != 0 && kind&object.FastHidden == 0 {
+					vs = append(vs, &object.Str{V: n})
+				}
+			}
+			return &object.Tuple{V: vs}, nil
+		case "co_freevars":
+			out := make([]object.Object, len(c.FreeVars))
+			for k, s := range c.FreeVars {
+				out[k] = &object.Str{V: s}
+			}
+			return &object.Tuple{V: out}, nil
+		case "co_cellvars":
+			out := make([]object.Object, len(c.CellVars))
+			for k, s := range c.CellVars {
+				out[k] = &object.Str{V: s}
+			}
+			return &object.Tuple{V: out}, nil
+		case "co_code":
+			b := make([]byte, len(c.Bytecode))
+			copy(b, c.Bytecode)
+			return &object.Bytes{V: b}, nil
+		case "co_lnotab":
+			b := make([]byte, len(c.LineTable))
+			copy(b, c.LineTable)
+			return &object.Bytes{V: b}, nil
+		case "co_linetable":
+			b := make([]byte, len(c.LineTable))
+			copy(b, c.LineTable)
+			return &object.Bytes{V: b}, nil
+		case "co_lines":
+			cc := c
+			return &object.BuiltinFunc{Name: "co_lines", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+				// PEP 626: yield (start, end, line) triples covering the
+				// bytecode. Without a full linetable decoder we emit a
+				// single span (0, len(bytecode), FirstLineNo) — accurate
+				// enough for tools that just want *some* line attribution.
+				yielded := false
+				return &object.Iter{Next: func() (object.Object, bool, error) {
+					if yielded {
+						return nil, false, nil
+					}
+					yielded = true
+					return &object.Tuple{V: []object.Object{
+						object.NewInt(0),
+						object.NewInt(int64(len(cc.Bytecode))),
+						object.NewInt(int64(cc.FirstLineNo)),
+					}}, true, nil
+				}}, nil
+			}}, nil
+		}
+	}
+	if fr, ok := o.(*Frame); ok {
+		switch name {
+		case "f_code":
+			return fr.Code, nil
+		case "f_globals":
+			if fr.Globals == nil {
+				return object.NewDict(), nil
+			}
+			return fr.Globals, nil
+		case "f_builtins":
+			if fr.Builtins == nil {
+				return object.NewDict(), nil
+			}
+			return fr.Builtins, nil
+		case "f_locals":
+			return frameLocalsView(fr), nil
+		case "f_back":
+			if fr.Back == nil {
+				return object.None, nil
+			}
+			return fr.Back, nil
+		case "f_lineno":
+			line := 0
+			if fr.Code != nil {
+				line = fr.Code.FirstLineNo
+			}
+			return object.NewInt(int64(line)), nil
+		case "f_lasti":
+			return object.NewInt(int64(fr.LastIP)), nil
+		case "f_trace":
+			return object.None, nil
+		case "f_trace_lines":
+			return object.True, nil
+		case "f_trace_opcodes":
+			return object.False, nil
 		}
 	}
 	return nil, object.Errorf(i.attrErr, "'%s' object has no attribute '%s'", object.TypeName(o), name)

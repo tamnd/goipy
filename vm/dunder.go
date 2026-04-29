@@ -280,4 +280,10 @@ func (i *Interp) installDunderHooks() {
 	object.InstanceTruthyHook = i.instTruthyHook
 	object.InstanceHashHook = i.instHashHook
 	object.InstanceEqHook = i.instEqHook
+	object.TypeNameHook = func(o object.Object) string {
+		if _, ok := o.(*Frame); ok {
+			return "frame"
+		}
+		return ""
+	}
 }

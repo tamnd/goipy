@@ -655,5 +655,10 @@ func TypeName(o Object) string {
 	case *Template:
 		return "Template"
 	}
+	if TypeNameHook != nil {
+		if name := TypeNameHook(o); name != "" {
+			return name
+		}
+	}
 	return fmt.Sprintf("%T", o)
 }
