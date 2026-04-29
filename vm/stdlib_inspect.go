@@ -72,7 +72,10 @@ func (i *Interp) buildInspect() *object.Module {
 	m.Dict.SetStr("ismethod", boolFn("ismethod", isMethod))
 	m.Dict.SetStr("isroutine", boolFn("isroutine", isRoutine))
 	m.Dict.SetStr("callable", boolFn("callable", isCallable))
-	m.Dict.SetStr("isframe", boolFn("isframe", func(_ object.Object) bool { return false }))
+	m.Dict.SetStr("isframe", boolFn("isframe", func(o object.Object) bool {
+		_, ok := o.(*Frame)
+		return ok
+	}))
 	m.Dict.SetStr("iscode", boolFn("iscode", func(o object.Object) bool {
 		_, ok := o.(*object.Code)
 		return ok
@@ -568,10 +571,60 @@ func (i *Interp) buildInspect() *object.Module {
 		},
 	})
 
+	frameInfoCls := &object.Class{Name: "FrameInfo", Dict: object.NewDict()}
+	frameInfoCls.Dict.SetStr("_fields", &object.Tuple{V: []object.Object{
+		&object.Str{V: "frame"}, &object.Str{V: "filename"},
+		&object.Str{V: "lineno"}, &object.Str{V: "function"},
+		&object.Str{V: "code_context"}, &object.Str{V: "index"},
+	}})
+	tracebackInfoCls := &object.Class{Name: "Traceback", Dict: object.NewDict()}
+	tracebackInfoCls.Dict.SetStr("_fields", &object.Tuple{V: []object.Object{
+		&object.Str{V: "filename"}, &object.Str{V: "lineno"},
+		&object.Str{V: "function"}, &object.Str{V: "code_context"},
+		&object.Str{V: "index"},
+	}})
+
+	makeFrameInfo := func(fr *Frame, includeFrame bool) *object.Instance {
+		cls := tracebackInfoCls
+		if includeFrame {
+			cls = frameInfoCls
+		}
+		inst := &object.Instance{Class: cls, Dict: object.NewDict()}
+		filename := "<unknown>"
+		function := "<unknown>"
+		lineno := int64(0)
+		if fr != nil && fr.Code != nil {
+			filename = fr.Code.Filename
+			function = fr.Code.Name
+			lineno = int64(fr.Code.FirstLineNo)
+		}
+		if includeFrame {
+			if fr != nil {
+				inst.Dict.SetStr("frame", fr)
+			} else {
+				inst.Dict.SetStr("frame", object.None)
+			}
+		}
+		inst.Dict.SetStr("filename", &object.Str{V: filename})
+		inst.Dict.SetStr("lineno", object.NewInt(lineno))
+		inst.Dict.SetStr("function", &object.Str{V: function})
+		inst.Dict.SetStr("code_context", object.None)
+		inst.Dict.SetStr("index", object.None)
+		// PEP 657 positions field — None for now (no linetable decode).
+		inst.Dict.SetStr("positions", object.None)
+		return inst
+	}
+
 	m.Dict.SetStr("stack", &object.BuiltinFunc{
 		Name: "stack",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.List{V: []object.Object{}}, nil
+			out := &object.List{}
+			// Skip the stack() frame itself — start at the caller.
+			fr := i.curFrame
+			for f := fr; f != nil; f = f.Back {
+				out.V = append(out.V, makeFrameInfo(f, true))
+			}
+			return out, nil
 		},
 	})
 
@@ -584,8 +637,16 @@ func (i *Interp) buildInspect() *object.Module {
 
 	m.Dict.SetStr("getouterframes", &object.BuiltinFunc{
 		Name: "getouterframes",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.List{V: []object.Object{}}, nil
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return &object.List{V: []object.Object{}}, nil
+			}
+			fr, _ := a[0].(*Frame)
+			out := &object.List{}
+			for f := fr; f != nil; f = f.Back {
+				out.V = append(out.V, makeFrameInfo(f, true))
+			}
+			return out, nil
 		},
 	})
 
@@ -598,22 +659,36 @@ func (i *Interp) buildInspect() *object.Module {
 
 	m.Dict.SetStr("getlineno", &object.BuiltinFunc{
 		Name: "getlineno",
-		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) > 0 {
+				if fr, ok := a[0].(*Frame); ok && fr.Code != nil {
+					return object.NewInt(int64(fr.Code.FirstLineNo)), nil
+				}
+			}
 			return object.NewInt(0), nil
 		},
 	})
 
 	m.Dict.SetStr("getframeinfo", &object.BuiltinFunc{
 		Name: "getframeinfo",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) == 0 {
+				return makeFrameInfo(nil, false), nil
+			}
+			if fr, ok := a[0].(*Frame); ok {
+				return makeFrameInfo(fr, false), nil
+			}
+			return makeFrameInfo(nil, false), nil
+		},
+	})
+
+	m.Dict.SetStr("currentframe", &object.BuiltinFunc{
+		Name: "currentframe",
 		Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			cls := &object.Class{Name: "Traceback", Dict: object.NewDict()}
-			inst := &object.Instance{Class: cls, Dict: object.NewDict()}
-			inst.Dict.SetStr("filename", &object.Str{V: "<unknown>"})
-			inst.Dict.SetStr("lineno", object.NewInt(0))
-			inst.Dict.SetStr("function", &object.Str{V: "<unknown>"})
-			inst.Dict.SetStr("code_context", object.None)
-			inst.Dict.SetStr("index", object.None)
-			return inst, nil
+			if i.curFrame == nil {
+				return object.None, nil
+			}
+			return i.curFrame, nil
 		},
 	})
 

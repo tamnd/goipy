@@ -46,6 +46,63 @@ type Frame struct {
 	stackInline [inlineStackCap]object.Object
 }
 
+// frameLocalsView returns a snapshot dict of f's local variables. For
+// module/class-body frames f.Locals is the authoritative dict and is
+// returned as-is; for function frames the view materialises Fast slots
+// keyed by their LocalsPlusNames entries (PEP 667 calls this
+// FrameLocalsProxy in 3.13+; goipy ships the simpler dict view for now).
+func frameLocalsView(f *Frame) *object.Dict {
+	if f == nil {
+		return object.NewDict()
+	}
+	if f.Locals != nil && f.Code != nil && (f.Code.Flags&0x02) == 0 {
+		// Bit 0x02 = CO_NEWLOCALS clear → module/class body. Return the
+		// real locals dict so writes are observable.
+		return f.Locals
+	}
+	d := object.NewDict()
+	if f.Code == nil {
+		return d
+	}
+	for k, n := range f.Code.LocalsPlusNames {
+		if k >= len(f.Code.LocalsPlusKinds) {
+			break
+		}
+		kind := f.Code.LocalsPlusKinds[k]
+		if kind&object.FastHidden != 0 {
+			continue
+		}
+		if k >= len(f.Fast) {
+			break
+		}
+		v := f.Fast[k]
+		if v == nil {
+			continue
+		}
+		d.SetStr(n, v)
+	}
+	// Cell + free vars carry observable values too.
+	for k, c := range f.Cells {
+		if c == nil {
+			continue
+		}
+		v, ok := c.Load()
+		if !ok {
+			continue
+		}
+		var name string
+		if k < len(f.Code.CellVars) {
+			name = f.Code.CellVars[k]
+		} else if k-len(f.Code.CellVars) < len(f.Code.FreeVars) {
+			name = f.Code.FreeVars[k-len(f.Code.CellVars)]
+		}
+		if name != "" {
+			d.SetStr(name, v)
+		}
+	}
+	return d
+}
+
 // NewFrame builds a fresh frame for code.
 func NewFrame(code *object.Code, globals, builtins, locals *object.Dict) *Frame {
 	f := &Frame{

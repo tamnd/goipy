@@ -1,0 +1,9 @@
+getframe ok
+frame attrs ok
+f_back ok
+currentframe ok
+stack ok
+code attrs ok
+co_lines ok
+f_locals ok
+ok

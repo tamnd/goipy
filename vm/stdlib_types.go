@@ -45,6 +45,14 @@ func (i *Interp) buildTypes() *object.Module {
 	codeType.ABCCheck = func(o object.Object) bool { _, ok := o.(*object.Code); return ok }
 	m.Dict.SetStr("CodeType", codeType)
 
+	frameType := &object.Class{Name: "frame", Dict: object.NewDict()}
+	frameType.ABCCheck = func(o object.Object) bool { _, ok := o.(*Frame); return ok }
+	m.Dict.SetStr("FrameType", frameType)
+
+	tracebackType := &object.Class{Name: "traceback", Dict: object.NewDict()}
+	tracebackType.ABCCheck = func(o object.Object) bool { _, ok := o.(*object.Traceback); return ok }
+	m.Dict.SetStr("TracebackType", tracebackType)
+
 	// ModuleType: BuiltinFunc so calling it constructs a *Module.
 	// isinstance dispatch is via matchBuiltinType("module") → added in ops.go.
 	m.Dict.SetStr("ModuleType", &object.BuiltinFunc{Name: "module", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {

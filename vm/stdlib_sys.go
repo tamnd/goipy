@@ -63,6 +63,32 @@ func (i *Interp) buildSys() *object.Module {
 		return nil, e
 	}})
 
+	m.Dict.SetStr("_getframe", &object.BuiltinFunc{Name: "_getframe", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		// CPython: sys._getframe([depth]) → frame N levels up.
+		// depth=0 is the caller's frame. Since this builtin runs during
+		// the caller's execution, i.curFrame *is* the caller (the
+		// builtin frame is not pushed). depth must be in range.
+		depth := 0
+		if len(a) >= 1 {
+			n, ok := toInt64(a[0])
+			if !ok {
+				return nil, object.Errorf(i.typeErr, "an integer is required")
+			}
+			depth = int(n)
+		}
+		if depth < 0 {
+			return nil, object.Errorf(i.valueErr, "frame index must be non-negative")
+		}
+		f := i.curFrame
+		for k := 0; k < depth && f != nil; k++ {
+			f = f.Back
+		}
+		if f == nil {
+			return nil, object.Errorf(i.valueErr, "call stack is not deep enough")
+		}
+		return f, nil
+	}})
+
 	m.Dict.SetStr("exc_info", &object.BuiltinFunc{Name: "exc_info", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		for f := i.curFrame; f != nil; f = f.Back {
 			if f.ExcInfo != nil {
