@@ -1,0 +1,21 @@
+# section 1: Condition.wait timeout (no notifier)
+got= False
+elapsed_ok= True
+# section 2: Condition.wait notified before timeout
+got= True
+# section 3: Condition.wait_for predicate satisfied
+wait_for_ok= True
+# section 4: Condition.wait_for timeout (predicate stays False)
+wait_for_result= False
+elapsed_ok= True
+# section 5: Event.wait timeout / set / clear
+wait_unset= False elapsed_ok= True
+wait_set= True
+wait_cleared= False
+# section 6: Semaphore.acquire timeout
+acquire_empty= False elapsed_ok= True
+acquire_released= True
+# section 7: Barrier.wait timeout breaks the barrier
+BrokenBarrierError
+broken= True
+done
