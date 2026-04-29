@@ -396,7 +396,12 @@ type Function struct {
 	Doc         Object
 	Module      Object
 	Annotations Object
-	Dict        *Dict
+	// Annotate is the PEP 649 lazy annotation function (Python 3.14
+	// MAKE_FUNCTION + SET_FUNCTION_ATTRIBUTE flag 0x10). When
+	// Annotations is unset, calling Annotate(1) materialises the
+	// annotation dict; the result is cached into Annotations.
+	Annotate Object
+	Dict     *Dict
 }
 
 // Cell is a shared storage slot used for closures. Mu protects V/Set
