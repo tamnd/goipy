@@ -1133,6 +1133,28 @@ func (i *Interp) initBuiltins() {
 		if r, ok, err := in.metaSubclassCheck(a[0], a[1]); ok {
 			return r, err
 		}
+		// Builtin-type BuiltinFunc as the child argument: walk the
+		// static MRO map (V2 surface, spec 1543).
+		if bfa, oka := a[0].(*object.BuiltinFunc); oka && isBuiltinTypeName(bfa.Name) {
+			check := func(t object.Object) bool {
+				if bfb, okb := t.(*object.BuiltinFunc); okb && isBuiltinTypeName(bfb.Name) {
+					return isBuiltinSubclass(bfa.Name, bfb.Name)
+				}
+				if cls, okc := t.(*object.Class); okc && cls.Name == "object" {
+					return true
+				}
+				return false
+			}
+			if tup, ok := a[1].(*object.Tuple); ok {
+				for _, tt := range tup.V {
+					if check(tt) {
+						return object.True, nil
+					}
+				}
+				return object.False, nil
+			}
+			return object.BoolOf(check(a[1])), nil
+		}
 		ca, okA := a[0].(*object.Class)
 		// Second arg may be a tuple of classes.
 		if tup, ok := a[1].(*object.Tuple); ok {
@@ -1186,17 +1208,37 @@ func (i *Interp) initBuiltins() {
 		}
 		return object.False, nil
 	}})
-	b.SetStr("type", &object.BuiltinFunc{Name: "type", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	typeBuiltin := &object.BuiltinFunc{Name: "type"}
+	typeBuiltin.Call = func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		if len(a) != 1 {
+			return nil, object.Errorf(i.typeErr, "type() takes 1 argument (3-arg form not supported)")
+		}
 		if inst, ok := a[0].(*object.Instance); ok {
 			return inst.Class, nil
 		}
 		if exc, ok := a[0].(*object.Exception); ok {
 			return exc.Class, nil
 		}
-		// Fallback: synthesize a bare class with just the name; good enough
-		// for `type(x).__name__` on builtin types.
-		return &object.Class{Name: object.TypeName(a[0]), Dict: object.NewDict()}, nil
-	}})
+		if _, ok := a[0].(*object.Class); ok {
+			return typeBuiltin, nil
+		}
+		if bf, ok := a[0].(*object.BuiltinFunc); ok {
+			if isBuiltinTypeName(bf.Name) {
+				return typeBuiltin, nil
+			}
+		}
+		name := object.TypeName(a[0])
+		if v, ok := b.GetStr(name); ok {
+			if _, isBF := v.(*object.BuiltinFunc); isBF {
+				return v, nil
+			}
+			if _, isCls := v.(*object.Class); isCls {
+				return v, nil
+			}
+		}
+		return &object.Class{Name: name, Dict: object.NewDict()}, nil
+	}
+	b.SetStr("type", typeBuiltin)
 	b.SetStr("id", &object.BuiltinFunc{Name: "id", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return object.NewInt(int64(fmt.Sprintf("%p", a[0])[2] ^ 0x42)), nil
 	}})
@@ -1654,6 +1696,72 @@ func (i *Interp) initBuiltins() {
 			installClassUnionHooks(o)
 		}
 	}
+
+	// V2 surface (roadmap 1541, spec 1543): give every builtin-type
+	// BuiltinFunc the class-shape attributes (__name__, __mro__,
+	// __bases__, __qualname__, __module__) so `int.__mro__`,
+	// `type(int) is type`, `isinstance(int, type)`, and
+	// `issubclass(bool, int)` behave like CPython. Subclass
+	// arithmetic stays out (V2 part 2 / v0.1.3).
+	wireBuiltinTypeAttrs(b, objectClass, typeBuiltin)
+}
+
+func wireBuiltinTypeAttrs(b *object.Dict, objectClass *object.Class, typeBuiltin *object.BuiltinFunc) {
+	names := []string{
+		"int", "float", "str", "bytes", "bytearray", "memoryview",
+		"list", "tuple", "dict", "set", "frozenset", "complex",
+		"bool",
+	}
+	fns := map[string]*object.BuiltinFunc{}
+	for _, n := range names {
+		v, ok := b.GetStr(n)
+		if !ok {
+			continue
+		}
+		bf, ok := v.(*object.BuiltinFunc)
+		if !ok {
+			continue
+		}
+		if bf.Attrs == nil {
+			bf.Attrs = object.NewDict()
+		}
+		fns[n] = bf
+	}
+	setShape := func(bf *object.BuiltinFunc, name string, baseObjs, mroObjs []object.Object) {
+		bf.Attrs.SetStr("__qualname__", &object.Str{V: name})
+		bf.Attrs.SetStr("__module__", &object.Str{V: "builtins"})
+		bf.Attrs.SetStr("__bases__", &object.Tuple{V: baseObjs})
+		bf.Attrs.SetStr("__mro__", &object.Tuple{V: mroObjs})
+	}
+	for name, bf := range fns {
+		var baseObjs []object.Object
+		if bn, ok := builtinTypeBases[name]; ok {
+			for _, b := range bn {
+				if bb, ok2 := fns[b]; ok2 {
+					baseObjs = append(baseObjs, bb)
+				}
+			}
+		} else {
+			baseObjs = []object.Object{objectClass}
+		}
+		mro := []object.Object{bf}
+		for cur := name; ; {
+			bn, ok := builtinTypeBases[cur]
+			if !ok {
+				break
+			}
+			cur = bn[0]
+			if bb, ok2 := fns[cur]; ok2 {
+				mro = append(mro, bb)
+			}
+		}
+		mro = append(mro, objectClass)
+		setShape(bf, name, baseObjs, mro)
+	}
+	if typeBuiltin.Attrs == nil {
+		typeBuiltin.Attrs = object.NewDict()
+	}
+	setShape(typeBuiltin, "type", []object.Object{objectClass}, []object.Object{typeBuiltin, objectClass})
 }
 
 func reduceMinMax(in *Interp, a []object.Object, isMin bool) (object.Object, error) {
@@ -1797,6 +1905,12 @@ func isinstance(o, t object.Object) bool {
 		if e, ok := o.(*object.Exception); ok {
 			return object.IsSubclass(e.Class, cls)
 		}
+		// A builtin-type BuiltinFunc is a subclass of object.
+		if cls.Name == "object" {
+			if obf, ok2 := o.(*object.BuiltinFunc); ok2 && isBuiltinTypeName(obf.Name) {
+				return true
+			}
+		}
 		return false
 	}
 	if tup, ok := t.(*object.Tuple); ok {
@@ -1811,6 +1925,16 @@ func isinstance(o, t object.Object) bool {
 		return object.TypeName(o) == s.V
 	}
 	if bf, ok := t.(*object.BuiltinFunc); ok {
+		if bf.Name == "type" {
+			// Anything that represents a type satisfies isinstance(x, type).
+			if _, isCls := o.(*object.Class); isCls {
+				return true
+			}
+			if obf, ok2 := o.(*object.BuiltinFunc); ok2 {
+				return isBuiltinTypeName(obf.Name)
+			}
+			return false
+		}
 		return matchBuiltinType(o, bf.Name)
 	}
 	return false

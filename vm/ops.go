@@ -1478,6 +1478,46 @@ func isSpecialMatchClass(name string) bool {
 	return false
 }
 
+// builtinTypeNames is the set of `BuiltinFunc.Name` values that
+// represent a Python builtin type (rather than a regular function).
+// Membership lets `type()`, `isinstance()`, `issubclass()` treat
+// the BuiltinFunc as a class — see roadmap V2 (1541) and 1543.
+var builtinTypeNames = map[string]struct{}{
+	"int": {}, "float": {}, "str": {}, "bool": {}, "bytes": {},
+	"bytearray": {}, "memoryview": {}, "list": {}, "tuple": {},
+	"dict": {}, "set": {}, "frozenset": {}, "complex": {},
+	"type": {},
+}
+
+// builtinTypeBases maps a builtin type name to its direct bases.
+// Anything not listed has `object` as its sole base.
+var builtinTypeBases = map[string][]string{
+	"bool": {"int"},
+}
+
+func isBuiltinTypeName(name string) bool {
+	_, ok := builtinTypeNames[name]
+	return ok
+}
+
+// isBuiltinSubclass returns true if `child` is `parent` or
+// transitively inherits from it through builtinTypeBases. `object`
+// is the implicit ancestor of every builtin type.
+func isBuiltinSubclass(child, parent string) bool {
+	if child == parent {
+		return true
+	}
+	if parent == "object" {
+		return true
+	}
+	for _, p := range builtinTypeBases[child] {
+		if isBuiltinSubclass(p, parent) {
+			return true
+		}
+	}
+	return false
+}
+
 func matchBuiltinTypeScalar(o object.Object, name string) (bool, bool) {
 	switch name {
 	case "int":
