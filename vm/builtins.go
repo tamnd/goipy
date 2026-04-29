@@ -205,6 +205,7 @@ func (i *Interp) initBuiltins() {
 				}
 			}
 		}
+		a[0] = unboxBuiltin(a[0])
 		switch v := a[0].(type) {
 		case *object.Int:
 			return v, nil
@@ -286,6 +287,7 @@ func (i *Interp) initBuiltins() {
 				return nil, object.Errorf(in.typeErr, "__float__ returned non-float")
 			}
 		}
+		a[0] = unboxBuiltin(a[0])
 		switch v := a[0].(type) {
 		case *object.Float:
 			return v, nil
@@ -881,6 +883,7 @@ func (i *Interp) initBuiltins() {
 				return r, err
 			}
 		}
+		a[0] = unboxBuiltin(a[0])
 		switch v := a[0].(type) {
 		case *object.Int:
 			return object.IntFromBig(new(big.Int).Abs(&v.V)), nil
@@ -1154,6 +1157,32 @@ func (i *Interp) initBuiltins() {
 				return object.False, nil
 			}
 			return object.BoolOf(check(a[1])), nil
+		}
+		// User class subclassing a builtin type, asked against a builtin
+		// type BuiltinFunc: e.g. issubclass(N, int) where N(int).
+		if ca, oka := a[0].(*object.Class); oka && ca.BuiltinBase != "" {
+			check := func(t object.Object) bool {
+				if bfb, okb := t.(*object.BuiltinFunc); okb && isBuiltinTypeName(bfb.Name) {
+					return isBuiltinSubclass(ca.BuiltinBase, bfb.Name)
+				}
+				if cls, okc := t.(*object.Class); okc && cls.Name == "object" {
+					return true
+				}
+				return false
+			}
+			if tup, ok := a[1].(*object.Tuple); ok {
+				for _, tt := range tup.V {
+					if check(tt) {
+						return object.True, nil
+					}
+					if c2, ok2 := tt.(*object.Class); ok2 && object.IsSubclass(ca, c2) {
+						return object.True, nil
+					}
+				}
+				// fall through to default class-vs-class path below
+			} else if check(a[1]) {
+				return object.True, nil
+			}
 		}
 		ca, okA := a[0].(*object.Class)
 		// Second arg may be a tuple of classes.
@@ -1567,9 +1596,23 @@ func (i *Interp) initBuiltins() {
 			}
 		}
 		var bases []*object.Class
+		var builtinBase string
+		var builtinBaseFn *object.BuiltinFunc
 		for _, b := range expanded {
 			if cls, ok := b.(*object.Class); ok {
 				bases = append(bases, cls)
+				if cls.BuiltinBase != "" && builtinBase == "" {
+					builtinBase = cls.BuiltinBase
+				}
+				continue
+			}
+			if bf, ok := b.(*object.BuiltinFunc); ok {
+				if isBuiltinTypeName(bf.Name) && bf.Name != "type" {
+					if builtinBase == "" {
+						builtinBase = bf.Name
+						builtinBaseFn = bf
+					}
+				}
 			}
 		}
 		// Execute class body in a fresh dict.
@@ -1589,6 +1632,36 @@ func (i *Interp) initBuiltins() {
 			return nil, err
 		}
 		cls := &object.Class{Name: name, Bases: bases, Dict: ns}
+		// V2 part 2 (1544): track builtin-type base for subclass
+		// arithmetic. BuiltinBase + BuiltinMRO drive Instance
+		// construction, isinstance/issubclass, __mro__/__bases__,
+		// and operator unboxing.
+		if builtinBase != "" {
+			cls.BuiltinBase = builtinBase
+			objectClassObj, _ := b.GetStr("object")
+			objCls, _ := objectClassObj.(*object.Class)
+			mro := []object.Object{cls}
+			if builtinBaseFn != nil {
+				mro = append(mro, builtinBaseFn)
+				if mroVal, ok := builtinBaseFn.Attrs.GetStr("__mro__"); ok {
+					if t, ok := mroVal.(*object.Tuple); ok {
+						for _, m := range t.V[1:] {
+							mro = append(mro, m)
+						}
+					}
+				} else if objCls != nil {
+					mro = append(mro, objCls)
+				}
+			} else {
+				for _, parent := range bases {
+					if parent.BuiltinBase == builtinBase && len(parent.BuiltinMRO) > 0 {
+						mro = append(mro, parent.BuiltinMRO...)
+						break
+					}
+				}
+			}
+			cls.BuiltinMRO = mro
+		}
 		// Honor `class Foo(..., metaclass=Meta)`: Meta is a class whose
 		// __instancecheck__/__subclasscheck__ govern isinstance/issubclass
 		// against Foo. When unset, default `type` semantics apply.
@@ -1934,6 +2007,12 @@ func isinstance(o, t object.Object) bool {
 				return isBuiltinTypeName(obf.Name)
 			}
 			return false
+		}
+		// Builtin-subclass instance: isinstance(N(5), int) is True.
+		if inst, ok2 := o.(*object.Instance); ok2 && inst.Class != nil && inst.Class.BuiltinBase != "" {
+			if isBuiltinSubclass(inst.Class.BuiltinBase, bf.Name) {
+				return true
+			}
 		}
 		return matchBuiltinType(o, bf.Name)
 	}

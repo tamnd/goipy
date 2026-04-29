@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.1.3](changelog/0.1.3.md) | 2026-04-29 | builtin subclass arithmetic: `class N(int): ...; N(5) + 1 == 6`, `S("hi").upper() == "HI"`, `isinstance(N(5), int)`, `{N(5): "a"}[5] == "a"`; `BuiltinValue` payload + `unboxBuiltin` after dunder dispatch; fixture 349 |
 | [v0.1.2](changelog/0.1.2.md) | 2026-04-29 | builtin types as classes (surface): `type(int) is type`, `isinstance(int, type)`, `issubclass(bool, int)`, `int.__mro__` / `__name__` / `__bases__` / `__qualname__` / `__module__`; fixture 348 |
 | [v0.1.1](changelog/0.1.1.md) | 2026-04-29 | threading: `Condition.wait(timeout)` / `Event.wait(timeout)` / `Semaphore.acquire(timeout)` / `Barrier.wait(timeout)` no longer deadlock; channel-backed `chCond`; `BrokenBarrierError` class; fixture 347 |
 | [v0.1.0](changelog/0.1.0.md) | 2026-04-29 | "run any 3.14 .pyc" — closes the v0.1.0 gap audit (1530); 346 fixtures green |

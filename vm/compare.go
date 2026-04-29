@@ -66,6 +66,7 @@ func (i *Interp) compare(a, b object.Object, kind int) (object.Object, error) {
 			return object.BoolOf(object.Truthy(r)), err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	if r, handled, err := i.compareEqNe(a, b, kind); handled {
 		return r, err
 	}
@@ -115,6 +116,7 @@ func (i *Interp) lt(a, b object.Object) (bool, error) {
 	if r, ok, err := i.ltDunder(a, b); ok {
 		return r, err
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// Both numeric?
 	if ai, af, aF, aok := asIntOrFloat(a); aok {
 		if bi, bf, bF, bok := asIntOrFloat(b); bok {
@@ -250,6 +252,11 @@ func (i *Interp) contains(container, needle object.Object) (bool, error) {
 					return true, nil
 				}
 			}
+		}
+		// Builtin-subclass instance with no __contains__/__iter__ override:
+		// route through the underlying builtin payload.
+		if inst.BuiltinValue != nil {
+			return i.contains(inst.BuiltinValue, needle)
 		}
 	}
 	switch c := container.(type) {

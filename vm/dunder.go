@@ -129,15 +129,15 @@ func (i *Interp) instReprHook(o object.Object) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	r, ok, err := i.callInstanceDunder(inst, "__repr__")
-	if !ok || err != nil {
-		return "", false
+	if r, ok, err := i.callInstanceDunder(inst, "__repr__"); ok && err == nil {
+		if s, ok := r.(*object.Str); ok {
+			return s.V, true
+		}
 	}
-	s, ok := r.(*object.Str)
-	if !ok {
-		return "", false
+	if inst.BuiltinValue != nil {
+		return object.Repr(inst.BuiltinValue), true
 	}
-	return s.V, true
+	return "", false
 }
 
 func (i *Interp) instStrHook(o object.Object) (string, bool) {
@@ -154,6 +154,9 @@ func (i *Interp) instStrHook(o object.Object) (string, bool) {
 		if s, ok := r.(*object.Str); ok {
 			return s.V, true
 		}
+	}
+	if inst.BuiltinValue != nil {
+		return object.Str_(inst.BuiltinValue), true
 	}
 	return "", false
 }
@@ -173,6 +176,9 @@ func (i *Interp) instTruthyHook(o object.Object) (bool, bool) {
 			return n != 0, true
 		}
 	}
+	if inst.BuiltinValue != nil {
+		return object.Truthy(inst.BuiltinValue), true
+	}
 	return false, false
 }
 
@@ -183,6 +189,10 @@ func (i *Interp) instHashHook(o object.Object) (uint64, bool, error) {
 	}
 	r, ok, err := i.callInstanceDunder(inst, "__hash__")
 	if !ok {
+		if inst.BuiltinValue != nil {
+			h, err := object.Hash(inst.BuiltinValue)
+			return h, true, err
+		}
 		// No __hash__ defined: use identity hash (CPython default).
 		p := reflect.ValueOf(inst).Pointer()
 		h := uint64(p>>4) ^ uint64(p>>12)
@@ -223,6 +233,19 @@ func (i *Interp) instEqHook(a, b object.Object) (bool, bool, error) {
 				return object.Truthy(r), true, nil
 			}
 		}
+	}
+	// Builtin-subclass instances without __eq__: compare on the underlying
+	// builtin payload, e.g. N(5) == 5 when class N(int).
+	au, bu := a, b
+	if aok && ia.BuiltinValue != nil {
+		au = ia.BuiltinValue
+	}
+	if bok && ib.BuiltinValue != nil {
+		bu = ib.BuiltinValue
+	}
+	if au != a || bu != b {
+		eq, err := object.Eq(au, bu)
+		return eq, true, err
 	}
 	// Fall back to identity for instances when no __eq__ defined.
 	return a == b, true, nil

@@ -103,6 +103,7 @@ func (i *Interp) matmul(a, b object.Object) (object.Object, error) {
 // asComplex coerces a numeric scalar to a Complex value. Returns ok=false
 // for non-numeric objects.
 func asComplex(o object.Object) (re, im float64, ok bool) {
+	o = unboxBuiltin(o)
 	switch v := o.(type) {
 	case *object.Bool:
 		if v.V {
@@ -124,7 +125,7 @@ func asComplex(o object.Object) (re, im float64, ok bool) {
 // zero and neither input was already a Complex — in which case callers
 // prefer the plain int/float result.
 func isComplex(o object.Object) bool {
-	_, ok := o.(*object.Complex)
+	_, ok := unboxBuiltin(o).(*object.Complex)
 	return ok
 }
 
@@ -165,6 +166,7 @@ func floatFast(av float64, b object.Object, nb uint32) (object.Object, bool) {
 }
 
 func asIntOrFloat(o object.Object) (ibig *big.Int, f float64, isFloat bool, ok bool) {
+	o = unboxBuiltin(o)
 	switch v := o.(type) {
 	case *object.Bool:
 		if v.V {
@@ -286,6 +288,7 @@ func (i *Interp) add(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// Counter + Counter
 	if ca, ok := a.(*object.Counter); ok {
 		if cb, ok2 := b.(*object.Counter); ok2 {
@@ -375,6 +378,7 @@ func (i *Interp) sub(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// Counter - Counter
 	if ca, ok := a.(*object.Counter); ok {
 		if cb, ok2 := b.(*object.Counter); ok2 {
@@ -409,6 +413,7 @@ func (i *Interp) mul(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// str * int
 	if sa, ok := a.(*object.Str); ok {
 		if n, ok := toInt64(b); ok {
@@ -506,6 +511,7 @@ func (i *Interp) truediv(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	if isComplex(a) || isComplex(b) {
 		ar, ai2, ok1 := asComplex(a)
 		br, bi2, ok2 := asComplex(b)
@@ -539,6 +545,7 @@ func (i *Interp) floordiv(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
 	if !aok || !bok {
@@ -569,6 +576,7 @@ func (i *Interp) mod(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// str % tuple-ish — skip; not implementing printf-style formatting.
 	ai, af, aF, aok := asIntOrFloat(a)
 	bi, bf, bF, bok := asIntOrFloat(b)
@@ -598,6 +606,7 @@ func (i *Interp) pow(a, b object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	if isComplex(a) || isComplex(b) {
 		ar, ai2, ok1 := asComplex(a)
 		br, bi2, ok2 := asComplex(b)
@@ -779,6 +788,7 @@ func (i *Interp) bitop(a, b object.Object, kind string) (object.Object, error) {
 			return r, err
 		}
 	}
+	a, b = unboxBuiltin(a), unboxBuiltin(b)
 	// PEP 604: int | str, list | None, etc. — both operands type-like.
 	if kind == "|" && isTypeLike(a) && isTypeLike(b) {
 		return makeUnionType([]object.Object{a, b}), nil
@@ -849,6 +859,9 @@ func (i *Interp) getitem(container, key object.Object) (object.Object, error) {
 	if inst, ok := container.(*object.Instance); ok {
 		if r, ok, err := i.callInstanceDunder(inst, "__getitem__", key); ok {
 			return r, err
+		}
+		if inst.BuiltinValue != nil {
+			return i.getitem(inst.BuiltinValue, key)
 		}
 	}
 	if cls, ok := container.(*object.Class); ok {
@@ -1264,6 +1277,7 @@ func sliceRunes(s []rune, start, stop, step int) []rune {
 
 // toInt64 converts small Int/Bool to int64; returns ok=false otherwise.
 func toInt64(o object.Object) (int64, bool) {
+	o = unboxBuiltin(o)
 	switch v := o.(type) {
 	case *object.Bool:
 		if v.V {
@@ -1280,6 +1294,7 @@ func toInt64(o object.Object) (int64, bool) {
 
 // toBigInt converts Int/Bool to *big.Int.
 func toBigInt(o object.Object) (*big.Int, bool) {
+	o = unboxBuiltin(o)
 	switch v := o.(type) {
 	case *object.Bool:
 		if v.V {
