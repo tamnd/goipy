@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.340](changelog/0.0.340.md) | 2026-04-29 | exception API -- `add_note`/`__notes__`, `with_traceback`, `__suppress_context__`, BaseExceptionGroup `split`/`subgroup`/`derive`, fixture 340 |
 | [v0.0.339](changelog/0.0.339.md) | 2026-04-29 | async generators -- `__aiter__`/`__anext__`/`asend`/`athrow`/`aclose`, async for + comprehension, fixture 339 |
 | [v0.0.338](changelog/0.0.338.md) | 2026-04-29 | PEP 585 / 604 / 560 -- `list[int]`, `int | str`, `__mro_entries__` substitution, fixture 338 |
 | [v0.0.337](changelog/0.0.337.md) | 2026-04-29 | frame & code exposure -- `sys._getframe`, `f_*` attrs, `co_qualname`/`co_consts`/`co_lines()`, `inspect` chain walkers, fixture 337 |

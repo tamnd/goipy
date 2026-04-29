@@ -56,6 +56,7 @@ type Interp struct {
 	unicodeEncodeErr,
 	warningClass,
 	baseExcGroup,
+	excGroup,
 	reErr,
 	jsonDecodeErr *object.Class
 

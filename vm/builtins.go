@@ -121,7 +121,10 @@ func (i *Interp) initBuiltins() {
 
 	// ExceptionGroup (Python 3.11+): inherits Exception AND BaseExceptionGroup.
 	i.baseExcGroup = mk("BaseExceptionGroup", i.baseExc)
-	mk("ExceptionGroup", i.exception, i.baseExcGroup)
+	i.excGroup = mk("ExceptionGroup", i.exception, i.baseExcGroup)
+
+	// PEP 678 / PEP 654 — add_note, with_traceback, split/subgroup/derive.
+	i.installExceptionMethods()
 
 	// Singletons & types.
 	b.SetStr("None", object.None)

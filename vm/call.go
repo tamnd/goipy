@@ -26,7 +26,24 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 	case *object.Class:
 		// Exception subclasses produce *object.Exception directly.
 		if object.IsSubclass(fn, i.baseExc) {
-			exc := &object.Exception{Class: fn, Args: &object.Tuple{V: append([]object.Object{}, args...)}}
+			cls := fn
+			// PEP 654: BaseExceptionGroup(msg, excs) auto-promotes to
+			// ExceptionGroup when every inner exception is an Exception
+			// subclass (i.e. none are bare BaseException-level errors).
+			if cls == i.baseExcGroup && len(args) == 2 {
+				if all, ok := allExceptionSubclass(i, args[1]); ok && all {
+					cls = i.excGroup
+				}
+			}
+			// Normalize the inner exceptions sequence to a tuple so
+			// `eg.exceptions` is a tuple (matches CPython).
+			argsCopy := append([]object.Object{}, args...)
+			if object.IsSubclass(cls, i.baseExcGroup) && len(argsCopy) >= 2 {
+				if items, ierr := iterate(i, argsCopy[1]); ierr == nil {
+					argsCopy[1] = &object.Tuple{V: items}
+				}
+			}
+			exc := &object.Exception{Class: cls, Args: &object.Tuple{V: argsCopy}}
 			if len(args) == 1 {
 				if s, ok := args[0].(*object.Str); ok {
 					exc.Msg = s.V
