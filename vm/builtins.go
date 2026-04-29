@@ -700,7 +700,33 @@ func (i *Interp) initBuiltins() {
 		return &object.Range{Start: start, Stop: stop, Step: step}, nil
 	}})
 	b.SetStr("iter", &object.BuiltinFunc{Name: "iter", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		return ii.(*Interp).getIter(a[0])
+		in := ii.(*Interp)
+		if len(a) >= 2 {
+			// iter(callable, sentinel): keep calling callable; stop when its
+			// return value equals sentinel. The PEP-defined two-arg form.
+			fn := a[0]
+			sentinel := a[1]
+			done := false
+			return &object.Iter{Next: func() (object.Object, bool, error) {
+				if done {
+					return nil, false, nil
+				}
+				v, err := in.callObject(fn, nil, nil)
+				if err != nil {
+					return nil, false, err
+				}
+				eq, eqErr := object.Eq(v, sentinel)
+				if eqErr != nil {
+					return nil, false, eqErr
+				}
+				if eq {
+					done = true
+					return nil, false, nil
+				}
+				return v, true, nil
+			}}, nil
+		}
+		return in.getIter(a[0])
 	}})
 	b.SetStr("next", &object.BuiltinFunc{Name: "next", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
