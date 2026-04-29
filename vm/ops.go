@@ -825,19 +825,102 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		}
 	}
 	if fn, ok := o.(*object.Function); ok {
-		if name == "__name__" {
+		switch name {
+		case "__name__":
 			return &object.Str{V: fn.Name}, nil
-		}
-		if name == "__doc__" {
+		case "__qualname__":
+			if fn.QualName != "" {
+				return &object.Str{V: fn.QualName}, nil
+			}
+			return &object.Str{V: fn.Name}, nil
+		case "__doc__":
 			if fn.Doc != nil && fn.Doc != object.None {
 				return fn.Doc, nil
 			}
 			return object.None, nil
+		case "__code__":
+			if fn.Code == nil {
+				return object.None, nil
+			}
+			return fn.Code, nil
+		case "__defaults__":
+			if fn.Defaults == nil {
+				return object.None, nil
+			}
+			return fn.Defaults, nil
+		case "__kwdefaults__":
+			if fn.KwDefaults == nil {
+				return object.None, nil
+			}
+			return fn.KwDefaults, nil
+		case "__annotations__":
+			if fn.Annotations != nil {
+				return fn.Annotations, nil
+			}
+			if fn.Annotate != nil {
+				// PEP 649: call __annotate__(1) for VALUE format.
+				v, err := i.callObject(fn.Annotate, []object.Object{object.NewInt(1)}, nil)
+				if err != nil {
+					return nil, err
+				}
+				fn.Annotations = v
+				return v, nil
+			}
+			d := object.NewDict()
+			fn.Annotations = d
+			return d, nil
+		case "__closure__":
+			if fn.Closure == nil || len(fn.Closure.V) == 0 {
+				return object.None, nil
+			}
+			return fn.Closure, nil
+		case "__annotate__":
+			if fn.Annotate == nil {
+				return object.None, nil
+			}
+			return fn.Annotate, nil
+		case "__globals__":
+			if fn.Globals == nil {
+				return object.NewDict(), nil
+			}
+			return fn.Globals, nil
+		case "__module__":
+			if fn.Module != nil && fn.Module != object.None {
+				return fn.Module, nil
+			}
+			if fn.Globals != nil {
+				if v, ok := fn.Globals.GetStr("__name__"); ok {
+					return v, nil
+				}
+			}
+			return object.None, nil
+		case "__dict__":
+			if fn.Dict == nil {
+				fn.Dict = object.NewDict()
+			}
+			return fn.Dict, nil
 		}
 		if fn.Dict != nil {
 			if v, ok := fn.Dict.GetStr(name); ok {
 				return v, nil
 			}
+		}
+	}
+	if bm, ok := o.(*object.BoundMethod); ok {
+		switch name {
+		case "__self__":
+			if bm.Self == nil {
+				return object.None, nil
+			}
+			return bm.Self, nil
+		case "__func__":
+			if bm.Fn == nil {
+				return object.None, nil
+			}
+			return bm.Fn, nil
+		}
+		if bm.Fn != nil {
+			return i.getAttr(bm.Fn, name)
 		}
 	}
 	if cls, ok := o.(*object.Class); ok {

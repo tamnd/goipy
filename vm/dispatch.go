@@ -1415,6 +1415,9 @@ func (i *Interp) dispatch(f *Frame) (object.Object, error) {
 				fn.Annotations = val
 			case 0x08:
 				fn.Closure = val.(*object.Tuple)
+			case 0x10:
+				// PEP 649: __annotate__ — lazy annotation function.
+				fn.Annotate = val
 			}
 			f.push(fn)
 		case op.LOAD_BUILD_CLASS:

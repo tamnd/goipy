@@ -1,0 +1,9 @@
+function attrs ok
+none defaults ok
+closure ok
+globals ok
+module ok
+dict ok
+boundmethod ok
+type hints ok
+ok
