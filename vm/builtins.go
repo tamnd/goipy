@@ -1082,10 +1082,17 @@ func (i *Interp) initBuiltins() {
 		return object.True, nil
 	}})
 	b.SetStr("isinstance", &object.BuiltinFunc{Name: "isinstance", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		in := ii.(*Interp)
+		if r, ok, err := in.metaInstanceCheck(a[0], a[1]); ok {
+			return r, err
+		}
 		return object.BoolOf(isinstance(a[0], a[1])), nil
 	}})
 	b.SetStr("issubclass", &object.BuiltinFunc{Name: "issubclass", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		in := ii.(*Interp)
+		if r, ok, err := in.metaSubclassCheck(a[0], a[1]); ok {
+			return r, err
+		}
 		ca, okA := a[0].(*object.Class)
 		// Second arg may be a tuple of classes.
 		if tup, ok := a[1].(*object.Tuple); ok {
@@ -1277,10 +1284,27 @@ func (i *Interp) initBuiltins() {
 	b.SetStr("staticmethod", &object.BuiltinFunc{Name: "staticmethod", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		return &object.StaticMethod{Fn: a[0]}, nil
 	}})
-	// super is a stub — LOAD_SUPER_ATTR handles the real work by receiving
-	// (super, __class__, self) on the stack.
+	// super(): zero-arg form reads __class__ + self from the calling frame
+	// (mirrors what LOAD_SUPER_ATTR does inline when the compiler emits it).
+	// Two-arg form `super(C, instance)` returns a Super proxy that walks MRO
+	// past C and binds methods to instance.
 	b.SetStr("super", &object.BuiltinFunc{Name: "super", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
-		return object.None, nil
+		in := ii.(*Interp)
+		if len(a) == 0 {
+			cls, self, ok := zeroArgSuperFromFrame(in.curFrame)
+			if !ok {
+				return nil, object.Errorf(in.runtimeErr, "super(): no arguments")
+			}
+			return &object.Super{StartCls: cls, Self: self}, nil
+		}
+		cls, ok := a[0].(*object.Class)
+		if !ok {
+			return nil, object.Errorf(in.typeErr, "super() argument 1 must be a type, not '%s'", object.TypeName(a[0]))
+		}
+		if len(a) < 2 {
+			return &object.Super{StartCls: cls}, nil
+		}
+		return &object.Super{StartCls: cls, Self: a[1]}, nil
 	}})
 	b.SetStr("callable", &object.BuiltinFunc{Name: "callable", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		switch v := a[0].(type) {
@@ -1483,6 +1507,25 @@ func (i *Interp) initBuiltins() {
 			return nil, err
 		}
 		cls := &object.Class{Name: name, Bases: bases, Dict: ns}
+		// Honor `class Foo(..., metaclass=Meta)`: Meta is a class whose
+		// __instancecheck__/__subclasscheck__ govern isinstance/issubclass
+		// against Foo. When unset, default `type` semantics apply.
+		if kwds != nil {
+			if mv, ok := kwds.GetStr("metaclass"); ok {
+				if mc, ok := mv.(*object.Class); ok {
+					cls.Metaclass = mc
+				}
+			}
+		}
+		// Inherit metaclass from the most-derived base if no explicit one.
+		if cls.Metaclass == nil {
+			for _, b := range bases {
+				if b.Metaclass != nil {
+					cls.Metaclass = b.Metaclass
+					break
+				}
+			}
+		}
 		// __slots__: parse from class namespace. If declared and no
 		// base class has a __dict__ and '__dict__' isn't itself in
 		// the slot list, instances of cls reject non-slot attr
@@ -1604,6 +1647,89 @@ func reduceMinMax(in *Interp, a []object.Object, isMin bool) (object.Object, err
 		}
 	}
 	return best, nil
+}
+
+// zeroArgSuperFromFrame reconstructs the (StartCls, Self) pair that the
+// LOAD_SUPER_ATTR opcode reads inline. Used when the compiler emits the
+// generic `LOAD_GLOBAL super; CALL 0` pattern instead — happens when the
+// optimizer can't prove `super` is the builtin (e.g. because the module also
+// rebinds `super` somewhere). Reads __class__ from the frame's free vars and
+// the first positional argument from Fast[0].
+func zeroArgSuperFromFrame(f *Frame) (*object.Class, object.Object, bool) {
+	if f == nil || f.Code == nil {
+		return nil, nil, false
+	}
+	// Cells (incl. free cells) live in Fast at indices marked FastCell/FastFree.
+	var cls *object.Class
+	for k, name := range f.Code.LocalsPlusNames {
+		if name != "__class__" {
+			continue
+		}
+		if k >= len(f.Code.LocalsPlusKinds) || k >= len(f.Fast) {
+			break
+		}
+		kind := f.Code.LocalsPlusKinds[k]
+		if kind&(object.FastCell|object.FastFree) == 0 {
+			continue
+		}
+		c, ok := f.Fast[k].(*object.Cell)
+		if !ok || c == nil {
+			break
+		}
+		v, set := c.Load()
+		if !set {
+			break
+		}
+		if cc, ok := v.(*object.Class); ok {
+			cls = cc
+		}
+		break
+	}
+	if cls == nil {
+		return nil, nil, false
+	}
+	if len(f.Fast) == 0 || f.Fast[0] == nil {
+		return nil, nil, false
+	}
+	return cls, f.Fast[0], true
+}
+
+// metaInstanceCheck honours `metaclass.__instancecheck__(cls, inst)` for
+// `isinstance(inst, cls)`. Returns (result, true, err) when the metaclass
+// hook fired, otherwise (nil, false, nil) so callers fall through to the
+// regular MRO/ABC path. ABCs like abc.ABCMeta keep going through their
+// existing ABCCheck callback; this is purely additive.
+func (i *Interp) metaInstanceCheck(o, t object.Object) (object.Object, bool, error) {
+	cls, ok := t.(*object.Class)
+	if !ok || cls.Metaclass == nil {
+		return nil, false, nil
+	}
+	hook, ok := classLookup(cls.Metaclass, "__instancecheck__")
+	if !ok {
+		return nil, false, nil
+	}
+	r, err := i.callObject(hook, []object.Object{cls, o}, nil)
+	if err != nil {
+		return nil, true, err
+	}
+	return object.BoolOf(object.Truthy(r)), true, nil
+}
+
+// metaSubclassCheck mirrors metaInstanceCheck for `issubclass(sub, cls)`.
+func (i *Interp) metaSubclassCheck(sub, t object.Object) (object.Object, bool, error) {
+	cls, ok := t.(*object.Class)
+	if !ok || cls.Metaclass == nil {
+		return nil, false, nil
+	}
+	hook, ok := classLookup(cls.Metaclass, "__subclasscheck__")
+	if !ok {
+		return nil, false, nil
+	}
+	r, err := i.callObject(hook, []object.Object{cls, sub}, nil)
+	if err != nil {
+		return nil, true, err
+	}
+	return object.BoolOf(object.Truthy(r)), true, nil
 }
 
 func isinstance(o, t object.Object) bool {

@@ -496,6 +496,12 @@ type Class struct {
 	// EnumData is non-nil for enum subclasses (Color, Number, etc.).
 	// It holds the member list, value map, and iteration order.
 	EnumData *EnumData
+
+	// Metaclass is the explicit metaclass declared via `class C(metaclass=M):`,
+	// or nil for the default `type` metaclass. When non-nil, isinstance() and
+	// issubclass() consult Metaclass.__instancecheck__ /
+	// __subclasscheck__ before the normal MRO walk.
+	Metaclass *Class
 }
 
 // MethodCacheEntry stores one cached classLookup result.

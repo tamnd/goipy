@@ -1,0 +1,35 @@
+# section 1: super(B, b).hi() walks past B to A.hi
+B.hi
+A.hi
+# section 2: three-deep MRO
+C.hi
+B.hi
+A.hi
+# section 3: diamond — explicit super matches implicit
+G.hi/E.hi/F.hi/D.hi
+E.hi/F.hi/D.hi
+F.hi/D.hi
+# section 4: super on classmethod still binds class
+I:I
+I
+# section 5: metaclass __instancecheck__ overrides isinstance
+True
+True
+True
+# section 6: metaclass __subclasscheck__ overrides issubclass
+True
+True
+# section 7: ABCMeta-style virtual subclass via predicate
+True
+False
+False
+# section 8: metaclass inherited via base class
+True
+True
+False
+# section 9: no metaclass → regular semantics still hold
+True
+True
+False
+True
+False
