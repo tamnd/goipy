@@ -690,6 +690,25 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 			return sl.Stop, nil
 		case "step":
 			return sl.Step, nil
+		case "indices":
+			return &object.BuiltinFunc{Name: "indices", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+				if len(a) != 1 {
+					return nil, object.Errorf(i.typeErr, "slice.indices() takes exactly one argument (%d given)", len(a))
+				}
+				n, ok := toInt64(a[0])
+				if !ok {
+					return nil, object.Errorf(i.typeErr, "slice indices must be integers or have an __index__ method")
+				}
+				start, stop, step, err := i.sliceIndices(sl, n)
+				if err != nil {
+					return nil, err
+				}
+				return &object.Tuple{V: []object.Object{
+					object.NewInt(start),
+					object.NewInt(stop),
+					object.NewInt(step),
+				}}, nil
+			}}, nil
 		}
 	}
 	if t, ok := o.(*object.Tuple); ok {
@@ -1569,6 +1588,66 @@ func (i *Interp) bindDescriptor(v object.Object, inst *object.Instance, cls *obj
 		return r, nil
 	}
 	return v, nil
+}
+
+// sliceIndices implements slice.indices(n): normalises sl's start/stop/step
+// against length n, mirroring CPython's PySlice_GetIndices semantics. Used by
+// C-extensions and pandas-like indexers to turn a possibly-Pythonic slice
+// (negatives, None) into concrete integer bounds.
+func (i *Interp) sliceIndices(sl *object.Slice, length int64) (int64, int64, int64, error) {
+	step := int64(1)
+	if sl.Step != nil && sl.Step != object.None {
+		s, ok := toInt64(sl.Step)
+		if !ok {
+			return 0, 0, 0, object.Errorf(i.typeErr, "slice indices must be integers or have an __index__ method")
+		}
+		if s == 0 {
+			return 0, 0, 0, object.Errorf(i.valueErr, "slice step cannot be zero")
+		}
+		step = s
+	}
+	negStep := step < 0
+	defaultStart := int64(0)
+	defaultStop := length
+	if negStep {
+		defaultStart = length - 1
+		defaultStop = -1
+	}
+	clip := func(v object.Object, dflt int64) (int64, error) {
+		if v == nil || v == object.None {
+			return dflt, nil
+		}
+		x, ok := toInt64(v)
+		if !ok {
+			return 0, object.Errorf(i.typeErr, "slice indices must be integers or have an __index__ method")
+		}
+		if x < 0 {
+			x += length
+			if x < 0 {
+				if negStep {
+					x = -1
+				} else {
+					x = 0
+				}
+			}
+		} else if x >= length {
+			if negStep {
+				x = length - 1
+			} else {
+				x = length
+			}
+		}
+		return x, nil
+	}
+	start, err := clip(sl.Start, defaultStart)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	stop, err := clip(sl.Stop, defaultStop)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return start, stop, step, nil
 }
 
 // lookupAfter walks MRO(instCls) and returns the first attribute named `name`

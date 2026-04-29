@@ -692,6 +692,24 @@ func (i *Interp) buildFunctools() *object.Module {
 		return sdmInst, nil
 	}})
 
+	// _CacheInfo named-tuple class — CPython exposes hits/misses/maxsize/
+	// currsize as named attributes on a namedtuple subclass; code that does
+	// `info.hits` instead of `info[0]` requires this.
+	cacheInfoCls := i.makeNamedTuple("CacheInfo", []string{"hits", "misses", "maxsize", "currsize"}, nil)
+	m.Dict.SetStr("_CacheInfo", cacheInfoCls)
+	newCacheInfo := func(hits, misses int, maxsize int, currsize int) *object.Instance {
+		ms := object.Object(object.NewInt(int64(maxsize)))
+		if maxsize == 0 {
+			ms = object.None
+		}
+		ci := &object.Instance{Class: cacheInfoCls, Dict: object.NewDict()}
+		ci.Dict.SetStr("hits", object.NewInt(int64(hits)))
+		ci.Dict.SetStr("misses", object.NewInt(int64(misses)))
+		ci.Dict.SetStr("maxsize", ms)
+		ci.Dict.SetStr("currsize", object.NewInt(int64(currsize)))
+		return ci
+	}
+
 	// lru_cache(maxsize=128, typed=False) and cache (unbounded).
 	lruCacheFn := func(maxsize int, typed bool) object.Object {
 		return &object.BuiltinFunc{Name: "lru_cache_decorator", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
@@ -735,16 +753,7 @@ func (i *Interp) buildFunctools() *object.Module {
 			}}
 			wrapper.Attrs = object.NewDict()
 			wrapper.Attrs.SetStr("cache_info", &object.BuiltinFunc{Name: "cache_info", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-				ms := object.Object(object.NewInt(int64(maxsize)))
-				if maxsize == 0 {
-					ms = object.None
-				}
-				return &object.Tuple{V: []object.Object{
-					object.NewInt(int64(hits)),
-					object.NewInt(int64(misses)),
-					ms,
-					object.NewInt(int64(len(order))),
-				}}, nil
+				return newCacheInfo(hits, misses, maxsize, len(order)), nil
 			}})
 			wrapper.Attrs.SetStr("cache_clear", &object.BuiltinFunc{Name: "cache_clear", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 				cache = object.NewDict()
