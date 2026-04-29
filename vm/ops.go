@@ -437,6 +437,35 @@ func (i *Interp) length(v object.Object) (int64, error) {
 // --- attribute access ---
 
 func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
+	// Explicit super(StartCls, Self): walk MRO past StartCls and bind to Self.
+	// Mirrors what LOAD_SUPER_ATTR does inline for zero-arg super().
+	if sup, ok := o.(*object.Super); ok {
+		if sup.Self == nil {
+			return nil, object.Errorf(i.attrErr, "'super' object has no attribute '%s'", name)
+		}
+		var instCls *object.Class
+		switch s := sup.Self.(type) {
+		case *object.Instance:
+			instCls = s.Class
+		case *object.Class:
+			instCls = s
+		default:
+			if c, ok := sup.Self.(*object.Class); ok {
+				instCls = c
+			}
+		}
+		if instCls == nil {
+			return nil, object.Errorf(i.typeErr, "super(): instance has no class")
+		}
+		v, found := lookupAfter(instCls, sup.StartCls, name)
+		if !found {
+			return nil, object.Errorf(i.attrErr, "'super' object has no attribute '%s'", name)
+		}
+		if inst, ok := sup.Self.(*object.Instance); ok {
+			return i.bindDescriptor(v, inst, instCls)
+		}
+		return i.bindDescriptor(v, nil, instCls)
+	}
 	// Method lookup for str.
 	if s, ok := o.(*object.Str); ok {
 		if m, ok := strMethod(s, name); ok {
