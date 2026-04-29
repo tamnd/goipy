@@ -1,0 +1,14 @@
+# section 1: settrace round-trip
+None
+True
+None
+# section 2: call/line/return event sequence
+[('f', 'call'), ('f', 'line'), ('f', 'line'), ('f', 'line'), ('f', 'return')]
+# section 3: per-frame f_trace replacement
+[('global', 'g', 'call'), ('local', 'g', 'line'), ('local', 'g', 'return')]
+# section 4: setprofile fires call/return without line
+[('h', 'call'), ('h', 'return')]
+False
+# section 5: disabling trace mid-execution
+('runner', 'call')
+done

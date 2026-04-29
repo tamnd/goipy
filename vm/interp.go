@@ -93,6 +93,18 @@ type Interp struct {
 	// auditHooks holds callables registered via sys.addaudithook.
 	// Hooks are permanent and cannot be removed.
 	auditHooks []object.Object
+
+	// traceFn is the global trace function set by sys.settrace; nil/None
+	// disables tracing. Called with (frame, 'call', None) on frame entry;
+	// the return value becomes the per-frame local trace.
+	traceFn object.Object
+	// profileFn is the global profile function set by sys.setprofile; like
+	// traceFn but only fires call/return — never line.
+	profileFn object.Object
+	// inTrace guards against re-entry: while a trace/profile callback is
+	// running, further events are suppressed so the tracer's own dispatch
+	// doesn't infinite-loop.
+	inTrace bool
 }
 
 // New builds a fresh interpreter.
@@ -225,10 +237,109 @@ func (i *Interp) runFrame(f *Frame) (object.Object, error) {
 	i.callDepth++
 	f.Back = i.curFrame
 	i.curFrame = f
+	i.fireCallEvent(f)
 	r, err := i.dispatch(f)
+	if err == nil {
+		i.fireReturnEvent(f, r)
+	} else if err != errYielded {
+		i.fireExceptionEvent(f, err)
+	}
 	i.callDepth--
 	i.curFrame = f.Back
 	return r, err
+}
+
+// fireCallEvent invokes the global trace/profile function with a 'call'
+// event when a frame begins execution. The result of traceFn(...) is
+// stashed on the frame as the per-frame local trace function used for
+// 'line'/'return'/'exception' events.
+func (i *Interp) fireCallEvent(f *Frame) {
+	if i.inTrace {
+		return
+	}
+	// Seed LastLine to the def line so the first body line transition
+	// fires a 'line' event, matching CPython 3.11+ which never reports
+	// the RESUME opcode's def-line as a separate event.
+	if f.Code != nil {
+		f.LastLine = f.Code.FirstLineNo
+	} else {
+		f.LastLine = -1
+	}
+	if i.traceFn != nil {
+		i.inTrace = true
+		r, err := i.callObject(i.traceFn, []object.Object{f, &object.Str{V: "call"}, object.None}, nil)
+		i.inTrace = false
+		if err == nil && r != nil {
+			if _, isNone := r.(*object.NoneType); !isNone {
+				f.LocalTrace = r
+			}
+		}
+	}
+	if i.profileFn != nil {
+		i.inTrace = true
+		i.callObject(i.profileFn, []object.Object{f, &object.Str{V: "call"}, object.None}, nil)
+		i.inTrace = false
+	}
+}
+
+// fireReturnEvent dispatches the 'return' event on the per-frame trace
+// and the global profile function, in that order — matching CPython.
+func (i *Interp) fireReturnEvent(f *Frame, retval object.Object) {
+	if i.inTrace {
+		return
+	}
+	arg := retval
+	if arg == nil {
+		arg = object.None
+	}
+	if f.LocalTrace != nil {
+		i.inTrace = true
+		i.callObject(f.LocalTrace, []object.Object{f, &object.Str{V: "return"}, arg}, nil)
+		i.inTrace = false
+	}
+	if i.profileFn != nil {
+		i.inTrace = true
+		i.callObject(i.profileFn, []object.Object{f, &object.Str{V: "return"}, arg}, nil)
+		i.inTrace = false
+	}
+}
+
+// fireExceptionEvent dispatches the 'exception' event with a
+// (type, value, None) tuple matching CPython's signature.
+func (i *Interp) fireExceptionEvent(f *Frame, err error) {
+	if i.inTrace || f.LocalTrace == nil {
+		return
+	}
+	exc, ok := err.(*object.Exception)
+	if !ok {
+		return
+	}
+	arg := &object.Tuple{V: []object.Object{exc.Class, exc, object.None}}
+	i.inTrace = true
+	i.callObject(f.LocalTrace, []object.Object{f, &object.Str{V: "exception"}, arg}, nil)
+	i.inTrace = false
+}
+
+// fireLineEvent fires when execution crosses a source-line boundary.
+// Called from the dispatch loop only when f.LocalTrace != nil and the
+// line actually changes.
+func (i *Interp) fireLineEvent(f *Frame) {
+	if i.inTrace || f.LocalTrace == nil {
+		return
+	}
+	i.inTrace = true
+	r, err := i.callObject(f.LocalTrace, []object.Object{f, &object.Str{V: "line"}, object.None}, nil)
+	i.inTrace = false
+	// Per CPython: if local trace returns None, disable further line events
+	// on this frame; if it returns a different callable, replace the local
+	// trace.
+	if err == nil && r != nil {
+		if _, isNone := r.(*object.NoneType); isNone {
+			f.LocalTrace = nil
+		} else {
+			f.LocalTrace = r
+		}
+	}
 }
 
 // extendTraceback prepends a new traceback node for the frame f. The

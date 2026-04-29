@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.345](changelog/0.0.345.md) | 2026-04-29 | `sys.settrace` / `sys.setprofile` -- per-frame `f_trace`, call/line/return/exception events, fixture 345 |
 | [v0.0.344](changelog/0.0.344.md) | 2026-04-29 | `iter(callable, sentinel)` + `slice.indices(n)` + `functools._CacheInfo` namedtuple, fixture 344 |
 | [v0.0.343](changelog/0.0.343.md) | 2026-04-29 | generator/coroutine/async-gen introspection -- `gi_*`/`cr_*`/`ag_*` (frame/running/code/suspended/await/origin), fixture 343 |
 | [v0.0.342](changelog/0.0.342.md) | 2026-04-29 | explicit `super(C, inst)` + metaclass `__instancecheck__`/`__subclasscheck__` -- `Class.Metaclass`, fixture 342 |

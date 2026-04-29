@@ -38,6 +38,15 @@ type Frame struct {
 	// Dispatch checks it at the start of each iteration and redirects to handleErr.
 	PendingThrow error
 
+	// LocalTrace is the per-frame trace function returned by the global
+	// trace's 'call' event (or set explicitly by f_trace = fn). Fires for
+	// 'line'/'return'/'exception' on this frame only.
+	LocalTrace object.Object
+	// LastLine is the source line of the last 'line' event fired; -1 means
+	// no line event has fired yet (so the very first dispatched line emits
+	// one).
+	LastLine int
+
 	// Inline buffers avoid a separate heap allocation for Fast/Stack on
 	// small frames (most Python functions fit). Fast/Stack reference
 	// these when the required size fits; otherwise they point at a
