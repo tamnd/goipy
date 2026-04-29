@@ -735,6 +735,9 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		}
 	}
 	if g, ok := o.(*object.Generator); ok {
+		if v, ok := genIntrospect(g, name); ok {
+			return v, nil
+		}
 		if m, ok := i.genMethod(g, name); ok {
 			return m, nil
 		}

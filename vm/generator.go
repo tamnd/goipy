@@ -25,6 +25,8 @@ func (i *Interp) resumeGenerator(gen *object.Generator, sent object.Object) (obj
 	frame := gen.Frame.(*Frame)
 	frame.push(sent)
 	gen.Started = true
+	gen.Running = true
+	defer func() { gen.Running = false }()
 	result, err := i.runFrame(frame)
 	if errors.Is(err, errYielded) {
 		v := frame.Yielded
@@ -57,6 +59,8 @@ func (i *Interp) throwGenerator(gen *object.Generator, exc *object.Exception) (o
 	frame.IP = frame.YieldIP
 	frame.PendingThrow = exc
 	gen.Started = true
+	gen.Running = true
+	defer func() { gen.Running = false }()
 	result, err := i.runFrame(frame)
 	if errors.Is(err, errYielded) {
 		v := frame.Yielded
@@ -173,6 +177,64 @@ func isAsyncGen(gen *object.Generator) bool {
 		return false
 	}
 	return f.Code.Flags&CO_ASYNC_GENERATOR != 0
+}
+
+// isCoroutine reports whether gen wraps a coroutine (async def) code object.
+func isCoroutine(gen *object.Generator) bool {
+	f, ok := gen.Frame.(*Frame)
+	if !ok || f == nil || f.Code == nil {
+		return false
+	}
+	return f.Code.Flags&(CO_COROUTINE|CO_ITERABLE_COROUTINE) != 0
+}
+
+// genIntrospect resolves gi_*/cr_*/ag_* attributes on a Generator. Same Go
+// type backs all three; we pick the prefix from Code.Flags. Returns
+// (value, true) when name is one of these attrs, (_, false) otherwise so the
+// caller can fall through to method lookup.
+func genIntrospect(gen *object.Generator, name string) (object.Object, bool) {
+	prefix := "gi_"
+	switch {
+	case isAsyncGen(gen):
+		prefix = "ag_"
+	case isCoroutine(gen):
+		prefix = "cr_"
+	}
+	if len(name) < len(prefix) || name[:len(prefix)] != prefix {
+		return nil, false
+	}
+	suffix := name[len(prefix):]
+	f, _ := gen.Frame.(*Frame)
+	switch suffix {
+	case "frame":
+		if gen.Done || f == nil {
+			return object.None, true
+		}
+		return &object.TracebackFrame{Code: f.Code}, true
+	case "running":
+		return object.BoolOf(gen.Running), true
+	case "code":
+		if f == nil || f.Code == nil {
+			return object.None, true
+		}
+		return f.Code, true
+	case "yieldfrom", "await":
+		// We don't track delegated yield-from / await chains; CPython
+		// returns None when no inner iter is currently being driven, so
+		// returning None always is correct outside an active suspension.
+		return object.None, true
+	case "suspended":
+		if prefix != "gi_" {
+			return nil, false
+		}
+		return object.BoolOf(gen.Started && !gen.Done && !gen.Running), true
+	case "origin":
+		if prefix != "cr_" {
+			return nil, false
+		}
+		return object.None, true
+	}
+	return nil, false
 }
 
 // makeAsyncGenClose returns the awaitable for agen.aclose(). It throws

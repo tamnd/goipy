@@ -8,4 +8,7 @@ type Generator struct {
 	Frame   any
 	Started bool
 	Done    bool
+	// Running is set true while the dispatcher is actively stepping the
+	// generator's frame. Surfaces through gi_running / cr_running / ag_running.
+	Running bool
 }

@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.343](changelog/0.0.343.md) | 2026-04-29 | generator/coroutine/async-gen introspection -- `gi_*`/`cr_*`/`ag_*` (frame/running/code/suspended/await/origin), fixture 343 |
 | [v0.0.342](changelog/0.0.342.md) | 2026-04-29 | explicit `super(C, inst)` + metaclass `__instancecheck__`/`__subclasscheck__` -- `Class.Metaclass`, fixture 342 |
 | [v0.0.341](changelog/0.0.341.md) | 2026-04-29 | encoding handlers + `bytes.hex(sep, group)` -- `str.encode` honors `errors=`, `namereplace`, proper UnicodeEncodeError/DecodeError, fixture 341 |
 | [v0.0.340](changelog/0.0.340.md) | 2026-04-29 | exception API -- `add_note`/`__notes__`, `with_traceback`, `__suppress_context__`, BaseExceptionGroup `split`/`subgroup`/`derive`, fixture 340 |
