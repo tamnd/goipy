@@ -1,0 +1,85 @@
+=== type(x) is T ===
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+=== type(T) is type ===
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+=== isinstance(T, type) ===
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+True
+=== issubclass ===
+True
+True
+True
+True
+True
+True
+True
+True
+False
+False
+False
+=== __name__ / __qualname__ / __module__ ===
+int
+str
+bool
+list
+type
+int
+builtins
+=== __mro__ ===
+('int', 'object')
+('float', 'object')
+('str', 'object')
+('bool', 'int', 'object')
+('list', 'object')
+('dict', 'object')
+('tuple', 'object')
+('bytes', 'object')
+('bytearray', 'object')
+('set', 'object')
+('frozenset', 'object')
+('complex', 'object')
+('memoryview', 'object')
+('type', 'object')
+=== __bases__ ===
+('object',)
+('object',)
+('int',)
+('object',)
+('object',)
