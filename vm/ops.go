@@ -976,6 +976,25 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 				return object.None, nil
 			}
 			return e.Ctx, nil
+		case "__suppress_context__":
+			if e.Dict != nil {
+				if v, ok := e.Dict.GetStr("__suppress_context__"); ok {
+					return v, nil
+				}
+			}
+			return object.False, nil
+		}
+		// PEP 654 group attributes — exposed only when this is a group.
+		if object.IsSubclass(e.Class, i.baseExcGroup) {
+			switch name {
+			case "message":
+				return &object.Str{V: egMessage(e)}, nil
+			case "exceptions":
+				inners := egInners(e)
+				out := make([]object.Object, len(inners))
+				copy(out, inners)
+				return &object.Tuple{V: out}, nil
+			}
 		}
 		// Check extra instance attributes (e.g. NetrcParseError.msg).
 		if e.Dict != nil {
@@ -1194,6 +1213,48 @@ func (i *Interp) setAttr(o object.Object, name string, val object.Object) error 
 			fn.Dict = object.NewDict()
 		}
 		fn.Dict.SetStr(name, val)
+		return nil
+	}
+	if e, ok := o.(*object.Exception); ok {
+		switch name {
+		case "__traceback__":
+			switch tb := val.(type) {
+			case *object.NoneType:
+				e.Traceback = nil
+			case *object.Traceback:
+				e.Traceback = tb
+			default:
+				return object.Errorf(i.typeErr, "__traceback__ must be a traceback or None")
+			}
+			return nil
+		case "__cause__":
+			if _, isNone := val.(*object.NoneType); isNone {
+				e.Cause = nil
+			} else if cx, ok := val.(*object.Exception); ok {
+				e.Cause = cx
+			} else {
+				return object.Errorf(i.typeErr, "exception cause must be None or derive from BaseException")
+			}
+			// Setting __cause__ implicitly sets __suppress_context__ to True.
+			if e.Dict == nil {
+				e.Dict = object.NewDict()
+			}
+			e.Dict.SetStr("__suppress_context__", object.True)
+			return nil
+		case "__context__":
+			if _, isNone := val.(*object.NoneType); isNone {
+				e.Ctx = nil
+			} else if cx, ok := val.(*object.Exception); ok {
+				e.Ctx = cx
+			} else {
+				return object.Errorf(i.typeErr, "exception context must be None or derive from BaseException")
+			}
+			return nil
+		}
+		if e.Dict == nil {
+			e.Dict = object.NewDict()
+		}
+		e.Dict.SetStr(name, val)
 		return nil
 	}
 	if fin, ok := o.(*object.PyFinalizer); ok {

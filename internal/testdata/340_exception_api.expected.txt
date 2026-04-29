@@ -1,0 +1,16 @@
+['first note', 'second note']
+True
+True
+False
+True
+ExceptionGroup 2
+ExceptionGroup 1
+['ValueError', 'ValueError']
+['TypeError']
+ExceptionGroup ['TypeError']
+True
+ExceptionGroup ['TypeError', 'KeyError']
+g3
+['ValueError:99']
+['ValueError', 'TypeError']
+[('ValueError', ['seen-by-except*'])]
