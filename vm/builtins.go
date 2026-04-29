@@ -409,6 +409,20 @@ func (i *Interp) initBuiltins() {
 		if n, ok := toInt64(a[0]); ok {
 			return &object.Bytes{V: make([]byte, n)}, nil
 		}
+		// __bytes__ dunder: classes can define their own bytes()
+		// representation. Used by pickle.PickleBuffer and similar.
+		if inst, ok := a[0].(*object.Instance); ok && inst.Class != nil {
+			if fn, ok := classLookup(inst.Class, "__bytes__"); ok {
+				r, err := ii.(*Interp).callObject(fn, []object.Object{inst}, nil)
+				if err != nil {
+					return nil, err
+				}
+				if bs, ok := r.(*object.Bytes); ok {
+					return bs, nil
+				}
+				return nil, object.Errorf(ii.(*Interp).typeErr, "__bytes__ returned non-bytes (type %s)", object.TypeName(r))
+			}
+		}
 		items, err := iterate(ii.(*Interp), a[0])
 		if err != nil {
 			return nil, err

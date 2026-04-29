@@ -4,6 +4,7 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.0.346](changelog/0.0.346.md) | 2026-04-29 | `pickle.PickleBuffer` + `bytes(__bytes__)` + compile/exec/eval raise SyntaxError; eager `buildBuiltins()`; closes v0.1.0 tail, fixture 346 |
 | [v0.0.345](changelog/0.0.345.md) | 2026-04-29 | `sys.settrace` / `sys.setprofile` -- per-frame `f_trace`, call/line/return/exception events, fixture 345 |
 | [v0.0.344](changelog/0.0.344.md) | 2026-04-29 | `iter(callable, sentinel)` + `slice.indices(n)` + `functools._CacheInfo` namedtuple, fixture 344 |
 | [v0.0.343](changelog/0.0.343.md) | 2026-04-29 | generator/coroutine/async-gen introspection -- `gi_*`/`cr_*`/`ag_*` (frame/running/code/suspended/await/origin), fixture 343 |
