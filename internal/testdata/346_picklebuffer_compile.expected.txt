@@ -1,0 +1,16 @@
+# section 1: PickleBuffer construct/bytes/raw/release
+PickleBuffer
+b'hello world'
+11
+b'hello world'
+ValueError: operation forbidden on released PickleBuffer object
+# section 2: PickleBuffer wraps bytearray and memoryview too
+b'abc'
+b'xyz'
+# section 3: PickleBuffer namespace presence
+True
+# section 4: compile()/exec(str)/eval(str) error class is SyntaxError
+compile -> SyntaxError
+exec -> SyntaxError
+eval -> SyntaxError
+done

@@ -96,9 +96,12 @@ func (i *Interp) buildBuiltins() *object.Module {
 				}
 				code, ok2 := a[0].(*object.Code)
 				if !ok2 {
-					// String source — not compilable from Go side
-					return nil, object.Errorf(interp.typeErr,
-						"exec() with string source is not supported; pass a compiled code object")
+					// String source compilation requires a Python parser;
+					// goipy ships .pyc-only. Raise SyntaxError so user code
+					// that catches it (the documented compile-time class)
+					// runs the right except branch.
+					return nil, object.Errorf(interp.syntaxErr,
+						"exec() with string source requires a Python parser; goipy only runs compiled .pyc")
 				}
 				var globals *object.Dict
 				if len(a) >= 2 {
@@ -141,8 +144,8 @@ func (i *Interp) buildBuiltins() *object.Module {
 				}
 				code, ok2 := a[0].(*object.Code)
 				if !ok2 {
-					return nil, object.Errorf(interp.typeErr,
-						"eval() with string expression is not supported; pass a compiled code object")
+					return nil, object.Errorf(interp.syntaxErr,
+						"eval() with string expression requires a Python parser; goipy only runs compiled .pyc")
 				}
 				var globals *object.Dict
 				if len(a) >= 2 {
@@ -177,13 +180,15 @@ func (i *Interp) buildBuiltins() *object.Module {
 	}
 
 	// compile(source, filename, mode, flags=0, dont_inherit=False, optimize=-1)
-	// goipy has no Go-side Python compiler; always raises NotImplementedError.
+	// goipy has no Go-side Python compiler; raises SyntaxError, matching
+	// the class user code expects from compile() on bad input.
 	if _, ok := b.GetStr("compile"); !ok {
 		b.SetStr("compile", &object.BuiltinFunc{
 			Name: "compile",
 			Call: func(ii any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 				interp := ii.(*Interp)
-				return nil, object.Errorf(interp.notImpl, "compile() is not supported in goipy")
+				return nil, object.Errorf(interp.syntaxErr,
+					"compile() requires a Python parser; goipy only runs compiled .pyc")
 			},
 		})
 	}

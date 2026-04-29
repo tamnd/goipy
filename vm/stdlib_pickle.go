@@ -220,6 +220,77 @@ func (i *Interp) buildPickle() *object.Module {
 		return obj, nil
 	}})
 
+	// PickleBuffer — protocol 5 wrapper. Holds a bytes-like payload that
+	// pickle.dumps(protocol=5, buffer_callback=...) can hand off out-of-band.
+	// Goipy doesn't reroute pickle 5 to out-of-band today, but the type
+	// itself is part of the pickle public namespace and must round-trip
+	// through code that does isinstance(...) checks.
+	pickleBufferCls := &object.Class{Name: "PickleBuffer", Dict: object.NewDict()}
+	pickleBufferCls.Dict.SetStr("__init__", &object.BuiltinFunc{Name: "__init__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			if len(a) < 2 {
+				return nil, object.Errorf(i.typeErr, "PickleBuffer() requires a bytes-like argument")
+			}
+			inst := a[0].(*object.Instance)
+			src := a[1]
+			var buf []byte
+			switch v := src.(type) {
+			case *object.Bytes:
+				buf = append([]byte(nil), v.V...)
+			case *object.Bytearray:
+				buf = append([]byte(nil), v.V...)
+			case *object.Memoryview:
+				buf = append([]byte(nil), v.Bytes()...)
+			default:
+				return nil, object.Errorf(i.typeErr, "PickleBuffer: a bytes-like object is required, not '%s'", object.TypeName(src))
+			}
+			inst.Dict.SetStr("_buf", &object.Bytes{V: buf})
+			inst.Dict.SetStr("_released", object.False)
+			return object.None, nil
+		},
+	})
+	pickleBufferCls.Dict.SetStr("__bytes__", &object.BuiltinFunc{Name: "__bytes__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			if rel, _ := inst.Dict.GetStr("_released"); object.Truthy(rel) {
+				return nil, object.Errorf(i.valueErr, "operation forbidden on released PickleBuffer object")
+			}
+			b, _ := inst.Dict.GetStr("_buf")
+			if bs, ok := b.(*object.Bytes); ok {
+				return &object.Bytes{V: append([]byte(nil), bs.V...)}, nil
+			}
+			return &object.Bytes{V: nil}, nil
+		},
+	})
+	pickleBufferCls.Dict.SetStr("raw", &object.BuiltinFunc{Name: "raw",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			if rel, _ := inst.Dict.GetStr("_released"); object.Truthy(rel) {
+				return nil, object.Errorf(i.valueErr, "operation forbidden on released PickleBuffer object")
+			}
+			b, _ := inst.Dict.GetStr("_buf")
+			bs, _ := b.(*object.Bytes)
+			if bs == nil {
+				bs = &object.Bytes{}
+			}
+			return &object.Memoryview{Backing: bs, Start: 0, Stop: len(bs.V), Readonly: true}, nil
+		},
+	})
+	pickleBufferCls.Dict.SetStr("release", &object.BuiltinFunc{Name: "release",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			inst := a[0].(*object.Instance)
+			inst.Dict.SetStr("_released", object.True)
+			inst.Dict.SetStr("_buf", &object.Bytes{V: nil})
+			return object.None, nil
+		},
+	})
+	pickleBufferCls.Dict.SetStr("__repr__", &object.BuiltinFunc{Name: "__repr__",
+		Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+			return &object.Str{V: "<pickle.PickleBuffer object>"}, nil
+		},
+	})
+	m.Dict.SetStr("PickleBuffer", pickleBufferCls)
+
 	return m
 }
 

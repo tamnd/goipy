@@ -116,6 +116,9 @@ func New() *Interp {
 	}
 	i.initBuiltins()
 	i.installDunderHooks()
+	// Eagerly register __import__/exec/eval/compile so they're visible at
+	// the global namespace without requiring `import builtins` first.
+	i.buildBuiltins()
 	return i
 }
 
