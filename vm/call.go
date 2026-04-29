@@ -1383,8 +1383,32 @@ func strMethod(s *object.Str, name string) (object.Object, bool) {
 		}}, true
 	// --- encode ---
 	case "encode":
-		return &object.BuiltinFunc{Name: "encode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Bytes{V: []byte(s.V)}, nil
+		return &object.BuiltinFunc{Name: "encode", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			enc := "utf-8"
+			errName := "strict"
+			if len(a) >= 1 {
+				if v, ok := a[0].(*object.Str); ok {
+					enc = v.V
+				}
+			}
+			if len(a) >= 2 {
+				if v, ok := a[1].(*object.Str); ok {
+					errName = v.V
+				}
+			}
+			if kw != nil {
+				if v, ok := kw.GetStr("encoding"); ok {
+					if sv, ok := v.(*object.Str); ok {
+						enc = sv.V
+					}
+				}
+				if v, ok := kw.GetStr("errors"); ok {
+					if sv, ok := v.(*object.Str); ok {
+						errName = sv.V
+					}
+				}
+			}
+			return ii.(*Interp).codecsEncode(s, enc, errName)
 		}}, true
 	// --- format ---
 	case "format":
@@ -2071,14 +2095,26 @@ func bytesSubMethod(data func() []byte, mutable bool, name string) (object.Objec
 			return wrap(bytesPad(d, int(width), '0', "right_fill_left")), nil
 		}}, true
 	case "hex":
-		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			const digits = "0123456789abcdef"
+		return &object.BuiltinFunc{Name: "hex", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 			d := data()
-			buf := make([]byte, 0, 2*len(d))
-			for _, c := range d {
-				buf = append(buf, digits[c>>4], digits[c&0xf])
+			sep := ""
+			group := 1
+			if len(a) >= 1 {
+				switch v := a[0].(type) {
+				case *object.Str:
+					sep = v.V
+				case *object.Bytes:
+					sep = string(v.V)
+				case *object.Bytearray:
+					sep = string(v.V)
+				}
 			}
-			return &object.Str{V: string(buf)}, nil
+			if len(a) >= 2 {
+				if n, ok := toInt64(a[1]); ok {
+					group = int(n)
+				}
+			}
+			return &object.Str{V: bytesHexFmt(d, sep, group)}, nil
 		}}, true
 	}
 	return nil, false
@@ -2209,6 +2245,46 @@ func bytesTrim(d, chars []byte, left, right bool) []byte {
 	return append([]byte(nil), d[start:end]...)
 }
 
+// bytesHexFmt converts d to lowercase hex pairs joined by sep at the
+// configured group size. Positive `group` groups from the right (the
+// default), negative groups from the left. group==0 disables grouping
+// (behaves like sep=="").
+func bytesHexFmt(d []byte, sep string, group int) string {
+	const digits = "0123456789abcdef"
+	if sep == "" || group == 0 {
+		buf := make([]byte, 0, 2*len(d))
+		for _, c := range d {
+			buf = append(buf, digits[c>>4], digits[c&0xf])
+		}
+		return string(buf)
+	}
+	g := group
+	fromRight := g > 0
+	if g < 0 {
+		g = -g
+	}
+	n := len(d)
+	var buf []byte
+	if fromRight {
+		// Groups counted from the rightmost byte; the leftmost group may
+		// be short.
+		for i := 0; i < n; i++ {
+			if i > 0 && (n-i)%g == 0 {
+				buf = append(buf, sep...)
+			}
+			buf = append(buf, digits[d[i]>>4], digits[d[i]&0xf])
+		}
+	} else {
+		for i := 0; i < n; i++ {
+			if i > 0 && i%g == 0 {
+				buf = append(buf, sep...)
+			}
+			buf = append(buf, digits[d[i]>>4], digits[d[i]&0xf])
+		}
+	}
+	return string(buf)
+}
+
 // bytesPad pads d to width using fill byte.
 // mode: "left" = rjust, "right" = ljust, "center" = center, "right_fill_left" = zfill.
 func bytesPad(d []byte, width int, fill byte, mode string) []byte {
@@ -2327,11 +2403,42 @@ func bytesMethod(b *object.Bytes, name string) (object.Object, bool) {
 	}
 	switch name {
 	case "decode":
-		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: string(b.V)}, nil
+		return &object.BuiltinFunc{Name: "decode", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			enc, errName := bytesDecodeArgs(a, kw)
+			return ii.(*Interp).codecsDecode(b, enc, errName)
 		}}, true
 	}
 	return nil, false
+}
+
+// bytesDecodeArgs parses the (encoding='utf-8', errors='strict') signature
+// shared by Bytes.decode and Bytearray.decode.
+func bytesDecodeArgs(a []object.Object, kw *object.Dict) (string, string) {
+	enc := "utf-8"
+	errName := "strict"
+	if len(a) >= 1 {
+		if v, ok := a[0].(*object.Str); ok {
+			enc = v.V
+		}
+	}
+	if len(a) >= 2 {
+		if v, ok := a[1].(*object.Str); ok {
+			errName = v.V
+		}
+	}
+	if kw != nil {
+		if v, ok := kw.GetStr("encoding"); ok {
+			if sv, ok := v.(*object.Str); ok {
+				enc = sv.V
+			}
+		}
+		if v, ok := kw.GetStr("errors"); ok {
+			if sv, ok := v.(*object.Str); ok {
+				errName = sv.V
+			}
+		}
+	}
+	return enc, errName
 }
 
 func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.Object, bool) {
@@ -2462,8 +2569,9 @@ func bytearrayMethod(interp *Interp, ba *object.Bytearray, name string) (object.
 			return object.NewInt(int64(v)), nil
 		}}, true
 	case "decode":
-		return &object.BuiltinFunc{Name: "decode", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-			return &object.Str{V: string(ba.V)}, nil
+		return &object.BuiltinFunc{Name: "decode", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
+			enc, errName := bytesDecodeArgs(a, kw)
+			return ii.(*Interp).codecsDecode(ba, enc, errName)
 		}}, true
 	case "copy":
 		return &object.BuiltinFunc{Name: "copy", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {

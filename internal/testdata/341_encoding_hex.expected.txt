@@ -1,0 +1,19 @@
+b'a-?-b'
+b'a--b'
+b'&#20013;'
+b'\\u4e2d'
+b'\\N{CJK UNIFIED IDEOGRAPH-4E2D}'
+UnicodeEncodeError raised
+b'\xff'
+b'hi'
+b'hi'
+hello
+hello
+aabbccdd
+aa-bb-cc-dd
+aabb:ccdd
+aabb-ccdd
+01 02 03 04 05
+01 0203 0405
+0102 0304 05
+''
