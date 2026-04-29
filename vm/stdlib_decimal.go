@@ -1404,8 +1404,41 @@ func (i *Interp) buildDecimal() *object.Module {
 		if !ok {
 			return object.NewInt(0), nil
 		}
-		f, _ := decToFloat64(d)
-		return object.NewInt(int64(math.Float64bits(f))), nil
+		// Special forms: ±Inf hash to ±314159 (matching float); NaN gets
+		// a stable hash by id (we use 0 for now — CPython 3.10+ would
+		// raise TypeError on signaling NaN, but we permit hashing).
+		if d.isNaN() {
+			if d.isSNaN() {
+				return nil, object.Errorf(i.typeErr, "Cannot hash a signaling NaN value.")
+			}
+			return object.NewInt(0), nil
+		}
+		if d.isInf() {
+			if d.sign == 0 {
+				return object.NewInt(314159), nil
+			}
+			return object.NewInt(-314159), nil
+		}
+		// Finite: value = (-1)^sign * coeff * 10^exp.
+		// Compose num/den from sign, coeff, exp; let HashRational do the
+		// modular reduction. Exact match for any int / float value.
+		num := new(big.Int).Set(d.coeff)
+		if d.sign == 1 {
+			num.Neg(num)
+		}
+		den := big.NewInt(1)
+		if d.exp >= 0 {
+			ten := big.NewInt(10)
+			for i := 0; i < d.exp; i++ {
+				num.Mul(num, ten)
+			}
+		} else {
+			ten := big.NewInt(10)
+			for i := 0; i < -d.exp; i++ {
+				den.Mul(den, ten)
+			}
+		}
+		return object.NewInt(object.HashRational(num, den)), nil
 	}})
 
 	// Comparison ops.

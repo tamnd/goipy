@@ -707,15 +707,7 @@ func (i *Interp) buildFractions() *object.Module {
 		if !ok {
 			return object.NewInt(0), nil
 		}
-		// CPython: hash(Fraction(n,d)) = hash(n/d) using sys.hash_info.modulus=2305843009213693951.
-		// Simple approximation: use float hash or int hash when denominator=1.
-		if f.den.Cmp(big.NewInt(1)) == 0 {
-			h := f.num.Int64()
-			return object.NewInt(h), nil
-		}
-		fv := fracToFloat(f)
-		h := int64(math.Round(fv * 1e9))
-		return object.NewInt(h), nil
+		return object.NewInt(object.HashRational(f.num, f.den)), nil
 	}})
 
 	// Comparison operators.
