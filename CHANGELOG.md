@@ -4,6 +4,8 @@ Individual release notes live in [`changelog/`](changelog/).
 
 | Version | Date | Summary |
 |---------|------|---------|
+| [v0.1.1](changelog/0.1.1.md) | 2026-04-29 | threading: `Condition.wait(timeout)` / `Event.wait(timeout)` / `Semaphore.acquire(timeout)` / `Barrier.wait(timeout)` no longer deadlock; channel-backed `chCond`; `BrokenBarrierError` class; fixture 347 |
+| [v0.1.0](changelog/0.1.0.md) | 2026-04-29 | "run any 3.14 .pyc" — closes the v0.1.0 gap audit (1530); 346 fixtures green |
 | [v0.0.346](changelog/0.0.346.md) | 2026-04-29 | `pickle.PickleBuffer` + `bytes(__bytes__)` + compile/exec/eval raise SyntaxError; eager `buildBuiltins()`; closes v0.1.0 tail, fixture 346 |
 | [v0.0.345](changelog/0.0.345.md) | 2026-04-29 | `sys.settrace` / `sys.setprofile` -- per-frame `f_trace`, call/line/return/exception events, fixture 345 |
 | [v0.0.344](changelog/0.0.344.md) | 2026-04-29 | `iter(callable, sentinel)` + `slice.indices(n)` + `functools._CacheInfo` namedtuple, fixture 344 |

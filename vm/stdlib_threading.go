@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/tamnd/goipy/object"
 )
@@ -36,6 +37,89 @@ var (
 type threadLocalKey struct {
 	inst *object.Instance
 	gid  int64
+}
+
+// chCond is a channel-backed condition variable that supports timed
+// waits, unlike sync.Cond. Each Wait() registers a fresh channel; the
+// FIFO of channels is woken in order by Notify(n). Caller must hold
+// extMu when calling Wait — Wait drops it for the duration of the
+// sleep and re-acquires it on return.
+type chCond struct {
+	mu      sync.Mutex
+	waiters []chan struct{}
+}
+
+// Wait drops extMu, waits up to timeout (negative = no timeout) for
+// a Notify, then re-acquires extMu. Returns true on signal, false on
+// timeout.
+func (c *chCond) Wait(extMu *sync.Mutex, timeout time.Duration) bool {
+	ch := make(chan struct{}, 1)
+	c.mu.Lock()
+	c.waiters = append(c.waiters, ch)
+	c.mu.Unlock()
+	extMu.Unlock()
+	var ok bool
+	if timeout < 0 {
+		<-ch
+		ok = true
+	} else {
+		select {
+		case <-ch:
+			ok = true
+		case <-time.After(timeout):
+			c.mu.Lock()
+			for j, w := range c.waiters {
+				if w == ch {
+					c.waiters = append(c.waiters[:j], c.waiters[j+1:]...)
+					break
+				}
+			}
+			c.mu.Unlock()
+			select {
+			case <-ch:
+				ok = true
+			default:
+				ok = false
+			}
+		}
+	}
+	extMu.Lock()
+	return ok
+}
+
+// Notify wakes up to n waiters in FIFO order. n<=0 wakes all.
+func (c *chCond) Notify(n int) {
+	c.mu.Lock()
+	if n <= 0 || n > len(c.waiters) {
+		n = len(c.waiters)
+	}
+	for j := 0; j < n; j++ {
+		select {
+		case c.waiters[j] <- struct{}{}:
+		default:
+		}
+	}
+	c.waiters = c.waiters[n:]
+	c.mu.Unlock()
+}
+
+// Broadcast wakes all current waiters.
+func (c *chCond) Broadcast() { c.Notify(0) }
+
+// parseTimeout converts a Python timeout argument to a time.Duration.
+// None, missing, or negative values map to -1 (no timeout). Float
+// seconds are converted to nanoseconds.
+func parseTimeout(o object.Object) time.Duration {
+	if o == nil || o == object.None {
+		return -1
+	}
+	if f, ok := toFloat64(o); ok {
+		if f < 0 {
+			return -1
+		}
+		return time.Duration(f * float64(time.Second))
+	}
+	return -1
 }
 
 // buildThreading constructs the threading module backed by real goroutines
@@ -126,6 +210,10 @@ func (i *Interp) buildThreading() *object.Module {
 		return i.makeCondition(), nil
 	}})
 
+	// BrokenBarrierError — subclass of RuntimeError per CPython.
+	brokenBarrierErr := &object.Class{Name: "BrokenBarrierError", Bases: []*object.Class{i.runtimeErr}, Dict: object.NewDict()}
+	m.Dict.SetStr("BrokenBarrierError", brokenBarrierErr)
+
 	// Barrier(parties, action=None, timeout=None)
 	m.Dict.SetStr("Barrier", &object.BuiltinFunc{Name: "Barrier", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
 		parties := int64(1)
@@ -134,7 +222,7 @@ func (i *Interp) buildThreading() *object.Module {
 				parties = n
 			}
 		}
-		return i.makeBarrier(parties), nil
+		return i.makeBarrier(parties, brokenBarrierErr), nil
 	}})
 
 	// current_thread() / currentThread()
@@ -407,11 +495,12 @@ func (i *Interp) makeRLock() *object.Instance {
 	return inst
 }
 
-// makeEvent creates an Event backed by sync.Cond.
+// makeEvent creates an Event backed by chCond so wait(timeout) is
+// honoured.
 func (i *Interp) makeEvent() *object.Instance {
 	inst := &object.Instance{Dict: object.NewDict()}
 	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
+	var cond chCond
 	flag := false
 
 	inst.Dict.SetStr("is_set", &object.BuiltinFunc{Name: "is_set", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
@@ -441,12 +530,35 @@ func (i *Interp) makeEvent() *object.Instance {
 		return object.None, nil
 	}})
 
-	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		mu.Lock()
-		for !flag {
-			cond.Wait()
+	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		var timeoutArg object.Object
+		if len(a) > 0 {
+			timeoutArg = a[0]
+		} else if kw != nil {
+			if v, ok := kw.GetStr("timeout"); ok {
+				timeoutArg = v
+			}
 		}
-		mu.Unlock()
+		timeout := parseTimeout(timeoutArg)
+		mu.Lock()
+		defer mu.Unlock()
+		if flag {
+			return object.True, nil
+		}
+		if timeout < 0 {
+			for !flag {
+				cond.Wait(&mu, -1)
+			}
+			return object.True, nil
+		}
+		deadline := time.Now().Add(timeout)
+		for !flag {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return object.BoolOf(flag), nil
+			}
+			cond.Wait(&mu, remaining)
+		}
 		return object.True, nil
 	}})
 
@@ -457,19 +569,27 @@ func (i *Interp) makeEvent() *object.Instance {
 func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 	inst := &object.Instance{Dict: object.NewDict()}
 	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
+	var cond chCond
 	count := value
 
 	inst.Dict.SetStr("acquire", &object.BuiltinFunc{Name: "acquire", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		blocking := true
+		var timeoutArg object.Object
 		if kw != nil {
 			if v, ok := kw.GetStr("blocking"); ok {
 				blocking = object.Truthy(v)
+			}
+			if v, ok := kw.GetStr("timeout"); ok {
+				timeoutArg = v
 			}
 		}
 		if len(a) > 0 {
 			blocking = object.Truthy(a[0])
 		}
+		if len(a) > 1 {
+			timeoutArg = a[1]
+		}
+		timeout := parseTimeout(timeoutArg)
 		mu.Lock()
 		defer mu.Unlock()
 		if !blocking {
@@ -479,8 +599,20 @@ func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 			}
 			return object.False, nil
 		}
+		if timeout < 0 {
+			for count <= 0 {
+				cond.Wait(&mu, -1)
+			}
+			count--
+			return object.True, nil
+		}
+		deadline := time.Now().Add(timeout)
 		for count <= 0 {
-			cond.Wait()
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return object.False, nil
+			}
+			cond.Wait(&mu, remaining)
 		}
 		count--
 		return object.True, nil
@@ -499,7 +631,7 @@ func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 			return nil, object.Errorf(i.valueErr, "semaphore released too many times")
 		}
 		count += n
-		cond.Broadcast()
+		cond.Notify(int(n))
 		mu.Unlock()
 		return object.None, nil
 	}})
@@ -507,7 +639,7 @@ func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 	inst.Dict.SetStr("__enter__", &object.BuiltinFunc{Name: "__enter__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		mu.Lock()
 		for count <= 0 {
-			cond.Wait()
+			cond.Wait(&mu, -1)
 		}
 		count--
 		mu.Unlock()
@@ -517,7 +649,7 @@ func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 	inst.Dict.SetStr("__exit__", &object.BuiltinFunc{Name: "__exit__", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		mu.Lock()
 		count++
-		cond.Broadcast()
+		cond.Notify(1)
 		mu.Unlock()
 		return object.False, nil
 	}})
@@ -525,11 +657,12 @@ func (i *Interp) makeSemaphore(value, maxVal int64) *object.Instance {
 	return inst
 }
 
-// makeCondition creates a Condition variable.
+// makeCondition creates a Condition variable backed by chCond so
+// wait(timeout) and wait_for(predicate, timeout) are honoured.
 func (i *Interp) makeCondition() *object.Instance {
 	inst := &object.Instance{Dict: object.NewDict()}
 	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
+	var cond chCond
 
 	inst.Dict.SetStr("acquire", &object.BuiltinFunc{Name: "acquire", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
 		mu.Lock()
@@ -551,13 +684,28 @@ func (i *Interp) makeCondition() *object.Instance {
 		return object.False, nil
 	}})
 
-	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		cond.Wait()
-		return object.True, nil
+	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		var timeoutArg object.Object
+		if len(a) > 0 {
+			timeoutArg = a[0]
+		} else if kw != nil {
+			if v, ok := kw.GetStr("timeout"); ok {
+				timeoutArg = v
+			}
+		}
+		timeout := parseTimeout(timeoutArg)
+		ok := cond.Wait(&mu, timeout)
+		return object.BoolOf(ok), nil
 	}})
 
-	inst.Dict.SetStr("notify", &object.BuiltinFunc{Name: "notify", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
-		cond.Signal()
+	inst.Dict.SetStr("notify", &object.BuiltinFunc{Name: "notify", Call: func(_ any, a []object.Object, _ *object.Dict) (object.Object, error) {
+		n := 1
+		if len(a) > 0 {
+			if v, ok := toInt64(a[0]); ok {
+				n = int(v)
+			}
+		}
+		cond.Notify(n)
 		return object.None, nil
 	}})
 
@@ -571,7 +719,7 @@ func (i *Interp) makeCondition() *object.Instance {
 		return object.None, nil
 	}})
 
-	inst.Dict.SetStr("wait_for", &object.BuiltinFunc{Name: "wait_for", Call: func(ii any, a []object.Object, _ *object.Dict) (object.Object, error) {
+	inst.Dict.SetStr("wait_for", &object.BuiltinFunc{Name: "wait_for", Call: func(ii any, a []object.Object, kw *object.Dict) (object.Object, error) {
 		caller := i
 		if ii != nil {
 			if ci, ok := ii.(*Interp); ok {
@@ -581,26 +729,50 @@ func (i *Interp) makeCondition() *object.Instance {
 		if len(a) == 0 {
 			return object.True, nil
 		}
+		var timeoutArg object.Object
+		if len(a) > 1 {
+			timeoutArg = a[1]
+		} else if kw != nil {
+			if v, ok := kw.GetStr("timeout"); ok {
+				timeoutArg = v
+			}
+		}
+		timeout := parseTimeout(timeoutArg)
+		var deadline time.Time
+		if timeout >= 0 {
+			deadline = time.Now().Add(timeout)
+		}
+		var last object.Object = object.False
 		for {
 			r, err := caller.callObject(a[0], nil, nil)
 			if err != nil {
 				return nil, err
 			}
+			last = r
 			if object.Truthy(r) {
 				return r, nil
 			}
-			cond.Wait()
+			if timeout < 0 {
+				cond.Wait(&mu, -1)
+				continue
+			}
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return last, nil
+			}
+			cond.Wait(&mu, remaining)
 		}
 	}})
 
 	return inst
 }
 
-// makeBarrier creates a Barrier for parties goroutines.
-func (i *Interp) makeBarrier(parties int64) *object.Instance {
+// makeBarrier creates a Barrier for parties goroutines, backed by
+// chCond so wait(timeout) is honoured.
+func (i *Interp) makeBarrier(parties int64, brokenBarrierErr *object.Class) *object.Instance {
 	inst := &object.Instance{Dict: object.NewDict()}
 	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
+	var cond chCond
 	var waiting int64
 	var broken bool
 	var generation int64
@@ -609,29 +781,53 @@ func (i *Interp) makeBarrier(parties int64) *object.Instance {
 	inst.Dict.SetStr("n_waiting", object.NewInt(0))
 	inst.Dict.SetStr("broken", object.False)
 
-	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, _ []object.Object, _ *object.Dict) (object.Object, error) {
+	inst.Dict.SetStr("wait", &object.BuiltinFunc{Name: "wait", Call: func(_ any, a []object.Object, kw *object.Dict) (object.Object, error) {
+		var timeoutArg object.Object
+		if len(a) > 0 {
+			timeoutArg = a[0]
+		} else if kw != nil {
+			if v, ok := kw.GetStr("timeout"); ok {
+				timeoutArg = v
+			}
+		}
+		timeout := parseTimeout(timeoutArg)
+
 		mu.Lock()
 		defer mu.Unlock()
 		if broken {
-			return nil, object.Errorf(i.runtimeErr, "BrokenBarrierError")
+			return nil, object.Errorf(brokenBarrierErr, "BrokenBarrierError")
 		}
 		myIndex := waiting
 		waiting++
 		inst.Dict.SetStr("n_waiting", object.NewInt(waiting))
 		myGen := generation
 		if waiting == parties {
-			// Last to arrive: release all
 			generation++
 			waiting = 0
 			inst.Dict.SetStr("n_waiting", object.NewInt(0))
 			cond.Broadcast()
 			return object.NewInt(myIndex), nil
 		}
+		var deadline time.Time
+		if timeout >= 0 {
+			deadline = time.Now().Add(timeout)
+		}
 		for !broken && generation == myGen {
-			cond.Wait()
+			if timeout < 0 {
+				cond.Wait(&mu, -1)
+				continue
+			}
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				broken = true
+				inst.Dict.SetStr("broken", object.True)
+				cond.Broadcast()
+				return nil, object.Errorf(brokenBarrierErr, "BrokenBarrierError")
+			}
+			cond.Wait(&mu, remaining)
 		}
 		if broken {
-			return nil, object.Errorf(i.runtimeErr, "BrokenBarrierError")
+			return nil, object.Errorf(brokenBarrierErr, "BrokenBarrierError")
 		}
 		return object.NewInt(myIndex), nil
 	}})
