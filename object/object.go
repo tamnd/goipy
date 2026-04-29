@@ -502,6 +502,18 @@ type Class struct {
 	// issubclass() consult Metaclass.__instancecheck__ /
 	// __subclasscheck__ before the normal MRO walk.
 	Metaclass *Class
+
+	// BuiltinBase is the name of the builtin type this class
+	// transitively subclasses (e.g. "int", "str") or empty for
+	// pure user classes. Set by __build_class__ when a builtin-type
+	// BuiltinFunc appears among the bases. Drives subclass
+	// arithmetic and isinstance/issubclass against the builtin.
+	BuiltinBase string
+
+	// BuiltinMRO carries the resolved MRO including the builtin-type
+	// BuiltinFunc(s) and `object`. Used by `__mro__` / `__bases__`
+	// when BuiltinBase != "".
+	BuiltinMRO []Object
 }
 
 // MethodCacheEntry stores one cached classLookup result.
@@ -528,6 +540,13 @@ func BumpClassEpoch() { classEpoch.Add(1) }
 type Instance struct {
 	Class *Class
 	Dict  *Dict
+
+	// BuiltinValue is non-nil for instances of classes that
+	// transitively subclass a builtin type (Class.BuiltinBase
+	// != ""). It carries the underlying Int/Str/List/etc. that
+	// arithmetic, indexing, iteration, constructors, and
+	// inherited builtin methods forward to.
+	BuiltinValue Object
 }
 
 // Range represents the built-in range object.

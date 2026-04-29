@@ -333,6 +333,7 @@ func (i *Interp) unaryNeg(v object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	v = unboxBuiltin(v)
 	// -Counter: negate counts, keep only positives of the negated values
 	if c, ok := v.(*object.Counter); ok {
 		out := &object.Counter{D: object.NewDict()}
@@ -411,6 +412,7 @@ func (i *Interp) length(v object.Object) (int64, error) {
 			return n, nil
 		}
 	}
+	v = unboxBuiltin(v)
 	if n, ok := collectionLen(v); ok {
 		return n, nil
 	}
@@ -828,6 +830,13 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 				}
 			}
 		}
+		// Builtin-subclass instance: route attribute lookup through the
+		// underlying builtin payload so e.g. S('hi').upper() works.
+		if inst.BuiltinValue != nil {
+			if r, err := i.getAttr(inst.BuiltinValue, name); err == nil {
+				return r, nil
+			}
+		}
 		clsName := "object"
 		if inst.Class != nil {
 			clsName = inst.Class.Name
@@ -979,12 +988,20 @@ func (i *Interp) getAttr(o object.Object, name string) (object.Object, error) {
 		case "__name__":
 			return &object.Str{V: cls.Name}, nil
 		case "__bases__":
+			if cls.BuiltinBase != "" && len(cls.BuiltinMRO) >= 2 {
+				return &object.Tuple{V: []object.Object{cls.BuiltinMRO[1]}}, nil
+			}
 			bs := make([]object.Object, len(cls.Bases))
 			for k, b := range cls.Bases {
 				bs[k] = b
 			}
 			return &object.Tuple{V: bs}, nil
 		case "__mro__":
+			if cls.BuiltinBase != "" && len(cls.BuiltinMRO) > 0 {
+				out := make([]object.Object, len(cls.BuiltinMRO))
+				copy(out, cls.BuiltinMRO)
+				return &object.Tuple{V: out}, nil
+			}
 			mro := computeMRO(cls)
 			out := make([]object.Object, len(mro))
 			for k, c := range mro {
@@ -1478,6 +1495,19 @@ func isSpecialMatchClass(name string) bool {
 	return false
 }
 
+// unboxBuiltin returns inst.BuiltinValue when o is an Instance whose
+// Class subclasses a builtin type and the user class doesn't override
+// the relevant operator. Used by binary/unary/compare ops, len,
+// iteration, indexing, and type constructors so subclass instances
+// transparently delegate to their underlying Int/Str/List/etc payload.
+// See spec 1544.
+func unboxBuiltin(o object.Object) object.Object {
+	if inst, ok := o.(*object.Instance); ok && inst.BuiltinValue != nil {
+		return inst.BuiltinValue
+	}
+	return o
+}
+
 // builtinTypeNames is the set of `BuiltinFunc.Name` values that
 // represent a Python builtin type (rather than a regular function).
 // Membership lets `type()`, `isinstance()`, `issubclass()` treat
@@ -1864,6 +1894,9 @@ func (i *Interp) getIter(v object.Object) (*object.Iter, error) {
 	if inst, ok := v.(*object.Instance); ok {
 		if it, ok, err := i.instanceIter(inst); ok {
 			return it, err
+		}
+		if inst.BuiltinValue != nil {
+			return i.getIter(inst.BuiltinValue)
 		}
 	}
 	switch x := v.(type) {

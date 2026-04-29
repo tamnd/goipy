@@ -189,7 +189,11 @@ func (d *Dict) Get(key Object) (Object, bool, error) {
 				return d.vals[i], true, nil
 			}
 		}
-		return nil, false, nil
+		// Fall through to oHash: a builtin-subclass str Instance stored
+		// as a key lives there, and a plain Str lookup must still match.
+		if d.oHash == nil {
+			return nil, false, nil
+		}
 	}
 	if d.oHash == nil {
 		return nil, false, nil

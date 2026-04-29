@@ -1,0 +1,76 @@
+=== int subclass ===
+N
+5
+5
+6
+6
+3
+15
+2
+2
+25
+-5
+7
+4
+7
+4
+10
+2
+10
+3
+True
+True
+True
+True
+True
+True
+True
+object
+a
+=== str subclass ===
+S
+hi
+hi
+hi there
+oh hi
+hihi
+HI
+hi!
+2
+h
+True
+True
+True
+1
+=== list subclass ===
+L
+[1, 2, 3]
+1
+3
+3
+[1, 2, 3, 4]
+[0, 1, 2, 3]
+[1, 2, 3, 1, 2, 3]
+[1, 2, 3, 1, 2, 3]
+True
+True
+True
+[3, 2, 1]
+=== dict subclass ===
+D
+[('a', 1), ('b', 2)]
+1
+2
+True
+['a', 'b']
+True
+True
+=== bytes subclass ===
+B
+b'abc'
+3
+97
+b'abcd'
+b'ABC'
+True
+True

@@ -87,6 +87,20 @@ func (i *Interp) callObject(callable object.Object, args []object.Object, kwargs
 			return nil, err
 		}
 		inst := &object.Instance{Class: fn, Dict: object.NewDict()}
+		// V2 part 2 (1544): if the class subclasses a builtin
+		// type and there is no user-defined __init__, construct
+		// the underlying builtin payload from the args.
+		if fn.BuiltinBase != "" {
+			if bf, ok := i.Builtins.GetStr(fn.BuiltinBase); ok {
+				if bfFn, ok2 := bf.(*object.BuiltinFunc); ok2 {
+					payload, err := bfFn.Call(i, args, kwargs)
+					if err != nil {
+						return nil, err
+					}
+					inst.BuiltinValue = payload
+				}
+			}
+		}
 		if init, ok := classLookup(fn, "__init__"); ok {
 			initArgs := append([]object.Object{inst}, args...)
 			ret, err := i.callObject(init, initArgs, kwargs)
@@ -493,6 +507,7 @@ func (i *Interp) intrinsicUnaryPos(v object.Object) (object.Object, error) {
 			return r, err
 		}
 	}
+	v = unboxBuiltin(v)
 	if c, ok := v.(*object.Counter); ok {
 		out := &object.Counter{D: object.NewDict()}
 		keys, vals := c.D.Items()
